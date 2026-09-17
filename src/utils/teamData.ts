@@ -1,0 +1,849 @@
+/**
+ * Official NFL 32 Team Metadata & Formatting Helpers
+ * Strictly authentic colors, full names, and game situation formatters.
+ */
+
+import { Competitor, Match } from '../types';
+
+export interface TeamMeta {
+  code: string;
+  name: string;
+  helmetColor: string;
+  jerseyColor: string;
+  stripeColor: string;
+}
+
+export const NFL_TEAMS: Record<string, TeamMeta> = {
+  ARI: { code: 'ARI', name: 'Arizona Cardinals', helmetColor: '#97233f', jerseyColor: '#97233f', stripeColor: '#ffffff' },
+  ATL: { code: 'ATL', name: 'Atlanta Falcons', helmetColor: '#a71930', jerseyColor: '#000000', stripeColor: '#ffffff' },
+  BAL: { code: 'BAL', name: 'Baltimore Ravens', helmetColor: '#241773', jerseyColor: '#241773', stripeColor: '#ffffff' },
+  BUF: { code: 'BUF', name: 'Buffalo Bills', helmetColor: '#00338d', jerseyColor: '#00338d', stripeColor: '#c60c30' },
+  CAR: { code: 'CAR', name: 'Carolina Panthers', helmetColor: '#0085ca', jerseyColor: '#0085ca', stripeColor: '#ffffff' },
+  CHI: { code: 'CHI', name: 'Chicago Bears', helmetColor: '#0b162a', jerseyColor: '#0b162a', stripeColor: '#c83803' },
+  CIN: { code: 'CIN', name: 'Cincinnati Bengals', helmetColor: '#fb4f14', jerseyColor: '#000000', stripeColor: '#ffffff' },
+  CLE: { code: 'CLE', name: 'Cleveland Browns', helmetColor: '#ff3c00', jerseyColor: '#311d00', stripeColor: '#ffffff' },
+  DAL: { code: 'DAL', name: 'Dallas Cowboys', helmetColor: '#041e42', jerseyColor: '#003594', stripeColor: '#ffffff' },
+  DEN: { code: 'DEN', name: 'Denver Broncos', helmetColor: '#002244', jerseyColor: '#fb4f14', stripeColor: '#ffffff' },
+  DET: { code: 'DET', name: 'Detroit Lions', helmetColor: '#0076b6', jerseyColor: '#0076b6', stripeColor: '#b0b7bc' },
+  GB:  { code: 'GB',  name: 'Green Bay Packers', helmetColor: '#ffb612', jerseyColor: '#203731', stripeColor: '#ffffff' },
+  HOU: { code: 'HOU', name: 'Houston Texans', helmetColor: '#03202f', jerseyColor: '#03202f', stripeColor: '#a71930' },
+  IND: { code: 'IND', name: 'Indianapolis Colts', helmetColor: '#002c5f', jerseyColor: '#002c5f', stripeColor: '#ffffff' },
+  JAX: { code: 'JAX', name: 'Jacksonville Jaguars', helmetColor: '#006778', jerseyColor: '#006778', stripeColor: '#d7a22a' },
+  KC:  { code: 'KC',  name: 'Kansas City Chiefs', helmetColor: '#e31837', jerseyColor: '#e31837', stripeColor: '#ffb81c' },
+  LAC: { code: 'LAC', name: 'Los Angeles Chargers', helmetColor: '#0080c6', jerseyColor: '#0080c6', stripeColor: '#ffc20e' },
+  LAR: { code: 'LAR', name: 'Los Angeles Rams', helmetColor: '#003594', jerseyColor: '#003594', stripeColor: '#ffa300' },
+  LV:  { code: 'LV',  name: 'Las Vegas Raiders', helmetColor: '#a5acaf', jerseyColor: '#000000', stripeColor: '#ffffff' },
+  MIA: { code: 'MIA', name: 'Miami Dolphins', helmetColor: '#008e97', jerseyColor: '#008e97', stripeColor: '#fc4c02' },
+  MIN: { code: 'MIN', name: 'Minnesota Vikings', helmetColor: '#4f2683', jerseyColor: '#4f2683', stripeColor: '#ffc62f' },
+  NE:  { code: 'NE',  name: 'New England Patriots', helmetColor: '#002244', jerseyColor: '#002244', stripeColor: '#c60c30' },
+  NO:  { code: 'NO',  name: 'New Orleans Saints', helmetColor: '#d3bc8d', jerseyColor: '#101820', stripeColor: '#d3bc8d' },
+  NYG: { code: 'NYG', name: 'New York Giants', helmetColor: '#0b2265', jerseyColor: '#0b2265', stripeColor: '#a71930' },
+  NYJ: { code: 'NYJ', name: 'New York Jets', helmetColor: '#125740', jerseyColor: '#125740', stripeColor: '#ffffff' },
+  PHI: { code: 'PHI', name: 'Philadelphia Eagles', helmetColor: '#004c54', jerseyColor: '#004c54', stripeColor: '#a5acaf' },
+  PIT: { code: 'PIT', name: 'Pittsburgh Steelers', helmetColor: '#101820', jerseyColor: '#101820', stripeColor: '#ffb612' },
+  SEA: { code: 'SEA', name: 'Seattle Seahawks', helmetColor: '#002244', jerseyColor: '#002244', stripeColor: '#69be28' },
+  SF:  { code: 'SF',  name: 'San Francisco 49ers', helmetColor: '#aa0000', jerseyColor: '#aa0000', stripeColor: '#b3995d' },
+  TB:  { code: 'TB',  name: 'Tampa Bay Buccaneers', helmetColor: '#d50a0a', jerseyColor: '#d50a0a', stripeColor: '#34302b' },
+  TEN: { code: 'TEN', name: 'Tennessee Titans', helmetColor: '#0c2340', jerseyColor: '#4b92db', stripeColor: '#c8102e' },
+  WSH: { code: 'WSH', name: 'Washington Commanders', helmetColor: '#5a1414', jerseyColor: '#5a1414', stripeColor: '#ffb612' },
+};
+
+export function getTeamFullName(teamCode?: string): string {
+  if (!teamCode) return 'NFL';
+  const clean = teamCode.trim().toUpperCase();
+  return NFL_TEAMS[clean]?.name || clean;
+}
+
+export function getTeamColors(teamCode?: string): { helmet: string; jersey: string; stripe: string } {
+  if (!teamCode) return { helmet: '#12579b', jersey: '#12579b', stripe: '#ffffff' };
+  const clean = teamCode.trim().toUpperCase();
+  const found = NFL_TEAMS[clean];
+  if (found) {
+    return {
+      helmet: found.helmetColor,
+      jersey: found.jerseyColor,
+      stripe: found.stripeColor,
+    };
+  }
+  return { helmet: '#12579b', jersey: '#12579b', stripe: '#ffffff' };
+}
+
+// Known superstar uniform numbers
+const KNOWN_NUMBERS: Record<string, number> = {
+  'josh allen': 17,
+  'patrick mahomes': 15,
+  'derrick henry': 22,
+  'ceedee lamb': 88,
+  'saquon barkley': 26,
+  'jalen hurts': 1,
+  'justin jefferson': 18,
+  'christian mccaffrey': 23,
+  'trevor lawrence': 16,
+  'lamar jackson': 8,
+  'travis kelce': 87,
+  'rashee rice': 4,
+  'tyler shough': 12,
+  'c.j. stroud': 7,
+  'joe burrow': 9,
+  'baker mayfield': 6,
+  'drake maye': 10,
+  'jahmyr gibbs': 26,
+  'drew lock': 2,
+  'amon-ra st. brown': 14,
+  'jayden daniels': 5,
+  'stefon diggs': 1,
+  'caleb williams': 18,
+  'dj moore': 2,
+  'dallas goedert': 88,
+};
+
+export function getUniformNumber(name?: string, id?: string): number {
+  if (name) {
+    const key = name.trim().toLowerCase();
+    if (KNOWN_NUMBERS[key]) return KNOWN_NUMBERS[key];
+  }
+  if (id) {
+    const numPart = id.replace(/\D/g, '');
+    if (numPart) {
+      const val = parseInt(numPart.slice(-2), 10);
+      return val > 0 && val <= 99 ? val : 11;
+    }
+  }
+  return 10;
+}
+
+export interface FormattedGameSituation {
+  statusLine: string;
+  scoreLine: string;
+  singleLine: string;
+  isLive: boolean;
+  isFinal: boolean;
+}
+
+/**
+ * Formats game situation compactly for mobile cards to prevent any score truncation
+ */
+export function formatRealtimeGameSituationCompact(match: {
+  quarter_time?: string;
+  quarterTime?: string;
+  periodLabel?: string;
+  away_team?: string;
+  awayTeamCode?: string;
+  home_team?: string;
+  homeTeamCode?: string;
+  away_score?: number;
+  awayScore?: number;
+  home_score?: number;
+  homeScore?: number;
+  status?: string;
+}): FormattedGameSituation {
+  const away = (match.away_team || match.awayTeamCode || '').trim().toUpperCase();
+  const home = (match.home_team || match.homeTeamCode || '').trim().toUpperCase();
+  const aScore = match.away_score ?? match.awayScore ?? 0;
+  const hScore = match.home_score ?? match.homeScore ?? 0;
+  const rawTime = (match.quarter_time || match.quarterTime || match.periodLabel || '').trim();
+  const status = (match.status || '').toLowerCase();
+
+  const isFinal =
+    status === 'final' ||
+    rawTime.toLowerCase().includes('final');
+
+  const isLive =
+    !isFinal &&
+    (status === 'live' ||
+      rawTime.includes('Q') ||
+      rawTime.includes('Half') ||
+      rawTime.includes('OT') ||
+      rawTime.includes('1st') ||
+      rawTime.includes('2nd') ||
+      rawTime.includes('3rd') ||
+      rawTime.includes('4th'));
+
+  let statusLine = 'LIVE';
+  let scoreLine = `${away} ${aScore}-${hScore}`;
+
+  if (isFinal) {
+    statusLine = 'FINAL';
+    scoreLine = `${away} ${aScore}-${hScore}`;
+  } else if (isLive) {
+    let qLabel = 'LIVE';
+    if (rawTime.includes('1st') || rawTime.includes('Q1')) qLabel = 'Q1';
+    else if (rawTime.includes('2nd') || rawTime.includes('Q2')) qLabel = 'Q2';
+    else if (rawTime.includes('3rd') || rawTime.includes('Q3')) qLabel = 'Q3';
+    else if (rawTime.includes('4th') || rawTime.includes('Q4')) qLabel = 'Q4';
+    else if (rawTime.toLowerCase().includes('half')) qLabel = 'HALF';
+    else if (rawTime.includes('OT')) qLabel = 'OT';
+    else if (rawTime && !rawTime.toLowerCase().includes('live')) qLabel = rawTime;
+
+    statusLine = `🔴 ${qLabel}`;
+    scoreLine = `${away} ${aScore}-${hScore}`;
+  } else {
+    // Scheduled / upcoming e.g. SUN 4:25P · WSH @ PHI
+    let kickoff = rawTime || 'SUN 4:25P';
+    kickoff = kickoff.replace(/\s*PM/i, 'P').replace(/\s*AM/i, 'A');
+    statusLine = kickoff;
+    scoreLine = `${away} @ ${home}`;
+  }
+
+  const singleLine = `${statusLine} · ${scoreLine}`;
+
+  return { statusLine, scoreLine, singleLine, isLive, isFinal };
+}
+
+/**
+ * Renders real-time game situation string strictly according to spec:
+ * `{match.quarter_time} · {match.away_team} {match.away_score} - {match.home_team} {match.home_score}`
+ */
+export function formatRealtimeGameSituation(
+  match: {
+    quarter_time?: string;
+    quarterTime?: string;
+    periodLabel?: string;
+    away_team?: string;
+    awayTeamCode?: string;
+    home_team?: string;
+    homeTeamCode?: string;
+    away_score?: number;
+    awayScore?: number;
+    home_score?: number;
+    homeScore?: number;
+    status?: string;
+  }
+): string {
+  const compact = formatRealtimeGameSituationCompact(match);
+  return compact.singleLine;
+}
+
+export const DEFAULT_NFL_COMPETITORS: Competitor[] = [
+  {
+    id: 'mahomes',
+    sportId: 'nfl',
+    displayName: 'Patrick Mahomes',
+    shortName: 'MAHOMES',
+    uniformNumber: 15,
+    teamName: 'Kansas City Chiefs',
+    teamCode: 'KC',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 99,
+    score: 31,
+    badges: ['gold_star', 'diamond_crystal'],
+    stats: {
+      pass_yds: 295,
+      passingYards: 295,
+      rush_yds: 24,
+      rushingYards: 24,
+      tds: 3,
+      touchdowns: 3,
+      total_yards: 319,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 3,
+    },
+    avatar: {
+      helmetColor: '#e31837',
+      jerseyColor: '#e31837',
+      stripeColor: '#ffb81c',
+      skinTone: '#d98c55',
+      number: 15,
+    },
+  },
+  {
+    id: 'jackson',
+    sportId: 'nfl',
+    displayName: 'Lamar Jackson',
+    shortName: 'JACKSON',
+    uniformNumber: 8,
+    teamName: 'Baltimore Ravens',
+    teamCode: 'BAL',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 98,
+    score: 34,
+    badges: ['gold_star', 'diamond_crystal'],
+    stats: {
+      pass_yds: 245,
+      passingYards: 245,
+      rush_yds: 82,
+      rushingYards: 82,
+      tds: 3,
+      touchdowns: 3,
+      total_yards: 327,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 3,
+    },
+    avatar: {
+      helmetColor: '#241773',
+      jerseyColor: '#241773',
+      stripeColor: '#ffffff',
+      skinTone: '#5c3509',
+      number: 8,
+    },
+  },
+  {
+    id: 'allen',
+    sportId: 'nfl',
+    displayName: 'Josh Allen',
+    shortName: 'ALLEN',
+    uniformNumber: 17,
+    teamName: 'Buffalo Bills',
+    teamCode: 'BUF',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 97,
+    score: 32,
+    badges: ['gold_star', 'diamond_crystal'],
+    stats: {
+      pass_yds: 275,
+      passingYards: 275,
+      rush_yds: 48,
+      rushingYards: 48,
+      tds: 3,
+      touchdowns: 3,
+      total_yards: 323,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 3,
+    },
+    avatar: {
+      helmetColor: '#00338d',
+      jerseyColor: '#00338d',
+      stripeColor: '#c60c30',
+      skinTone: '#f7d7b5',
+      number: 17,
+    },
+  },
+  {
+    id: 'henry',
+    sportId: 'nfl',
+    displayName: 'Derrick Henry',
+    shortName: 'HENRY',
+    uniformNumber: 22,
+    teamName: 'Baltimore Ravens',
+    teamCode: 'BAL',
+    positionGeneric: 'OFFENSE',
+    position: 'RB',
+    rating: 96,
+    score: 28,
+    badges: ['gold_star', 'shield_badge'],
+    stats: {
+      rush_yds: 142,
+      rushingYards: 142,
+      rec_yds: 18,
+      receivingYards: 18,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 160,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#241773',
+      jerseyColor: '#241773',
+      stripeColor: '#ffffff',
+      skinTone: '#5c3509',
+      number: 22,
+    },
+  },
+  {
+    id: 'barkley',
+    sportId: 'nfl',
+    displayName: 'Saquon Barkley',
+    shortName: 'BARKLEY',
+    uniformNumber: 26,
+    teamName: 'Philadelphia Eagles',
+    teamCode: 'PHI',
+    positionGeneric: 'OFFENSE',
+    position: 'RB',
+    rating: 97,
+    score: 29,
+    badges: ['gold_star', 'diamond_crystal'],
+    stats: {
+      rush_yds: 136,
+      rushingYards: 136,
+      rec_yds: 34,
+      receivingYards: 34,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 170,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#004c54',
+      jerseyColor: '#004c54',
+      stripeColor: '#a5acaf',
+      skinTone: '#8c532b',
+      number: 26,
+    },
+  },
+  {
+    id: 'lamb',
+    sportId: 'nfl',
+    displayName: 'CeeDee Lamb',
+    shortName: 'LAMB',
+    uniformNumber: 88,
+    teamName: 'Dallas Cowboys',
+    teamCode: 'DAL',
+    positionGeneric: 'SCORER',
+    position: 'WR',
+    rating: 96,
+    score: 26,
+    badges: ['gold_star'],
+    stats: {
+      rec_yds: 128,
+      receivingYards: 128,
+      receptions: 9,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 128,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#041e42',
+      jerseyColor: '#003594',
+      stripeColor: '#ffffff',
+      skinTone: '#8c532b',
+      number: 88,
+    },
+  },
+  {
+    id: 'jefferson',
+    sportId: 'nfl',
+    displayName: 'Justin Jefferson',
+    shortName: 'JEFFERSON',
+    uniformNumber: 18,
+    teamName: 'Minnesota Vikings',
+    teamCode: 'MIN',
+    positionGeneric: 'SCORER',
+    position: 'WR',
+    rating: 98,
+    score: 30,
+    badges: ['gold_star', 'diamond_crystal'],
+    stats: {
+      rec_yds: 145,
+      receivingYards: 145,
+      receptions: 8,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 145,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#4f2683',
+      jerseyColor: '#4f2683',
+      stripeColor: '#ffc62f',
+      skinTone: '#5c3509',
+      number: 18,
+    },
+  },
+  {
+    id: 'hurts',
+    sportId: 'nfl',
+    displayName: 'Jalen Hurts',
+    shortName: 'HURTS',
+    uniformNumber: 1,
+    teamName: 'Philadelphia Eagles',
+    teamCode: 'PHI',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 95,
+    score: 27,
+    badges: ['gold_star'],
+    stats: {
+      pass_yds: 235,
+      passingYards: 235,
+      rush_yds: 42,
+      rushingYards: 42,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 277,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#004c54',
+      jerseyColor: '#004c54',
+      stripeColor: '#a5acaf',
+      skinTone: '#8c532b',
+      number: 1,
+    },
+  },
+  {
+    id: 'mccaffrey',
+    sportId: 'nfl',
+    displayName: 'Christian McCaffrey',
+    shortName: 'MCCAFFREY',
+    uniformNumber: 23,
+    teamName: 'San Francisco 49ers',
+    teamCode: 'SF',
+    positionGeneric: 'OFFENSE',
+    position: 'RB',
+    rating: 97,
+    score: 28,
+    badges: ['gold_star'],
+    stats: {
+      rush_yds: 92,
+      rushingYards: 92,
+      rec_yds: 64,
+      receivingYards: 64,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 156,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#aa0000',
+      jerseyColor: '#aa0000',
+      stripeColor: '#b3995d',
+      skinTone: '#f7d7b5',
+      number: 23,
+    },
+  },
+  {
+    id: 'stbrown',
+    sportId: 'nfl',
+    displayName: 'Amon-Ra St. Brown',
+    shortName: 'ST. BROWN',
+    uniformNumber: 14,
+    teamName: 'Detroit Lions',
+    teamCode: 'DET',
+    positionGeneric: 'SCORER',
+    position: 'WR',
+    rating: 95,
+    score: 25,
+    badges: ['gold_star'],
+    stats: {
+      rec_yds: 118,
+      receivingYards: 118,
+      receptions: 9,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 118,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#0076b6',
+      jerseyColor: '#0076b6',
+      stripeColor: '#b0b7bc',
+      skinTone: '#8c532b',
+      number: 14,
+    },
+  },
+  {
+    id: 'stroud',
+    sportId: 'nfl',
+    displayName: 'C.J. Stroud',
+    shortName: 'STROUD',
+    uniformNumber: 7,
+    teamName: 'Houston Texans',
+    teamCode: 'HOU',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 94,
+    score: 24,
+    badges: ['gold_star'],
+    stats: {
+      pass_yds: 288,
+      passingYards: 288,
+      rush_yds: 12,
+      rushingYards: 12,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 300,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#03202f',
+      jerseyColor: '#03202f',
+      stripeColor: '#a71930',
+      skinTone: '#8c532b',
+      number: 7,
+    },
+  },
+  {
+    id: 'hill',
+    sportId: 'nfl',
+    displayName: 'Tyreek Hill',
+    shortName: 'HILL',
+    uniformNumber: 10,
+    teamName: 'Miami Dolphins',
+    teamCode: 'MIA',
+    positionGeneric: 'SCORER',
+    position: 'WR',
+    rating: 95,
+    score: 23,
+    badges: ['gold_star'],
+    stats: {
+      rec_yds: 115,
+      receivingYards: 115,
+      receptions: 7,
+      tds: 1,
+      touchdowns: 1,
+      total_yards: 115,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 1,
+    },
+    avatar: {
+      helmetColor: '#008e97',
+      jerseyColor: '#008e97',
+      stripeColor: '#fc4c02',
+      skinTone: '#5c3509',
+      number: 10,
+    },
+  },
+  {
+    id: 'burrow',
+    sportId: 'nfl',
+    displayName: 'Joe Burrow',
+    shortName: 'BURROW',
+    uniformNumber: 9,
+    teamName: 'Cincinnati Bengals',
+    teamCode: 'CIN',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 95,
+    score: 26,
+    badges: ['gold_star'],
+    stats: {
+      pass_yds: 295,
+      passingYards: 295,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 295,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#fb4f14',
+      jerseyColor: '#000000',
+      stripeColor: '#ffffff',
+      skinTone: '#f7d7b5',
+      number: 9,
+    },
+  },
+  {
+    id: 'kelce',
+    sportId: 'nfl',
+    displayName: 'Travis Kelce',
+    shortName: 'KELCE',
+    uniformNumber: 87,
+    teamName: 'Kansas City Chiefs',
+    teamCode: 'KC',
+    positionGeneric: 'OFFENSE',
+    position: 'TE',
+    rating: 93,
+    score: 19,
+    badges: ['shield_badge'],
+    stats: {
+      rec_yds: 84,
+      receivingYards: 84,
+      receptions: 7,
+      tds: 1,
+      touchdowns: 1,
+      total_yards: 84,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 1,
+    },
+    avatar: {
+      helmetColor: '#e31837',
+      jerseyColor: '#e31837',
+      stripeColor: '#ffb81c',
+      skinTone: '#f7d7b5',
+      number: 87,
+    },
+  },
+  {
+    id: 'gibbs',
+    sportId: 'nfl',
+    displayName: 'Jahmyr Gibbs',
+    shortName: 'GIBBS',
+    uniformNumber: 26,
+    teamName: 'Detroit Lions',
+    teamCode: 'DET',
+    positionGeneric: 'OFFENSE',
+    position: 'RB',
+    rating: 94,
+    score: 23,
+    badges: ['gold_star'],
+    stats: {
+      rush_yds: 88,
+      rushingYards: 88,
+      rec_yds: 42,
+      receivingYards: 42,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 130,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#0076b6',
+      jerseyColor: '#0076b6',
+      stripeColor: '#b0b7bc',
+      skinTone: '#5c3509',
+      number: 26,
+    },
+  },
+  {
+    id: 'lawrence',
+    sportId: 'nfl',
+    displayName: 'Trevor Lawrence',
+    shortName: 'LAWRENCE',
+    uniformNumber: 16,
+    teamName: 'Jacksonville Jaguars',
+    teamCode: 'JAX',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 91,
+    score: 22,
+    badges: ['shield_badge'],
+    stats: {
+      pass_yds: 265,
+      passingYards: 265,
+      rush_yds: 18,
+      rushingYards: 18,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 283,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#006778',
+      jerseyColor: '#006778',
+      stripeColor: '#d7a22a',
+      skinTone: '#f7d7b5',
+      number: 16,
+    },
+  },
+  {
+    id: 'daniels',
+    sportId: 'nfl',
+    displayName: 'Jayden Daniels',
+    shortName: 'DANIELS',
+    uniformNumber: 5,
+    teamName: 'Washington Commanders',
+    teamCode: 'WSH',
+    positionGeneric: 'PLAYMAKER',
+    position: 'QB',
+    rating: 94,
+    score: 26,
+    badges: ['gold_star'],
+    stats: {
+      pass_yds: 238,
+      passingYards: 238,
+      rush_yds: 62,
+      rushingYards: 62,
+      tds: 2,
+      touchdowns: 2,
+      total_yards: 300,
+      primaryMetricLabel: 'Touchdowns',
+      primaryMetricValue: 2,
+    },
+    avatar: {
+      helmetColor: '#5a1414',
+      jerseyColor: '#5a1414',
+      stripeColor: '#ffb612',
+      skinTone: '#8c532b',
+      number: 5,
+    },
+  },
+];
+
+export const DEFAULT_NFL_MATCHES: Match[] = [
+  {
+    id: 'nfl-match-1',
+    sportId: 'nfl',
+    homeTeam: 'Philadelphia Eagles',
+    awayTeam: 'Kansas City Chiefs',
+    homeTeamCode: 'PHI',
+    awayTeamCode: 'KC',
+    home_team: 'PHI',
+    away_team: 'KC',
+    homeScore: 24,
+    awayScore: 27,
+    home_score: 24,
+    away_score: 27,
+    periodLabel: '🔴 Q4 03:45',
+    quarter_time: 'Q4 03:45',
+    quarterTime: 'Q4 03:45',
+    status: 'live',
+  },
+  {
+    id: 'nfl-match-2',
+    sportId: 'nfl',
+    homeTeam: 'Buffalo Bills',
+    awayTeam: 'Baltimore Ravens',
+    homeTeamCode: 'BUF',
+    awayTeamCode: 'BAL',
+    home_team: 'BUF',
+    away_team: 'BAL',
+    homeScore: 28,
+    awayScore: 31,
+    home_score: 28,
+    away_score: 31,
+    periodLabel: 'FINAL',
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    status: 'final',
+  },
+  {
+    id: 'nfl-match-3',
+    sportId: 'nfl',
+    homeTeam: 'San Francisco 49ers',
+    awayTeam: 'Detroit Lions',
+    homeTeamCode: 'SF',
+    awayTeamCode: 'DET',
+    home_team: 'SF',
+    away_team: 'DET',
+    homeScore: 20,
+    awayScore: 21,
+    home_score: 20,
+    away_score: 21,
+    periodLabel: '🔴 Q3 07:15',
+    quarter_time: 'Q3 07:15',
+    quarterTime: 'Q3 07:15',
+    status: 'live',
+  },
+  {
+    id: 'nfl-match-4',
+    sportId: 'nfl',
+    homeTeam: 'Washington Commanders',
+    awayTeam: 'Dallas Cowboys',
+    homeTeamCode: 'WSH',
+    awayTeamCode: 'DAL',
+    home_team: 'WSH',
+    away_team: 'DAL',
+    homeScore: 0,
+    awayScore: 0,
+    home_score: 0,
+    away_score: 0,
+    periodLabel: 'SUN 4:25P',
+    quarter_time: 'SUN 4:25P',
+    quarterTime: 'SUN 4:25P',
+    status: 'upcoming',
+  },
+  {
+    id: 'nfl-match-5',
+    sportId: 'nfl',
+    homeTeam: 'Pittsburgh Steelers',
+    awayTeam: 'Cincinnati Bengals',
+    homeTeamCode: 'PIT',
+    awayTeamCode: 'CIN',
+    home_team: 'PIT',
+    away_team: 'CIN',
+    homeScore: 0,
+    awayScore: 0,
+    home_score: 0,
+    away_score: 0,
+    periodLabel: 'SUN 8:20P',
+    quarter_time: 'SUN 8:20P',
+    quarterTime: 'SUN 8:20P',
+    status: 'upcoming',
+  },
+];
+

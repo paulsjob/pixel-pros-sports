@@ -1,0 +1,117 @@
+export type SportId = 'nfl' | 'nba' | 'soccer' | 'baseball';
+
+export interface Sport {
+  id: SportId;
+  name: string;
+  category: string;
+  seasonLabel: string;
+  icon: string;
+}
+
+export interface AvatarConfig {
+  helmetColor: string;
+  jerseyColor: string;
+  stripeColor: string;
+  skinTone: string;
+  number: number;
+}
+
+export interface Competitor {
+  id: string;
+  sportId: SportId;
+  displayName: string;
+  shortName: string;
+  uniformNumber: number;
+  teamName: string;
+  teamCode: string;
+  positionGeneric: 'OFFENSE' | 'DEFENSE' | 'SCORER' | 'PLAYMAKER' | string;
+  position?: string;
+  rating: number;
+  stats: {
+    pass_yds?: number;
+    rush_yds?: number;
+    rec_yds?: number;
+    tds?: number;
+    passingYards?: number;
+    rushingYards?: number;
+    touchdowns?: number;
+    receptions?: number;
+    receivingYards?: number;
+    primaryMetricLabel?: string;
+    primaryMetricValue?: number;
+    [key: string]: any;
+  };
+  badges: string[];
+  score: number;
+  avatar: AvatarConfig;
+}
+
+export interface ScoringRule {
+  id: string;
+  sportId: SportId;
+  eventType: string;
+  displayName: string;
+  pointsValue: number; // Strictly whole numbers for kids!
+  description: string;
+}
+
+export interface Match {
+  id: string;
+  sportId: SportId;
+  homeTeam: string;
+  awayTeam: string;
+  homeTeamCode: string;
+  awayTeamCode: string;
+  home_team?: string;
+  away_team?: string;
+  home_score?: number;
+  away_score?: number;
+  quarter_time?: string;
+  quarterTime?: string;
+  status: 'upcoming' | 'live' | 'final';
+  periodLabel: string;
+  homeScore: number;
+  awayScore: number;
+  recentEvent?: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number | string;
+  username: string;
+  score: number;
+  isFriend: boolean;
+  isYou: boolean;
+  avatar: AvatarConfig;
+  badges?: string[];
+  rosterPlayerIds?: string[];
+}
+
+export interface UserProfile {
+  username: string;
+  totalScore: number;
+  badges: string[];
+  avatar: AvatarConfig;
+  selectedPlayerIds: string[];
+  isLocked?: boolean;
+}
+
+export type ActiveSlot = 'star1' | 'star2' | 'star3';
+
+export interface SquadSlots {
+  star1: Competitor | null;
+  star2: Competitor | null;
+  star3: Competitor | null;
+}
+
+export interface UserRoster {
+  id?: string;
+  room_code: string;
+  user_name: string;
+  sport?: SportId;
+  device_id?: string;
+  star_1_id: string;
+  star_2_id: string;
+  star_3_id: string;
+  is_locked?: boolean;
+  updated_at?: string;
+}
