@@ -1,7 +1,7 @@
 import { Match, Competitor, SportId } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { getTeamFullName, getTeamColors } from '../utils/teamData';
-import { getNBATeamFullName, getNBATeamColors } from '../utils/nbaTeamData';
+import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS } from '../utils/teamData';
+import { getNBATeamFullName, getNBATeamColors, DEFAULT_NBA_COMPETITORS } from '../utils/nbaTeamData';
 
 const SKIN_TONES = ['#f8d9b6', '#e0ac69', '#c68642', '#8d5524', '#523318'];
 
@@ -163,7 +163,7 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     }
 
     const parsedMatches: Match[] = [];
-    const parsedCompetitors: Competitor[] = [];
+    const liveAthletesMap = new Map<string, any>();
     const supabaseMatchRecords: any[] = [];
     const supabaseCompetitorRecords: any[] = [];
 
@@ -244,7 +244,88 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
         updated_at: new Date().toISOString(),
       });
 
-      // Extract player leaders from game competition
+      // If game is live, attempt to fetch live boxscore summary for detailed player stats
+      if (status === 'live' && sport === 'nfl') {
+        try {
+          const sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${evId}`, {
+            signal: AbortSignal.timeout(2500),
+          });
+          if (sumRes.ok) {
+            const sumData = await sumRes.json();
+            const playerGroups = sumData.boxscore?.players || [];
+            for (const pg of playerGroups) {
+              const teamAbbr = normalizeTeamCode(pg.team?.abbreviation || homeCode);
+              const statGroups = pg.statistics || [];
+              for (const sg of statGroups) {
+                const statCat = String(sg.name || '').toLowerCase();
+                const athletes = sg.athletes || [];
+                for (const item of athletes) {
+                  const ath = item.athlete;
+                  if (!ath) continue;
+                  const dName = ath.displayName || ath.fullName;
+                  if (!dName) continue;
+                  const athKey = `${dName.trim().toLowerCase()}_${teamAbbr.toUpperCase()}`;
+                  const statsArr: string[] = item.stats || [];
+
+                  let existing = liveAthletesMap.get(athKey);
+                  if (!existing) {
+                    existing = {
+                      id: `${sport}-${ath.id || dName.toLowerCase().replace(/\s+/g, '-')}`,
+                      sportId: sport,
+                      displayName: dName,
+                      shortName: (ath.shortName || ath.lastName || dName.split(' ').pop() || 'STAR').toUpperCase(),
+                      uniformNumber: parseInt(ath.jersey || '10', 10),
+                      teamCode: teamAbbr,
+                      position: ath.position?.abbreviation || 'STAR',
+                      positionGeneric: ath.position?.abbreviation === 'QB' ? 'PLAYMAKER' : ath.position?.abbreviation === 'K' ? 'SCORER' : 'OFFENSE',
+                      pass_yds: 0,
+                      rush_yds: 0,
+                      rec_yds: 0,
+                      tds: 0,
+                      fgs: 0,
+                      stops: 0,
+                      total_yards: 0,
+                      score: 6,
+                    };
+                    liveAthletesMap.set(athKey, existing);
+                  }
+
+                  if (statCat === 'passing' && statsArr.length >= 4) {
+                    const yds = parseInt(statsArr[1] || '0', 10) || 0;
+                    const td = parseInt(statsArr[3] || '0', 10) || 0;
+                    existing.pass_yds = Math.max(existing.pass_yds, yds);
+                    existing.tds = Math.max(existing.tds, td);
+                  } else if (statCat === 'rushing' && statsArr.length >= 4) {
+                    const yds = parseInt(statsArr[1] || '0', 10) || 0;
+                    const td = parseInt(statsArr[3] || '0', 10) || 0;
+                    existing.rush_yds = Math.max(existing.rush_yds, yds);
+                    if (td > 0) existing.tds += td;
+                  } else if (statCat === 'receiving' && statsArr.length >= 4) {
+                    const yds = parseInt(statsArr[1] || '0', 10) || 0;
+                    const td = parseInt(statsArr[3] || '0', 10) || 0;
+                    existing.rec_yds = Math.max(existing.rec_yds, yds);
+                    if (td > 0) existing.tds += td;
+                  } else if (statCat === 'kicking' && statsArr.length >= 4) {
+                    const fgMade = parseInt((statsArr[0] || '0/0').split('/')[0] || '0', 10) || 0;
+                    existing.fgs = Math.max(existing.fgs, fgMade);
+                  } else if (statCat === 'defensive' && statsArr.length >= 3) {
+                    const sacks = parseInt(statsArr[2] || '0', 10) || 0;
+                    if (sacks > 0) existing.stops += sacks;
+                  }
+
+                  existing.total_yards = existing.pass_yds + existing.rush_yds + existing.rec_yds;
+                  const pts = calculateNFLPoints(existing.tds, existing.fgs, existing.stops, existing.total_yards);
+                  existing.score = Math.max(pts, 6);
+                }
+              }
+            }
+          }
+        } catch {
+          // boxscore summary fetch failed or timed out, fallback to leaders below
+        }
+      }
+
+      // Extract player leaders from game competition (robust scoreboard fallback)
       const leadersList = comp.leaders || [];
       for (const cat of leadersList) {
         const catName = String(cat.name || '').toLowerCase();
@@ -260,9 +341,11 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
           const athTeam = normalizeTeamCode(ath.team?.abbreviation || homeCode);
           const uniformNumber = parseInt(ath.jersey || '10', 10);
           const displayVal = String(leaderItem.displayValue || '');
+          const athKey = `${displayName.trim().toLowerCase()}_${athTeam.toUpperCase()}`;
+
+          let existing = liveAthletesMap.get(athKey);
 
           if (sport === 'nfl') {
-            // Parse display value for yards/TDs e.g. "334 YDS, 2 TD" or "156 YDS, 2 TD"
             let yards = 0;
             let tds = 0;
             let fgs = 0;
@@ -281,61 +364,38 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
               stops = 2;
             }
 
-            const points = calculateNFLPoints(tds, fgs, stops, yards);
-            const teamColors = getTeamColors(athTeam);
+            if (!existing) {
+              existing = {
+                id: athId,
+                sportId: 'nfl',
+                displayName,
+                shortName,
+                uniformNumber,
+                teamCode: athTeam,
+                position: ath.position?.abbreviation || 'STAR',
+                positionGeneric: ath.position?.abbreviation === 'QB' ? 'PLAYMAKER' : ath.position?.abbreviation === 'K' ? 'SCORER' : 'OFFENSE',
+                pass_yds: 0,
+                rush_yds: 0,
+                rec_yds: 0,
+                tds: 0,
+                fgs: 0,
+                stops: 0,
+                total_yards: 0,
+                score: 6,
+              };
+              liveAthletesMap.set(athKey, existing);
+            }
 
-            const competitor: Competitor = {
-              id: athId,
-              sportId: 'nfl',
-              displayName,
-              shortName,
-              uniformNumber,
-              teamName: getTeamFullName(athTeam),
-              teamCode: athTeam,
-              positionGeneric: ath.position?.abbreviation === 'K' ? 'SCORER' : 'OFFENSE',
-              position: ath.position?.abbreviation || 'STAR',
-              rating: points > 25 ? 99 : 91,
-              score: Math.max(points, 6),
-              stats: {
-                pass_yds: catName.includes('pass') ? yards : 0,
-                rush_yds: catName.includes('rush') ? yards : 0,
-                rec_yds: catName.includes('rec') ? yards : 0,
-                tds,
-                fgs,
-                stops,
-                touchdowns: tds,
-                total_yards: yards,
-                primaryMetricLabel: 'Touchdowns',
-                primaryMetricValue: tds,
-              },
-              badges: points > 20 ? ['gold_star', 'diamond_crystal'] : ['gold_star'],
-              avatar: {
-                helmetColor: teamColors.helmet,
-                jerseyColor: teamColors.jersey,
-                stripeColor: teamColors.stripe,
-                skinTone: getSkinTone(displayName),
-                number: uniformNumber,
-              },
-            };
+            if (catName.includes('pass')) existing.pass_yds = Math.max(existing.pass_yds, yards);
+            if (catName.includes('rush')) existing.rush_yds = Math.max(existing.rush_yds, yards);
+            if (catName.includes('rec')) existing.rec_yds = Math.max(existing.rec_yds, yards);
+            if (tds > 0) existing.tds = Math.max(existing.tds, tds);
+            if (fgs > 0) existing.fgs = Math.max(existing.fgs, fgs);
+            if (stops > 0) existing.stops = Math.max(existing.stops, stops);
 
-            parsedCompetitors.push(competitor);
-
-            supabaseCompetitorRecords.push({
-              id: athId,
-              sport_id: 'nfl',
-              short_name: shortName,
-              display_name: displayName,
-              team_code: athTeam,
-              team_name: getTeamFullName(athTeam),
-              uniform_number: uniformNumber,
-              position: ath.position?.abbreviation || 'STAR',
-              position_generic: 'OFFENSE',
-              score: Math.max(points, 6),
-              fantasy_points: Math.max(points, 6),
-              stats: competitor.stats,
-              is_active: true,
-              updated_at: new Date().toISOString(),
-            });
+            existing.total_yards = existing.pass_yds + existing.rush_yds + existing.rec_yds;
+            const points = calculateNFLPoints(existing.tds, existing.fgs, existing.stops, existing.total_yards);
+            existing.score = Math.max(points, 6);
           } else {
             // NBA Parsing
             let pts = 20;
@@ -353,64 +413,164 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
             const astMatch = displayVal.match(/(\d+)\s*(?:AST|ast)/i);
             if (astMatch) ast = parseInt(astMatch[1], 10);
 
-            const points = calculateNBAPoints(pts, threes, reb, ast, stops);
-            const nbaColors = getNBATeamColors(athTeam);
-
-            const competitor: Competitor = {
-              id: athId,
-              sportId: 'nba',
-              displayName,
-              shortName,
-              uniformNumber,
-              teamName: getNBATeamFullName(athTeam),
-              teamCode: athTeam,
-              positionGeneric: 'SCORER',
-              position: ath.position?.abbreviation || 'G',
-              rating: points > 25 ? 98 : 90,
-              score: Math.max(points, 12),
-              stats: {
+            if (!existing) {
+              existing = {
+                id: athId,
+                sportId: 'nba',
+                displayName,
+                shortName,
+                uniformNumber,
+                teamCode: athTeam,
+                position: ath.position?.abbreviation || 'G',
+                positionGeneric: 'SCORER',
                 pts,
-                points: pts,
-                three_pm: threes,
+                threes,
                 reb,
-                rebounds: reb,
                 ast,
-                assists: ast,
-                big_stops: stops,
-                primaryMetricLabel: '3-Pointers',
-                primaryMetricValue: threes,
-              },
-              badges: points > 25 ? ['diamond_crystal', 'gold_star'] : ['gold_star'],
-              avatar: {
-                helmetColor: nbaColors.jersey,
-                jerseyColor: nbaColors.jersey,
-                stripeColor: nbaColors.stripe,
-                skinTone: getSkinTone(displayName),
-                number: uniformNumber,
-              },
-            };
-
-            parsedCompetitors.push(competitor);
-
-            supabaseCompetitorRecords.push({
-              id: athId,
-              sport_id: 'nba',
-              short_name: shortName,
-              display_name: displayName,
-              team_code: athTeam,
-              team_name: getNBATeamFullName(athTeam),
-              uniform_number: uniformNumber,
-              position: ath.position?.abbreviation || 'G',
-              position_generic: 'SCORER',
-              score: Math.max(points, 12),
-              fantasy_points: Math.max(points, 12),
-              stats: competitor.stats,
-              is_active: true,
-              updated_at: new Date().toISOString(),
-            });
+                stops,
+                score: Math.max(calculateNBAPoints(pts, threes, reb, ast, stops), 12),
+              };
+              liveAthletesMap.set(athKey, existing);
+            } else {
+              existing.pts = Math.max(existing.pts || 0, pts);
+              existing.threes = Math.max(existing.threes || 0, threes);
+              existing.reb = Math.max(existing.reb || 0, reb);
+              existing.ast = Math.max(existing.ast || 0, ast);
+              existing.stops = Math.max(existing.stops || 0, stops);
+              existing.score = Math.max(calculateNBAPoints(existing.pts, existing.threes, existing.reb, existing.ast, existing.stops), 12);
+            }
           }
         }
       }
+    }
+
+    // Merge live athlete stats with base competitors to create a complete, deduplicated roster!
+    const baseCompetitors = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+    const finalCompetitorsMap = new Map<string, Competitor>();
+
+    // 1. Seed with base competitors
+    for (const base of baseCompetitors) {
+      const key = `${(base.displayName || '').trim().toLowerCase()}_${(base.teamCode || '').trim().toUpperCase()}`;
+      finalCompetitorsMap.set(key, { ...base });
+    }
+
+    // 2. Overlay live athlete data
+    for (const [key, live] of liveAthletesMap.entries()) {
+      const teamColors = sport === 'nba' ? getNBATeamColors(live.teamCode) : getTeamColors(live.teamCode);
+
+      if (finalCompetitorsMap.has(key)) {
+        const existing = finalCompetitorsMap.get(key)!;
+        const liveScore = Math.max(live.score, existing.score);
+        finalCompetitorsMap.set(key, {
+          ...existing,
+          score: liveScore,
+          rating: liveScore > 25 ? 99 : existing.rating,
+          badges: liveScore > 20 ? ['gold_star', 'diamond_crystal'] : existing.badges,
+          stats: {
+            ...existing.stats,
+            ...(sport === 'nfl'
+              ? {
+                  pass_yds: live.pass_yds || existing.stats?.pass_yds || 0,
+                  passingYards: live.pass_yds || existing.stats?.passingYards || 0,
+                  rush_yds: live.rush_yds || existing.stats?.rush_yds || 0,
+                  rushingYards: live.rush_yds || existing.stats?.rushingYards || 0,
+                  rec_yds: live.rec_yds || existing.stats?.rec_yds || 0,
+                  receivingYards: live.rec_yds || existing.stats?.receivingYards || 0,
+                  tds: live.tds || existing.stats?.tds || 0,
+                  touchdowns: live.tds || existing.stats?.touchdowns || 0,
+                  fgs: live.fgs || existing.stats?.fgs || 0,
+                  stops: live.stops || existing.stats?.stops || 0,
+                  total_yards: live.total_yards || existing.stats?.total_yards || 0,
+                  primaryMetricValue: live.tds || existing.stats?.primaryMetricValue || 0,
+                }
+              : {
+                  pts: live.pts || existing.stats?.pts || 0,
+                  points: live.pts || existing.stats?.points || 0,
+                  three_pm: live.threes || existing.stats?.three_pm || 0,
+                  reb: live.reb || existing.stats?.reb || 0,
+                  ast: live.ast || existing.stats?.ast || 0,
+                  big_stops: live.stops || existing.stats?.big_stops || 0,
+                  primaryMetricValue: live.threes || existing.stats?.primaryMetricValue || 0,
+                }),
+          },
+        });
+      } else {
+        // New live competitor discovered in game
+        finalCompetitorsMap.set(key, {
+          id: live.id,
+          sportId: sport,
+          displayName: live.displayName,
+          shortName: live.shortName,
+          uniformNumber: live.uniformNumber,
+          teamName: sport === 'nba' ? getNBATeamFullName(live.teamCode) : getTeamFullName(live.teamCode),
+          teamCode: live.teamCode,
+          positionGeneric: live.positionGeneric,
+          position: live.position,
+          rating: live.score > 25 ? 98 : 90,
+          score: live.score,
+          badges: live.score > 20 ? ['gold_star', 'diamond_crystal'] : ['gold_star'],
+          stats: sport === 'nfl'
+            ? {
+                pass_yds: live.pass_yds,
+                rush_yds: live.rush_yds,
+                rec_yds: live.rec_yds,
+                tds: live.tds,
+                fgs: live.fgs,
+                stops: live.stops,
+                touchdowns: live.tds,
+                total_yards: live.total_yards,
+                primaryMetricLabel: 'Touchdowns',
+                primaryMetricValue: live.tds,
+              }
+            : {
+                pts: live.pts,
+                points: live.pts,
+                three_pm: live.threes,
+                reb: live.reb,
+                ast: live.ast,
+                big_stops: live.stops,
+                primaryMetricLabel: '3-Pointers',
+                primaryMetricValue: live.threes,
+              },
+          avatar: {
+            helmetColor: ('helmet' in teamColors ? teamColors.helmet : teamColors.jersey) || teamColors.jersey,
+            jerseyColor: teamColors.jersey,
+            stripeColor: teamColors.stripe,
+            skinTone: getSkinTone(live.displayName),
+            number: live.uniformNumber,
+          },
+        });
+      }
+    }
+
+    // 3. Strictly deduplicate by ID as well
+    const seenIds = new Set<string>();
+    const parsedCompetitors: Competitor[] = [];
+    for (const comp of finalCompetitorsMap.values()) {
+      if (!seenIds.has(comp.id)) {
+        seenIds.add(comp.id);
+        parsedCompetitors.push(comp);
+      }
+    }
+
+    // Build Supabase records from deduplicated competitors
+    for (const comp of parsedCompetitors) {
+      supabaseCompetitorRecords.push({
+        id: comp.id,
+        sport_id: sport,
+        short_name: comp.shortName,
+        display_name: comp.displayName,
+        team_code: comp.teamCode,
+        team_name: comp.teamName,
+        uniform_number: comp.uniformNumber,
+        position: comp.position,
+        position_generic: comp.positionGeneric,
+        score: comp.score,
+        fantasy_points: comp.score,
+        stats: comp.stats,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      });
     }
 
     // Sort matches so live games (e.g. DET @ BUF) are front and center!

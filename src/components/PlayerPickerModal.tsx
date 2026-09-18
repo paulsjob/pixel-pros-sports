@@ -124,8 +124,38 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       );
     }
 
-    return list.sort((a, b) => (b.score || 0) - (a.score || 0));
+    // STRICT DEDUPLICATION: Ensure no player ever appears more than once under any circumstance
+    const seenIds = new Set<string>();
+    const seenPlayerKeys = new Set<string>();
+    const deduped: Competitor[] = [];
+
+    for (const player of list) {
+      if (!player) continue;
+      const pid = String(player.id || '').trim();
+      const normKey = `${(player.displayName || player.shortName || '').trim().toLowerCase()}_${(player.teamCode || '').trim().toUpperCase()}`;
+
+      if (pid && seenIds.has(pid)) continue;
+      if (normKey && seenPlayerKeys.has(normKey)) continue;
+
+      if (pid) seenIds.add(pid);
+      if (normKey) seenPlayerKeys.add(normKey);
+      deduped.push(player);
+    }
+
+    return deduped.sort((a, b) => (b.score || 0) - (a.score || 0));
   }, [allPlayers, activeMatchObj, searchQuery]);
+
+  const selectedPlayerNormKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const list = Array.isArray(allPlayers) ? allPlayers : [];
+    for (const p of list) {
+      if (selectedPlayerIds.includes(p.id)) {
+        const normKey = `${(p.displayName || p.shortName || '').trim().toLowerCase()}_${(p.teamCode || '').trim().toUpperCase()}`;
+        keys.add(normKey);
+      }
+    }
+    return keys;
+  }, [allPlayers, selectedPlayerIds]);
 
   if (!isOpen) return null;
 
@@ -227,7 +257,8 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
               {filteredPlayers.map((player) => {
                 const isCurrentSlot = player.id === currentSlotPlayerId;
-                const isSelectedElsewhere = selectedPlayerIds.includes(player.id) && !isCurrentSlot;
+                const playerNorm = `${(player.displayName || player.shortName || '').trim().toLowerCase()}_${(player.teamCode || '').trim().toUpperCase()}`;
+                const isSelectedElsewhere = (selectedPlayerIds.includes(player.id) || selectedPlayerNormKeys.has(playerNorm)) && !isCurrentSlot;
                 const { firstName, lastName } = splitPlayerFirstLastName(player.displayName);
 
                 return (

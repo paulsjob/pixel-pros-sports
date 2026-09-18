@@ -6,6 +6,7 @@ import {
   subscribeToRealtimeScores,
   subscribeToRoomRosters,
   fetchLiveCompetitors,
+  deduplicateCompetitors,
   fetchLiveMatches,
   upsertUserRoster,
   fetchRoomRosters,
@@ -458,9 +459,17 @@ export default function App() {
 
     setSquadSlots((prev) => {
       const next: SquadSlots = { ...prev };
-      if (next.star1?.id === player.id && targetSlot !== 'star1') next.star1 = null;
-      if (next.star2?.id === player.id && targetSlot !== 'star2') next.star2 = null;
-      if (next.star3?.id === player.id && targetSlot !== 'star3') next.star3 = null;
+      const isSamePlayer = (slotPlayer: Competitor | null) => {
+        if (!slotPlayer) return false;
+        if (slotPlayer.id === player.id) return true;
+        const sNorm = `${(slotPlayer.displayName || slotPlayer.shortName || '').trim().toLowerCase()}_${(slotPlayer.teamCode || '').trim().toUpperCase()}`;
+        const pNorm = `${(player.displayName || player.shortName || '').trim().toLowerCase()}_${(player.teamCode || '').trim().toUpperCase()}`;
+        return sNorm === pNorm;
+      };
+
+      if (isSamePlayer(next.star1) && targetSlot !== 'star1') next.star1 = null;
+      if (isSamePlayer(next.star2) && targetSlot !== 'star2') next.star2 = null;
+      if (isSamePlayer(next.star3) && targetSlot !== 'star3') next.star3 = null;
 
       next[targetSlot] = player;
       const newCount = [next.star1, next.star2, next.star3].filter(Boolean).length;
@@ -685,7 +694,7 @@ export default function App() {
     };
     const handleScoresUpdate = (e: any) => {
       if (e.detail?.competitors && (!e.detail?.sport || e.detail?.sport === currentSport)) {
-        setRoster(e.detail.competitors);
+        setRoster(deduplicateCompetitors(e.detail.competitors));
       }
     };
 

@@ -178,12 +178,58 @@ export function mapRowToCompetitor(row: any): Competitor {
   };
 }
 
+export function deduplicateCompetitors(competitors: Competitor[]): Competitor[] {
+  if (!Array.isArray(competitors)) return [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const deduped: Competitor[] = [];
+
+  for (const c of competitors) {
+    if (!c) continue;
+    const cid = String(c.id || '').trim();
+    const normKey = `${(c.displayName || c.shortName || '').trim().toLowerCase()}_${(c.teamCode || '').trim().toUpperCase()}`;
+
+    if (cid && seenIds.has(cid)) continue;
+    if (normKey && seenNames.has(normKey)) continue;
+
+    if (cid) seenIds.add(cid);
+    if (normKey) seenNames.add(normKey);
+    deduped.push(c);
+  }
+
+  return deduped;
+}
+
 function getLocalSyncedCompetitors(sport: SportId): Competitor[] | null {
   try {
     const raw = localStorage.getItem(`pixel_pros_synced_competitors_${sport}`);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const base = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+        const map = new Map<string, Competitor>();
+        for (const b of base) {
+          const key = `${(b.displayName || '').trim().toLowerCase()}_${(b.teamCode || '').trim().toUpperCase()}`;
+          map.set(key, b);
+        }
+        for (const p of parsed) {
+          if (!p) continue;
+          const key = `${(p.displayName || p.shortName || '').trim().toLowerCase()}_${(p.teamCode || '').trim().toUpperCase()}`;
+          if (map.has(key)) {
+            const existing = map.get(key)!;
+            map.set(key, {
+              ...existing,
+              score: p.score ?? existing.score,
+              rating: p.rating ?? existing.rating,
+              badges: p.badges ?? existing.badges,
+              stats: { ...existing.stats, ...p.stats },
+            });
+          } else {
+            map.set(key, p);
+          }
+        }
+        return deduplicateCompetitors(Array.from(map.values()));
+      }
     }
   } catch {
     // ignore
@@ -227,9 +273,10 @@ function getLocalSyncedMatches(sport: SportId): Match[] | null {
 }
 
 export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Competitor[]> {
-  const fallback =
+  const fallback = deduplicateCompetitors(
     getLocalSyncedCompetitors(sport) ||
-    (sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS);
+    (sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS)
+  );
   if (!isSupabaseConfigured) {
     return fallback;
   }
@@ -260,7 +307,8 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
       return fallback;
     }
 
-    return filtered.map(mapRowToCompetitor).sort((a, b) => b.score - a.score);
+    const mapped = filtered.map(mapRowToCompetitor).sort((a, b) => b.score - a.score);
+    return deduplicateCompetitors(mapped);
   } catch (err) {
     console.warn(`Exception during ${sport} competitors fetch:`, err);
     return fallback;
