@@ -3,6 +3,7 @@ import { Competitor, Match, ActiveSlot, SportId } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Search } from 'lucide-react';
 import { splitPlayerFirstLastName } from '../utils/formatters';
+import { getCurrentNFLWeek } from '../lib/espnSync';
 
 interface PlayerPickerModalProps {
   isOpen: boolean;
@@ -63,14 +64,30 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGameFilter, setSelectedGameFilter] = useState<string>('ALL');
+  const currentNFLWeek = getCurrentNFLWeek();
 
   const activeMatches = useMemo(() => {
     if (!Array.isArray(matches)) return [];
-    return matches.filter((m) => {
+    const filtered = matches.filter((m) => {
       const matchSport = (m.sportId || (m as any).sport || '').toLowerCase();
-      return matchSport ? matchSport === sport.toLowerCase() : true;
+      if (matchSport && matchSport !== sport.toLowerCase()) return false;
+      // STRICT FILTER: Only show games for the week that we are on (no past weeks, no future weeks)
+      if (sport === 'nfl') {
+        if (m.week && m.week !== currentNFLWeek) return false;
+      }
+      return true;
     });
-  }, [matches, sport]);
+
+    return [...filtered].sort((a, b) => {
+      if (a.status === 'live' && b.status !== 'live') return -1;
+      if (b.status === 'live' && a.status !== 'live') return 1;
+      if (a.status === 'upcoming' && b.status === 'final') return -1;
+      if (b.status === 'upcoming' && a.status === 'final') return 1;
+      const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
+      const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
+      return dateA - dateB;
+    });
+  }, [matches, sport, currentNFLWeek]);
 
   const activeMatchObj = useMemo(() => {
     if (selectedGameFilter === 'ALL') return null;
@@ -136,6 +153,10 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
         </div>
 
         <div className="shrink-0 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar touch-pan-x">
+          <div className="px-2 py-1 bg-[#271604] text-[#fae5b8] font-pixel text-[9px] sm:text-[10px] rounded-xs border border-[#5c3509] shrink-0 font-bold whitespace-nowrap">
+            {sport === 'nfl' ? `WEEK ${currentNFLWeek} ONLY` : `TONIGHT'S ACTION`}
+          </div>
+
           <button
             type="button"
             onClick={() => setSelectedGameFilter('ALL')}
@@ -153,19 +174,24 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
             const home = normalizeCode(match.homeTeamCode || match.home_team || '');
             const isSelected = selectedGameFilter === match.id || selectedGameFilter === `${away}@${home}`;
 
+            const isLive = match.status === 'live';
+
             return (
               <button
                 key={match.id}
                 type="button"
                 onClick={() => setSelectedGameFilter(match.id)}
-                className={`touch-manipulation px-2.5 py-1.5 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 ${
+                className={`touch-manipulation px-2.5 py-1.5 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 flex items-center gap-1 ${
                   isSelected
                     ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold'
+                    : isLive
+                    ? 'bg-[#ffe8e8] hover:bg-[#ffd5d5] text-[#900] border-[#c0392b]'
                     : 'bg-[#ebd2a4] hover:bg-[#fae9c8] text-[#5c3509] border-[#c99a57]'
                 }`}
               >
+                {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
                 <span className="font-bold">{away}</span>
-                <span className="opacity-70 mx-1">@</span>
+                <span className="opacity-70 mx-0.5">@</span>
                 <span className="font-bold">{home}</span>
               </button>
             );

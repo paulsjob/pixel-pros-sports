@@ -4,11 +4,13 @@ import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Sparkles, X } from 'lucide-react';
 import { splitPlayerFirstLastName } from '../utils/formatters';
 import { formatRealtimeGameSituationCompact } from '../utils/teamData';
+import { getCurrentNFLWeek } from '../lib/espnSync';
 
 interface MyTeamViewProps {
   slots: SquadSlots;
   userName: string;
   roomCode: string;
+  previousRoom?: string;
   sport?: SportId;
   isLocked?: boolean;
   matches?: Match[];
@@ -32,9 +34,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   slots,
   userName,
   roomCode,
+  previousRoom,
   sport = 'nfl',
   isLocked = false,
   matches = [],
+  onCommitRoomCode,
   onSelectSlot,
   onClearSlot,
   onToggleLock,
@@ -87,8 +91,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 : { firstName: '', lastName: '' };
 
               const playerTeam = (player?.teamCode || '').trim().toUpperCase();
+              const currentNFLWeek = getCurrentNFLWeek();
               const playerMatch = player
                 ? (matches || []).find((m) => {
+                    if (sport === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
                     const h = (m.homeTeamCode || m.home_team || '').trim().toUpperCase();
                     const a = (m.awayTeamCode || m.away_team || '').trim().toUpperCase();
                     return h === playerTeam || a === playerTeam;
@@ -353,14 +359,28 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 {sport === 'nba' ? '🏀' : '🎮'}
               </div>
 
-              <h3 className="font-pixel text-base sm:text-xl text-[#fde047] text-center font-bold tracking-wider mb-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+              <h3 className="font-pixel text-base sm:text-xl text-[#fde047] text-center font-bold tracking-wider mb-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                 {sport === 'nba' ? 'READY FOR TIP-OFF?' : 'READY FOR KICKOFF?'}
               </h3>
 
-              <p className="font-retro text-xs sm:text-sm text-[#93c5fd] text-center max-w-sm mb-4 sm:mb-5 font-bold">
-                {sport === 'nba'
-                  ? 'Create your squad to draft your 3 NBA stars!'
-                  : 'Create your squad to draft your 3 NFL stars!'}
+              <div className="mb-3 px-3 py-1 bg-[#1e293b]/90 border border-[#38bdf8]/40 rounded-xs text-center font-pixel text-[10px] sm:text-xs text-[#e0f2fe]">
+                {sport === 'nba' ? '🏀' : '🛋️'} ROOM [{roomCode}] • NEW ROOM
+              </div>
+
+              <p className="font-retro text-xs sm:text-sm text-[#93c5fd] text-center max-w-sm mb-4 leading-relaxed font-bold">
+                No squads drafted here yet. Tap below to create the first squad, or{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const targetRoom = previousRoom || (sport === 'nba' ? 'HOOPS' : 'COUCH');
+                    onCommitRoomCode?.(targetRoom);
+                  }}
+                  className="text-[#38bdf8] hover:text-white underline cursor-pointer font-bold inline-block"
+                >
+                  switch back to {previousRoom || (sport === 'nba' ? 'HOOPS' : 'COUCH')}
+                </button>
+                .
               </p>
 
               <button

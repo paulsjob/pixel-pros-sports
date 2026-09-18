@@ -73,6 +73,9 @@ export interface Match {
   homeScore: number;
   awayScore: number;
   recentEvent?: string;
+  week?: number;
+  weekLabel?: string;
+  gameDate?: string;
 }
 
 export interface LeaderboardEntry {

@@ -80,10 +80,6 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
       setErrorMsg('Please enter a squad name');
       return;
     }
-    if (['P', 'PA', 'PAU', 'PAUL J'].includes(clean)) {
-      setErrorMsg('Please choose a valid family squad name');
-      return;
-    }
     if (squadMap.has(clean)) {
       // If squad already exists, simply switch to it!
       onSelectSquad(clean);

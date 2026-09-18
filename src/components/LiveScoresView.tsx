@@ -3,6 +3,7 @@ import { Competitor, Match } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Activity, Flame, ChevronDown, ChevronUp, Wrench, Trophy } from 'lucide-react';
 import { formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
+import { getCurrentNFLWeek } from '../lib/espnSync';
 
 interface LiveScoresViewProps {
   matches: Match[];
@@ -98,7 +99,22 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
     .slice()
     .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))
     .slice(0, 20);
-  const safeMatches = Array.isArray(matches) ? matches : [];
+  const currentNFLWeek = getCurrentNFLWeek();
+  const safeMatches = (Array.isArray(matches) ? matches : [])
+    .filter((m) => {
+      // STRICT FILTER: No games apart from the week that we are on (no past weeks, no future weeks)
+      if (m.sportId === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.status === 'live' && b.status !== 'live') return -1;
+      if (b.status === 'live' && a.status !== 'live') return 1;
+      if (a.status === 'upcoming' && b.status === 'final') return -1;
+      if (b.status === 'upcoming' && a.status === 'final') return 1;
+      const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
+      const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
+      return dateA - dateB;
+    });
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-4 box-border space-y-4 sm:space-y-6 animate-in fade-in duration-150">
@@ -119,12 +135,12 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
           <h2 className="font-pixel text-base sm:text-xl text-[#5c3509] tracking-wider uppercase">
             LIVE MATCHES & STATS
           </h2>
-          <div className="font-pixel text-[10px] sm:text-xs text-[#12579b] mt-1 tracking-widest">
-            WEEK 1 • SUPABASE REALTIME WIRE
+          <div className="font-pixel text-[10px] sm:text-xs text-[#12579b] mt-1 tracking-widest uppercase">
+            WEEK {currentNFLWeek} ONLY • LIVE ARCADE WIRE
           </div>
         </div>
 
-        {/* 1. Live Games Section: Connected 100% to Supabase Matches Table */}
+        {/* 1. Live Games Section: Connected 100% to Live Matches */}
         <div className="w-full box-border">
           <div className="flex items-center justify-between pb-2 mb-2 sm:mb-3">
             <div className="flex items-center gap-2">
@@ -144,7 +160,7 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
                 NO LIVE GAMES IN PROGRESS
               </div>
               <div className="font-retro text-[11px] sm:text-xs text-[#784610]">
-                Upcoming NFL games will appear dynamically as they kick off via Supabase Realtime.
+                Upcoming NFL games will appear dynamically as they kick off.
               </div>
             </div>
           ) : (
@@ -158,48 +174,69 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
                 return (
                   <div
                     key={match.id}
-                    className="w-full box-border bg-[#ebd2a4] border-3 border-[#c99a57] p-3 sm:p-4 rounded-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] flex flex-col justify-between"
+                    className={`w-full box-border p-3 sm:p-4 rounded-xs flex flex-col justify-between transition-all ${
+                      isLive
+                        ? 'bg-[#fff7ed] border-4 border-[#b91c1c] shadow-[0_4px_12px_rgba(185,28,28,0.25)] ring-2 ring-red-400/40'
+                        : 'bg-[#ebd2a4] border-3 border-[#c99a57] shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]'
+                    }`}
                   >
                     {/* Status Header */}
                     <div className="flex items-center justify-between font-retro text-xs text-[#784610] mb-2">
                       <span className={`flex items-center gap-1.5 font-pixel text-[10px] font-bold ${
                         isLive ? 'text-[#b91c1c]' : 'text-[#12579b]'
                       }`}>
-                        {isLive && <span className="w-2 h-2 rounded-full bg-[#b91c1c] inline-block animate-pulse" />}
-                        {isScheduled ? 'SCHEDULED' : match.status.toUpperCase()}
+                        {isLive && <span className="w-2.5 h-2.5 rounded-full bg-[#b91c1c] inline-block animate-ping" />}
+                        {isLive ? '🔴 LIVE NOW' : isScheduled ? 'UPCOMING' : match.status.toUpperCase()}
                       </span>
-                      <span className="font-pixel text-[10px] bg-[#fae9c8] px-2 py-0.5 border border-[#d4a86a] text-[#5c3509]">
-                        {match.periodLabel}
+                      <span className={`font-pixel text-[10px] px-2 py-0.5 border rounded-xs ${
+                        isLive ? 'bg-[#fee2e2] text-[#991b1b] border-[#f87171] font-bold' : 'bg-[#fae9c8] text-[#5c3509] border-[#d4a86a]'
+                      }`}>
+                        {match.periodLabel || (isLive ? 'LIVE' : 'WEEK 2')}
                       </span>
                     </div>
 
-                    {/* 3-Letter Team Abbreviations with Centered Kickoff / Score Badge */}
+                    {/* Away @ Home Scoreboard */}
                     <div className="flex items-center justify-between gap-2 py-2 px-1 w-full box-border">
-                      {/* Home Team 3-letter Abbr */}
-                      <div className="w-14 sm:w-16 text-center shrink-0">
-                        <span className="font-pixel text-base sm:text-lg text-[#5c3509] tracking-wider font-bold">
-                          {homeCode}
+                      {/* Away Team (e.g. DET) */}
+                      <div className="w-16 sm:w-20 text-center shrink-0">
+                        <div className="font-retro text-[9px] text-[#784610] uppercase tracking-wider">AWAY</div>
+                        <span className="font-pixel text-base sm:text-xl text-[#5c3509] tracking-wider font-bold">
+                          {awayCode}
                         </span>
+                        {isLive || match.status === 'final' ? (
+                          <div className="font-pixel text-sm sm:text-base text-[#12579b] font-bold">
+                            {match.awayScore ?? 0}
+                          </div>
+                        ) : null}
                       </div>
 
-                      {/* Centered Display: Real Kickoff Time for Scheduled, Scores for Live/Final */}
-                      <div className="flex-1 flex justify-center items-center px-1">
+                      {/* Centered Display: Kickoff time or @ indicator */}
+                      <div className="flex-1 flex flex-col justify-center items-center px-1">
+                        <span className="font-pixel text-xs sm:text-sm text-[#784610] opacity-80 font-bold mb-0.5">
+                          @
+                        </span>
                         {isScheduled ? (
-                          <div className="px-2.5 sm:px-3.5 py-1.5 bg-[#fae9c8] border-2 border-[#c99a57] rounded-xs font-pixel text-[10px] sm:text-xs text-[#5c3509] tracking-wider font-bold whitespace-nowrap shadow-xs">
-                            {match.periodLabel || '1:00 PM EDT'}
+                          <div className="px-2 sm:px-3 py-1 bg-[#fae9c8] border border-[#c99a57] rounded-xs font-pixel text-[10px] text-[#5c3509] tracking-wider font-bold whitespace-nowrap shadow-xs">
+                            {match.periodLabel || '1:00 PM'}
                           </div>
                         ) : (
-                          <div className="px-3 sm:px-4 py-1.5 bg-[#fae9c8] border-2 border-[#12579b] shadow-[0_2px_0_0_#0a2d52] rounded-xs font-pixel text-xs sm:text-sm text-[#12579b] tracking-widest font-bold whitespace-nowrap">
-                            {match.homeScore} - {match.awayScore}
+                          <div className="px-2.5 sm:px-3.5 py-1 bg-[#fee2e2] border border-[#b91c1c] rounded-xs font-pixel text-[10px] sm:text-xs text-[#b91c1c] tracking-widest font-bold whitespace-nowrap animate-pulse">
+                            {match.periodLabel || 'IN PROGRESS'}
                           </div>
                         )}
                       </div>
 
-                      {/* Away Team 3-letter Abbr */}
-                      <div className="w-14 sm:w-16 text-center shrink-0">
-                        <span className="font-pixel text-base sm:text-lg text-[#5c3509] tracking-wider font-bold">
-                          {awayCode}
+                      {/* Home Team (e.g. BUF) */}
+                      <div className="w-16 sm:w-20 text-center shrink-0">
+                        <div className="font-retro text-[9px] text-[#784610] uppercase tracking-wider">HOME</div>
+                        <span className="font-pixel text-base sm:text-xl text-[#5c3509] tracking-wider font-bold">
+                          {homeCode}
                         </span>
+                        {isLive || match.status === 'final' ? (
+                          <div className="font-pixel text-sm sm:text-base text-[#12579b] font-bold">
+                            {match.homeScore ?? 0}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 

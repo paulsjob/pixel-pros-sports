@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { INITIAL_USER } from './data/mockData';
 import { Competitor, UserProfile, Match, UserRoster, ActiveSlot, SquadSlots, SportId } from './types';
 import {
@@ -13,6 +13,8 @@ import {
   getSquadLockState,
   setSquadLockState,
   isGhostUser,
+  fetchAllActiveRooms,
+  ActiveRoomSummary,
 } from './lib/supabaseClient';
 import { MyTeamView } from './components/MyTeamView';
 import { LeaderboardView } from './components/LeaderboardView';
@@ -23,7 +25,11 @@ import { PlayerPickerModal } from './components/PlayerPickerModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PixelHelmetIcon } from './components/PixelBadges';
 import { SportSwitcher } from './components/SportSwitcher';
-import { Users, Trophy, HelpCircle, Share2 } from 'lucide-react';
+import { CommissionerModal } from './components/CommissionerModal';
+import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
+import { DEFAULT_NFL_MATCHES } from './utils/teamData';
+import { DEFAULT_NBA_MATCHES } from './utils/nbaTeamData';
+import { Users, Trophy, HelpCircle, Share2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [currentSport, setCurrentSport] = useState<SportId>(() => {
@@ -36,6 +42,12 @@ export default function App() {
 
   const [currentTab, setCurrentTab] = useState<'squad' | 'couch'>('squad');
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
+  const [isCommissionerOpen, setIsCommissionerOpen] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const triggerRefresh = useCallback(() => {
+    setRefreshTick((t) => t + 1);
+  }, []);
 
   const [roomCode, setRoomCode] = useState<string>(() => {
     try {
@@ -65,12 +77,15 @@ export default function App() {
   userNameRef.current = userName;
 
   const [isAddSquadDrawerOpen, setIsAddSquadDrawerOpen] = useState(false);
+  const userExplicitlyJoinedRoomRef = useRef<string | null>(null);
 
   const [roster, setRoster] = useState<Competitor[]>([]);
   const rosterRef = useRef<Competitor[]>([]);
   rosterRef.current = roster;
 
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches, setMatches] = useState<Match[]>(() =>
+    currentSport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES
+  );
   const [roomRosters, setRoomRosters] = useState<UserRoster[]>([]);
 
   const [squadSlots, setSquadSlots] = useState<SquadSlots>({
@@ -106,7 +121,60 @@ export default function App() {
   const [detailedPlayer, setDetailedPlayer] = useState<Competitor | null>(null);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [tempRoomCode, setTempRoomCode] = useState(roomCode);
+  const [availableRooms, setAvailableRooms] = useState<ActiveRoomSummary[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isRoomModalOpen) {
+      setTempRoomCode(roomCode);
+      setIsLoadingRooms(true);
+      fetchAllActiveRooms()
+        .then((rooms) => {
+          setAvailableRooms(rooms);
+        })
+        .finally(() => {
+          setIsLoadingRooms(false);
+        });
+    }
+  }, [isRoomModalOpen, roomCode]);
+
+  const consolidatedCouches = useMemo(() => {
+    const map = new Map<string, { roomCode: string; sport: SportId; squadCount: number }>();
+
+    // 1. Only include active rooms that actually have squads in Supabase for this sport
+    availableRooms
+      .filter((r) => r.squadCount > 0 && r.sport === currentSport)
+      .forEach((r) => {
+        const code = (r.roomCode || '').trim().toUpperCase();
+        if (!code) return;
+        map.set(code, {
+          roomCode: code,
+          sport: r.sport,
+          squadCount: r.squadCount,
+        });
+      });
+
+    // 2. Default room COUCH / HOOPS is always available
+    const defaultCode = currentSport === 'nba' ? 'HOOPS' : 'COUCH';
+    if (!map.has(defaultCode)) {
+      map.set(defaultCode, {
+        roomCode: defaultCode,
+        sport: currentSport,
+        squadCount: 0,
+      });
+    }
+
+    // Sort by squad count descending (most populated couch first)
+    return Array.from(map.values()).sort((a, b) => b.squadCount - a.squadCount);
+  }, [availableRooms, currentSport]);
+
+  const previousRoom = useMemo(() => {
+    const defaultCode = currentSport === 'nba' ? 'HOOPS' : 'COUCH';
+    const alt = consolidatedCouches.find((c) => c.roomCode.toUpperCase() !== roomCode.toUpperCase());
+    if (alt) return alt.roomCode;
+    return defaultCode;
+  }, [consolidatedCouches, roomCode, currentSport]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -324,11 +392,19 @@ export default function App() {
 
   const handleCommitRoomCode = (newCode: string) => {
     const clean = (newCode || (currentSport === 'nba' ? 'HOOPS' : 'COUCH')).trim().toUpperCase();
+    userExplicitlyJoinedRoomRef.current = clean;
     setRoomCode(clean);
+    setTempRoomCode(clean);
     localStorage.setItem(`pixel_pros_room_code_${currentSport}`, clean);
 
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', clean);
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
+
     setRecentRooms((prev) => {
-      const updated = [clean, ...prev.filter((r) => r !== clean)].slice(0, 6);
+      const updated = [clean, ...prev.filter((r) => r !== clean)].slice(0, 8);
       localStorage.setItem(`pixel_pros_recent_rooms_${currentSport}`, JSON.stringify(updated));
       return updated;
     });
@@ -336,7 +412,7 @@ export default function App() {
     const scopedUser = (localStorage.getItem(`pixel_pros_user_${currentSport}_${clean}`) || '').toUpperCase();
     setUserName(scopedUser);
 
-    showToast(`Synced ${currentSport.toUpperCase()} Room ${clean}!`);
+    showToast(`Switched to Room ${clean}!`);
   };
 
   const handleRemoveRecentRoom = (roomToRemove: string, e: React.MouseEvent) => {
@@ -436,19 +512,66 @@ export default function App() {
     let active = true;
     async function sync() {
       try {
-        const [compData, matchData, rost] = await Promise.all([
+        const [compData, matchData, rost, allRooms] = await Promise.all([
           fetchLiveCompetitors(currentSport),
           fetchLiveMatches(currentSport),
           fetchRoomRosters(roomCode, currentSport),
+          fetchAllActiveRooms(),
         ]);
 
         if (!active) return;
 
         setRoster(compData || []);
         setMatches(matchData || []);
-        setRoomRosters(rost || []);
+        setAvailableRooms(allRooms || []);
 
         const validRosters = (rost || []).filter((r) => !isGhostUser(r.user_name));
+        const currentRoomHasSquads = validRosters.length > 0;
+        const wasExplicitlyEntered = userExplicitlyJoinedRoomRef.current === roomCode;
+
+        // Auto-reconciliation: If current room has 0 squads in Supabase and was not explicitly entered,
+        // switch to the active populated room (e.g. COUCH)
+        if (!currentRoomHasSquads && !wasExplicitlyEntered) {
+          const activeSportRooms = (allRooms || []).filter(
+            (r) => r.sport === currentSport && r.squadCount > 0
+          );
+          if (activeSportRooms.length > 0) {
+            const primaryRoom = activeSportRooms[0].roomCode.toUpperCase();
+            if (primaryRoom !== roomCode) {
+              setRoomCode(primaryRoom);
+              setTempRoomCode(primaryRoom);
+              localStorage.setItem(`pixel_pros_room_code_${currentSport}`, primaryRoom);
+              try {
+                const url = new URL(window.location.href);
+                if (url.searchParams.has('room') || url.searchParams.has('r')) {
+                  url.searchParams.delete('room');
+                  url.searchParams.delete('r');
+                  window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+                }
+              } catch {}
+              return;
+            }
+          }
+        }
+
+        // Prune any dead rooms from recentRooms in localStorage
+        const activeRoomCodes = new Set(
+          (allRooms || [])
+            .filter((r) => r.squadCount > 0 && r.sport === currentSport)
+            .map((r) => r.roomCode.toUpperCase())
+        );
+        activeRoomCodes.add(currentSport === 'nba' ? 'HOOPS' : 'COUCH');
+        setRecentRooms((prev) => {
+          const cleaned = prev.filter((r) => activeRoomCodes.has((r || '').toUpperCase()));
+          if (cleaned.length === 0) cleaned.push(currentSport === 'nba' ? 'HOOPS' : 'COUCH');
+          try {
+            localStorage.setItem(`pixel_pros_recent_rooms_${currentSport}`, JSON.stringify(cleaned));
+          } catch {}
+          return cleaned;
+        });
+
+        setRoomRosters(rost || []);
+
         let activeUserClean = userName;
 
         if (activeUserClean && !validRosters.some((r) => r.user_name.toUpperCase() === activeUserClean)) {
@@ -495,7 +618,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [roomCode, currentSport]);
+  }, [roomCode, currentSport, refreshTick]);
 
   useEffect(() => {
     const unsubscribeScores = subscribeToRealtimeScores(
@@ -516,6 +639,63 @@ export default function App() {
       unsubscribeScores();
     };
   }, []);
+
+  // Background ESPN Live Scoreboard Synchronization on mount & periodically
+  useEffect(() => {
+    let mounted = true;
+    const runESPNLiveSync = async () => {
+      try {
+        await syncESPNData(currentSport);
+      } catch (err) {
+        console.warn('Auto ESPN live sync notice:', err);
+      }
+    };
+
+    // Run on sport change / mount
+    runESPNLiveSync();
+
+    // Auto-poll ESPN live scoreboard every 30 seconds to keep live scores, quarters, and game state fresh
+    const pollTimer = setInterval(runESPNLiveSync, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(pollTimer);
+    };
+  }, [currentSport]);
+
+  useEffect(() => {
+    const handleMatchesUpdate = (e: any) => {
+      if (e.detail?.matches && (!e.detail?.sport || e.detail?.sport === currentSport)) {
+        const currentNFLWeek = getCurrentNFLWeek();
+        const incoming: Match[] = Array.isArray(e.detail.matches) ? e.detail.matches : [];
+        const filtered = incoming.filter((m) => {
+          if (currentSport === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
+          return true;
+        });
+        const sorted = [...filtered].sort((a, b) => {
+          if (a.status === 'live' && b.status !== 'live') return -1;
+          if (b.status === 'live' && a.status !== 'live') return 1;
+          if (a.status === 'upcoming' && b.status === 'final') return -1;
+          if (b.status === 'upcoming' && a.status === 'final') return 1;
+          const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
+          const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
+          return dateA - dateB;
+        });
+        setMatches(sorted);
+      }
+    };
+    const handleScoresUpdate = (e: any) => {
+      if (e.detail?.competitors && (!e.detail?.sport || e.detail?.sport === currentSport)) {
+        setRoster(e.detail.competitors);
+      }
+    };
+
+    window.addEventListener('pixel_pros_live_matches_updated', handleMatchesUpdate);
+    window.addEventListener('pixel_pros_scores_updated', handleScoresUpdate);
+    return () => {
+      window.removeEventListener('pixel_pros_live_matches_updated', handleMatchesUpdate);
+      window.removeEventListener('pixel_pros_scores_updated', handleScoresUpdate);
+    };
+  }, [currentSport]);
 
   useEffect(() => {
     const unsubscribeRoom = subscribeToRoomRosters(roomCode, currentSport, async () => {
@@ -688,6 +868,16 @@ export default function App() {
               </button>
 
               <button
+                type="button"
+                onClick={() => setIsCommissionerOpen(true)}
+                className="touch-manipulation flex items-center gap-1 px-1.5 sm:px-2 py-1 bg-[#1a2238] hover:bg-[#283554] border border-[#3b82f6]/50 hover:border-[#38bdf8] text-[#38bdf8] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs"
+                title="Commissioner & Admin Mode (Manage Rooms, Squads & Locks)"
+              >
+                <ShieldAlert size={13} className="text-[#38bdf8]" />
+                <span className="hidden xs:inline">COMMISH</span>
+              </button>
+
+              <button
                 onClick={() => setIsRulesModalOpen(true)}
                 className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-[#1a2238] text-[#fde047] border-2 border-[#273552] rounded-xs cursor-pointer"
                 title="How Scoring Works"
@@ -745,6 +935,7 @@ export default function App() {
                 slots={squadSlots}
                 userName={userName}
                 roomCode={roomCode}
+                previousRoom={previousRoom}
                 isLocked={isCurrentSquadLocked}
                 matches={matches}
                 sport={currentSport}
@@ -876,14 +1067,15 @@ export default function App() {
 
         {isRoomModalOpen && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="pixel-box-cream p-4 w-full max-w-sm border-4 border-[#1a2238]">
+            <div className="pixel-box-cream p-4 sm:p-5 w-full max-w-[440px] border-4 border-[#1a2238] max-h-[90vh] overflow-y-auto overflow-x-hidden">
               <div className="flex items-center justify-between border-b-2 border-[#d4a86a] pb-2 mb-3">
-                <h3 className="font-pixel text-xs text-[#5c3509] font-bold uppercase">
-                  SWITCH {currentSport.toUpperCase()} ROOM
+                <h3 className="font-pixel text-xs sm:text-sm text-[#5c3509] font-bold uppercase tracking-wider">
+                  SWITCH {currentSport.toUpperCase()} COUCH
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setIsRoomModalOpen(false)}
-                  className="w-6 h-6 bg-[#b91c1c] text-white font-pixel text-xs"
+                  className="w-6 h-6 bg-[#b91c1c] hover:bg-[#dc2626] text-white font-pixel text-xs cursor-pointer flex items-center justify-center rounded-xs"
                 >
                   ✕
                 </button>
@@ -892,67 +1084,121 @@ export default function App() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleCommitRoomCode(tempRoomCode);
-                  setIsRoomModalOpen(false);
+                  if (tempRoomCode.trim()) {
+                    handleCommitRoomCode(tempRoomCode);
+                    setIsRoomModalOpen(false);
+                  }
                 }}
               >
-                <input
-                  type="text"
-                  value={tempRoomCode}
-                  onChange={(e) => setTempRoomCode(e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 bg-[#fae9c8] border-2 border-[#c99a57] font-pixel text-sm text-[#451a03] mb-3 text-center uppercase"
-                />
-
-                <div className="flex items-center justify-center flex-wrap gap-1.5 mb-3">
-                  {recentRooms.map((r) => (
-                    <div
-                      key={r}
-                      onClick={() => setTempRoomCode(r)}
-                      className={`flex items-center gap-1.5 px-2 py-1 border font-pixel text-[10px] cursor-pointer ${
-                        tempRoomCode === r ? 'bg-[#12579b] text-white' : 'bg-[#ebd2a4] text-[#5c3509]'
-                      }`}
-                    >
-                      <span>{r}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => handleRemoveRecentRoom(r, e)}
-                        className="text-[10px] font-bold hover:text-red-600"
-                      >
-                        x
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-2">
+                <label className="block font-pixel text-[10px] text-[#5c3509] mb-1 font-bold">
+                  ROOM CODE:
+                </label>
+                <div className="flex gap-2 mb-3.5">
+                  <input
+                    type="text"
+                    value={tempRoomCode}
+                    onChange={(e) => setTempRoomCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. COUCH or GAMEDAY"
+                    className="flex-1 min-w-0 px-3 py-2 bg-[#fae9c8] border-2 border-[#c99a57] font-pixel text-xs sm:text-sm text-[#451a03] text-center uppercase tracking-wider rounded-xs focus:outline-none focus:border-[#12579b]"
+                    autoFocus
+                  />
                   <button
                     type="submit"
-                    className="flex-1 py-2 bg-[#12579b] text-[#fae5b8] font-pixel text-xs font-bold"
+                    className="px-3 sm:px-4 py-2 bg-[#12579b] hover:bg-[#1a6cb8] text-[#fae5b8] font-pixel text-xs font-bold rounded-xs cursor-pointer shadow-[0_2px_0_0_#0a2e52] active:translate-y-0.5 whitespace-nowrap"
                   >
                     JOIN ROOM
                   </button>
+                </div>
+
+                {/* Consolidated Active Couches */}
+                <div className="mb-3.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-pixel text-[10px] text-[#5c3509] font-bold">
+                      ⭐ ACTIVE COUCHES (Tap to Join):
+                    </span>
+                    {isLoadingRooms && (
+                      <span className="font-retro text-[10px] text-[#8c532b] animate-pulse">Syncing...</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+                    {consolidatedCouches.map((c) => {
+                      const isCurrent = (roomCode || '').toUpperCase() === c.roomCode.toUpperCase();
+                      const teamCountLabel = c.squadCount === 1 ? '1 Team' : `${c.squadCount} Teams`;
+                      const icon = c.sport === 'nba' ? '🏀' : '🛋️';
+
+                      return (
+                        <button
+                          key={c.roomCode}
+                          type="button"
+                          onClick={() => {
+                            setTempRoomCode(c.roomCode);
+                            handleCommitRoomCode(c.roomCode);
+                            setIsRoomModalOpen(false);
+                          }}
+                          className={`touch-manipulation px-2.5 py-1.5 font-pixel text-[10px] rounded-xs border-2 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:translate-y-0.5 ${
+                            isCurrent
+                              ? 'bg-[#12579b] text-white border-[#0a2e52] shadow-[0_2px_0_0_#0a2e52]'
+                              : 'bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-[#c99a57] hover:border-[#b48340]'
+                          }`}
+                        >
+                          <span className="text-xs">{icon}</span>
+                          <span className="font-bold tracking-wider">{c.roomCode}</span>
+                          <span className={`text-[9px] ${isCurrent ? 'text-[#bfdbfe]' : 'text-[#784610] font-retro font-bold'}`}>
+                            ({teamCountLabel})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Friendly Retro Tip Banner */}
+                <div className="p-2.5 bg-[#f4e0bc] border border-[#d4a86a] rounded-xs text-[11px] text-[#5c3509] font-retro leading-relaxed mb-3">
+                  💡 <strong>TIP:</strong> Pick an active couch above or type a new code to start fresh!
+                </div>
+
+                {/* Commissioner Mode Link in Room Modal */}
+                <div className="mb-3 pt-2.5 border-t border-[#d4a86a] flex items-center justify-between">
                   <button
                     type="button"
-                    onClick={() => setIsRoomModalOpen(false)}
-                    className="px-3 py-2 bg-[#784610] text-[#fae5b8] font-pixel text-xs font-bold"
+                    onClick={() => {
+                      setIsRoomModalOpen(false);
+                      setIsCommissionerOpen(true);
+                    }}
+                    className="text-[10px] font-pixel text-[#12579b] hover:text-[#1a6cb8] flex items-center gap-1 cursor-pointer underline"
                   >
-                    CANCEL
+                    <ShieldAlert size={12} />
+                    MANAGE ROOMS & DELETIONS (COMMISSIONER MODE)
                   </button>
                 </div>
 
-                <div className="mt-3 pt-2 border-t border-[#d4a86a] text-center">
+                <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={handleResetCurrentRoom}
-                    className="text-[#991b1b] font-pixel text-[10px] underline"
+                    onClick={() => setIsRoomModalOpen(false)}
+                    className="px-4 py-1.5 bg-[#784610] hover:bg-[#8f5415] text-[#fae5b8] font-pixel text-[10px] font-bold rounded-xs cursor-pointer"
                   >
-                    RESET ROOM DATA
+                    CLOSE
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
+
+        <CommissionerModal
+          isOpen={isCommissionerOpen}
+          onClose={() => setIsCommissionerOpen(false)}
+          currentRoom={roomCode}
+          currentSport={currentSport}
+          roomRosters={roomRosters}
+          onSwitchRoom={(newRoom) => {
+            handleCommitRoomCode(newRoom);
+          }}
+          onRefreshData={triggerRefresh}
+          showToast={showToast}
+        />
       </div>
     </ErrorBoundary>
   );
