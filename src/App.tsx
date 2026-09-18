@@ -16,6 +16,9 @@ import {
   isGhostUser,
   fetchAllActiveRooms,
   ActiveRoomSummary,
+  resolveSupabaseAnonKey,
+  setCustomSupabaseKey,
+  checkSupabaseConfigured,
 } from './lib/supabaseClient';
 import { MyTeamView } from './components/MyTeamView';
 import { LeaderboardView } from './components/LeaderboardView';
@@ -189,6 +192,14 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const urlRoom = params.get('room') || params.get('r');
       const urlSport = (params.get('sport') || params.get('s') || '').toLowerCase() as SportId;
+      const urlKey = params.get('k') || params.get('anonKey') || params.get('anon');
+
+      if (urlKey && urlKey.trim()) {
+        const configured = setCustomSupabaseKey(urlKey.trim());
+        if (configured) {
+          showToast('🟢 Connected to Cloud Sync!');
+        }
+      }
 
       if (urlSport === 'nba' || urlSport === 'nfl') {
         setCurrentSport(urlSport);
@@ -197,14 +208,32 @@ export default function App() {
 
       if (urlRoom && urlRoom.trim()) {
         const clean = urlRoom.trim().toUpperCase();
+        userExplicitlyJoinedRoomRef.current = clean;
         setRoomCode(clean);
         setTempRoomCode(clean);
         localStorage.setItem(`pixel_pros_room_code_${urlSport || currentSport}`, clean);
-        showToast(`Joined Room ${clean} via invite!`);
+        showToast(`Joined Room ${clean}!`);
       }
-      window.history.replaceState({}, document.title, window.location.pathname);
+
+      // Keep sport and room in URL so bookmarking or copying address bar preserves the room
+      const activeSport = (urlSport === 'nba' || urlSport === 'nfl') ? urlSport : currentSport;
+      const activeRoom = (urlRoom && urlRoom.trim()) ? urlRoom.trim().toUpperCase() : roomCode;
+      const url = new URL(window.location.href);
+      url.searchParams.set('sport', activeSport);
+      url.searchParams.set('room', activeRoom);
+      window.history.replaceState({}, document.title, url.pathname + url.search);
     } catch {}
   }, []);
+
+  // Sync browser URL whenever room or sport changes
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('sport', currentSport);
+      url.searchParams.set('room', roomCode);
+      window.history.replaceState({}, document.title, url.pathname + url.search);
+    } catch {}
+  }, [roomCode, currentSport]);
 
   const handleSportChange = (sport: SportId) => {
     if (sport === currentSport) return;
@@ -212,6 +241,7 @@ export default function App() {
     localStorage.setItem('pixel_pros_sport', sport);
 
     const scopedRoom = (localStorage.getItem(`pixel_pros_room_code_${sport}`) || (sport === 'nba' ? 'HOOPS' : 'COUCH')).toUpperCase();
+    userExplicitlyJoinedRoomRef.current = scopedRoom;
     setRoomCode(scopedRoom);
     setTempRoomCode(scopedRoom);
 
@@ -231,7 +261,9 @@ export default function App() {
 
   const handleShareRoom = async () => {
     const cleanRoom = (roomCode || 'COUCH').trim().toUpperCase();
-    const inviteUrl = `${window.location.origin}/?sport=${currentSport}&room=${cleanRoom}`;
+    const activeKey = resolveSupabaseAnonKey();
+    const keyParam = activeKey ? `&k=${encodeURIComponent(activeKey)}` : '';
+    const inviteUrl = `${window.location.origin}/?sport=${currentSport}&room=${cleanRoom}${keyParam}`;
 
     if (navigator.share) {
       try {
@@ -535,40 +567,14 @@ export default function App() {
         setAvailableRooms(allRooms || []);
 
         const validRosters = (rost || []).filter((r) => !isGhostUser(r.user_name));
-        const currentRoomHasSquads = validRosters.length > 0;
-        const wasExplicitlyEntered = userExplicitlyJoinedRoomRef.current === roomCode;
 
-        // Auto-reconciliation: If current room has 0 squads in Supabase and was not explicitly entered,
-        // switch to the active populated room (e.g. COUCH)
-        if (!currentRoomHasSquads && !wasExplicitlyEntered) {
-          const activeSportRooms = (allRooms || []).filter(
-            (r) => r.sport === currentSport && r.squadCount > 0
-          );
-          if (activeSportRooms.length > 0) {
-            const primaryRoom = activeSportRooms[0].roomCode.toUpperCase();
-            if (primaryRoom !== roomCode) {
-              setRoomCode(primaryRoom);
-              setTempRoomCode(primaryRoom);
-              localStorage.setItem(`pixel_pros_room_code_${currentSport}`, primaryRoom);
-              try {
-                const url = new URL(window.location.href);
-                if (url.searchParams.has('room') || url.searchParams.has('r')) {
-                  url.searchParams.delete('room');
-                  url.searchParams.delete('r');
-                  window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
-                }
-              } catch {}
-              return;
-            }
-          }
-        }
-
-        // Prune any dead rooms from recentRooms in localStorage
+        // Keep active room in recentRooms in localStorage
         const activeRoomCodes = new Set(
           (allRooms || [])
             .filter((r) => r.squadCount > 0 && r.sport === currentSport)
             .map((r) => r.roomCode.toUpperCase())
         );
+        activeRoomCodes.add(roomCode.toUpperCase());
         activeRoomCodes.add(currentSport === 'nba' ? 'HOOPS' : 'COUCH');
         setRecentRooms((prev) => {
           const cleaned = prev.filter((r) => activeRoomCodes.has((r || '').toUpperCase()));

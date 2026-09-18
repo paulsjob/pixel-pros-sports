@@ -21,36 +21,129 @@ const procEnv = typeof process !== 'undefined' ? process.env : {};
 
 export const SUPABASE_URL =
   procEnv?.NEXT_PUBLIC_SUPABASE_URL ||
+  procEnv?.VITE_SUPABASE_URL ||
   procEnv?.SUPABASE_URL ||
   metaEnv?.VITE_SUPABASE_URL ||
   'https://sqntjgjqtwbcqpxcqzbg.supabase.co';
 
-const rawKey =
-  procEnv?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  procEnv?.SUPABASE_ANON_KEY ||
-  procEnv?.SUPABASE_SERVICE_ROLE_KEY ||
-  metaEnv?.VITE_SUPABASE_ANON_KEY ||
-  '';
+export function resolveSupabaseAnonKey(): string {
+  // 1. Check URL query params (?k= or ?anonKey=)
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      const p = new URLSearchParams(window.location.search);
+      const urlKey = p.get('k') || p.get('anonKey') || p.get('anon');
+      if (urlKey && urlKey.trim() && !urlKey.startsWith('your-') && urlKey !== 'anon-key-placeholder') {
+        const clean = urlKey.trim();
+        try {
+          localStorage.setItem('pixel_pros_supabase_anon_key', clean);
+        } catch {}
+        return clean;
+      }
+    }
+  } catch {}
 
-export const isSupabaseConfigured = Boolean(
-  rawKey &&
-  rawKey.trim() !== '' &&
-  !rawKey.startsWith('your-') &&
-  rawKey !== 'anon-key-placeholder'
-);
+  // 2. Check localStorage saved key
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('pixel_pros_supabase_anon_key');
+      if (saved && saved.trim() && !saved.startsWith('your-') && saved !== 'anon-key-placeholder') {
+        return saved.trim();
+      }
+    }
+  } catch {}
 
-// Fallback to a non-empty string so createClient never throws "supabaseKey is required."
-export const SUPABASE_ANON_KEY = isSupabaseConfigured
-  ? rawKey.trim()
-  : 'anon-key-placeholder';
+  // 3. Check environment variables
+  const envKey =
+    procEnv?.VITE_SUPABASE_ANON_KEY ||
+    metaEnv?.VITE_SUPABASE_ANON_KEY ||
+    procEnv?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    procEnv?.SUPABASE_ANON_KEY ||
+    procEnv?.SUPABASE_SERVICE_ROLE_KEY ||
+    '';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
+  if (envKey && envKey.trim() && !envKey.startsWith('your-') && envKey !== 'anon-key-placeholder') {
+    return envKey.trim();
+  }
+  return '';
+}
+
+export function checkSupabaseConfigured(): boolean {
+  return Boolean(resolveSupabaseAnonKey());
+}
+
+export let isSupabaseConfigured: boolean = checkSupabaseConfigured();
+
+let currentClientInstance: any = null;
+let currentKeyCached: string = resolveSupabaseAnonKey();
+
+export function getSupabaseClient() {
+  const activeKey = resolveSupabaseAnonKey();
+  if (!currentClientInstance || activeKey !== currentKeyCached) {
+    currentKeyCached = activeKey;
+    isSupabaseConfigured = Boolean(activeKey);
+    currentClientInstance = createClient(
+      SUPABASE_URL,
+      activeKey || 'anon-key-placeholder',
+      {
+        realtime: {
+          params: {
+            eventsPerSecond: 10,
+          },
+        },
+      }
+    );
+  }
+  return currentClientInstance;
+}
+
+export function setCustomSupabaseKey(newKey: string): boolean {
+  const clean = (newKey || '').trim();
+  if (!clean || clean.startsWith('your-') || clean === 'anon-key-placeholder') {
+    try {
+      localStorage.removeItem('pixel_pros_supabase_anon_key');
+    } catch {}
+    currentKeyCached = '';
+    currentClientInstance = null;
+    isSupabaseConfigured = false;
+    window.dispatchEvent(new CustomEvent('pixel_pros_supabase_configured', { detail: { key: '' } }));
+    return false;
+  }
+
+  try {
+    localStorage.setItem('pixel_pros_supabase_anon_key', clean);
+  } catch {}
+
+  currentKeyCached = clean;
+  isSupabaseConfigured = true;
+  currentClientInstance = createClient(SUPABASE_URL, clean, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
     },
-  },
-});
+  });
+
+  window.dispatchEvent(new CustomEvent('pixel_pros_supabase_configured', { detail: { key: clean } }));
+  window.dispatchEvent(new CustomEvent('pixel_pros_roster_update', { detail: { reloaded: true } }));
+  return true;
+}
+
+export const SUPABASE_ANON_KEY = resolveSupabaseAnonKey() || 'anon-key-placeholder';
+
+// Proxy object so all calls to `supabase.from(...)` automatically use the fresh dynamic client
+export const supabase = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      const client = getSupabaseClient();
+      const val = client[prop];
+      if (typeof val === 'function') {
+        return val.bind(client);
+      }
+      return val;
+    },
+  }
+) as any;
 
 const SKIN_TONES = ['#f7d7b5', '#d98c55', '#8c532b', '#e6ba8c', '#5c3509'];
 function getSkinTone(name?: string): string {
@@ -551,9 +644,10 @@ export async function upsertUserRoster(
     console.warn('Network upsert error to server API:', err);
   }
 
-  // 3. Supabase fallback if configured
-  if (isSupabaseConfigured) {
+  // 3. Supabase fallback/primary cloud database if configured
+  if (checkSupabaseConfigured()) {
     try {
+      const client = getSupabaseClient();
       const payload: any = {
         room_code: cleanRoom,
         user_name: cleanName,
@@ -565,8 +659,51 @@ export async function upsertUserRoster(
         device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
         updated_at: record.updated_at,
       };
-      await supabase.from('user_rosters').upsert(payload, { onConflict: 'room_code,user_name,sport' });
-    } catch {}
+
+      // 1. Try standard Supabase upsert with composite constraint
+      const upsertRes = await client
+        .from('user_rosters')
+        .upsert(payload, { onConflict: 'room_code,user_name,sport' });
+
+      if (upsertRes.error) {
+        // Fallback: check existing by room_code & user_name
+        const { data: existing } = await client
+          .from('user_rosters')
+          .select('id')
+          .eq('room_code', cleanRoom)
+          .eq('user_name', cleanName)
+          .maybeSingle();
+
+        if (existing && existing.id) {
+          const updateRes = await client.from('user_rosters').update(payload).eq('id', existing.id);
+          if (updateRes.error) {
+            // In case table has minimal columns (e.g. without sport or is_locked)
+            const minimalPayload = {
+              room_code: cleanRoom,
+              user_name: cleanName,
+              star_1_id: sanitizedS1 || '',
+              star_2_id: sanitizedS2 || '',
+              star_3_id: sanitizedS3 || '',
+            };
+            await client.from('user_rosters').update(minimalPayload).eq('id', existing.id);
+          }
+        } else {
+          const insertRes = await client.from('user_rosters').insert(payload);
+          if (insertRes.error) {
+            const minimalPayload = {
+              room_code: cleanRoom,
+              user_name: cleanName,
+              star_1_id: sanitizedS1 || '',
+              star_2_id: sanitizedS2 || '',
+              star_3_id: sanitizedS3 || '',
+            };
+            await client.from('user_rosters').insert(minimalPayload);
+          }
+        }
+      }
+    } catch (sbErr) {
+      console.warn('Supabase upsert exception:', sbErr);
+    }
   }
 
   return { success: true, data: record };
@@ -596,24 +733,24 @@ export async function fetchAllActiveRooms(): Promise<ActiveRoomSummary[]> {
   } catch {}
 
   // 2. Supabase fallback if configured
-  if (isSupabaseConfigured) {
+  if (checkSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
+      const client = getSupabaseClient();
+      const { data, error } = await client
         .from('user_rosters')
-        .select('room_code, user_name, sport')
+        .select('room_code, user_name')
         .not('room_code', 'is', null)
         .not('user_name', 'is', null);
 
-      if (!error && data) {
+      if (!error && data && Array.isArray(data)) {
         const roomMap = new Map<string, { sport: SportId; squads: Set<string> }>();
         data.forEach((row: any) => {
           const code = (row.room_code || '').trim().toUpperCase();
           const user = (row.user_name || '').trim().toUpperCase();
-          const sport = (row.sport || 'nfl').toLowerCase() === 'nba' ? 'nba' : 'nfl';
           if (!code || !user) return;
 
           if (!roomMap.has(code)) {
-            roomMap.set(code, { sport, squads: new Set() });
+            roomMap.set(code, { sport: 'nfl', squads: new Set() });
           }
           roomMap.get(code)!.squads.add(user);
         });
@@ -625,7 +762,9 @@ export async function fetchAllActiveRooms(): Promise<ActiveRoomSummary[]> {
           squadNames: Array.from(val.squads),
         }));
       }
-    } catch {}
+    } catch (sbErr) {
+      console.warn('Supabase fetch rooms error:', sbErr);
+    }
   }
 
   return [];
@@ -722,24 +861,19 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
     console.warn('Error fetching rosters from server API:', apiErr);
   }
 
-  // 2. Supabase fallback if configured
-  if (isSupabaseConfigured) {
+  // 2. Supabase fallback/cloud database if configured
+  if (checkSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
+      const client = getSupabaseClient();
+      const { data, error } = await client
         .from('user_rosters')
         .select('*')
         .eq('room_code', cleanRoom)
-        .not('user_name', 'is', null)
-        .order('updated_at', { ascending: false });
+        .not('user_name', 'is', null);
 
-      if (!error && data) {
-        const sportFiltered = data.filter((r: any) => {
-          const rowSport = String(r.sport || 'nfl').toLowerCase();
-          return sport === 'nba' ? rowSport === 'nba' : rowSport !== 'nba';
-        });
-
+      if (!error && data && data.length > 0) {
         const map = new Map<string, UserRoster>();
-        sportFiltered.forEach((r: any) => {
+        data.forEach((r: any) => {
           if (isGhostUser(r.user_name)) return;
           const key = (r.user_name || '').trim().toUpperCase();
           if (!key) return;
@@ -749,11 +883,15 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
           );
           const distinctStars = new Set(starIds);
           const hasThreeDistinct = starIds.length === 3 && distinctStars.size === 3;
-          const isLocked = hasThreeDistinct && Boolean(r.is_locked === true || r.device_id === 'LOCKED');
+          const isLocked = Boolean(
+            r.is_locked === true ||
+            r.device_id === 'LOCKED' ||
+            (hasThreeDistinct && getSquadLockState(cleanRoom, key, sport))
+          );
 
           const entry: UserRoster = {
             id: r.id,
-            room_code: (r.room_code || '').toUpperCase(),
+            room_code: (r.room_code || cleanRoom).toUpperCase(),
             user_name: key,
             sport: r.sport || sport,
             device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
@@ -761,15 +899,24 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
             star_2_id: r.star_2_id || '',
             star_3_id: r.star_3_id || '',
             is_locked: isLocked,
-            updated_at: r.updated_at,
+            updated_at: r.updated_at || new Date().toISOString(),
           };
           map.set(key, entry);
           setSquadLockState(cleanRoom, key, isLocked, sport);
         });
 
-        return Array.from(map.values());
+        const supabaseList = Array.from(map.values());
+        if (supabaseList.length > 0) {
+          try {
+            const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
+            localStorage.setItem(localKey, JSON.stringify(supabaseList));
+          } catch {}
+          return supabaseList;
+        }
       }
-    } catch {}
+    } catch (sbErr) {
+      console.warn('Supabase fetch rosters error:', sbErr);
+    }
   }
 
   return localRosters;
@@ -812,9 +959,10 @@ export async function deleteUserRoster(roomCode: string, userName: string, sport
     });
   } catch {}
 
-  if (isSupabaseConfigured) {
+  if (checkSupabaseConfigured()) {
     try {
-      await supabase.from('user_rosters').delete().eq('room_code', cleanRoom).eq('user_name', cleanName);
+      const client = getSupabaseClient();
+      await client.from('user_rosters').delete().eq('room_code', cleanRoom).eq('user_name', cleanName);
     } catch {}
   }
 
@@ -846,9 +994,10 @@ export async function resetRoomRosters(roomCode: string): Promise<boolean> {
     });
   } catch {}
 
-  if (isSupabaseConfigured) {
+  if (checkSupabaseConfigured()) {
     try {
-      await supabase.from('user_rosters').delete().eq('room_code', cleanRoom);
+      const client = getSupabaseClient();
+      await client.from('user_rosters').delete().eq('room_code', cleanRoom);
     } catch {}
   }
 
@@ -898,11 +1047,12 @@ export async function renameUserRoster(
     });
   } catch {}
 
-  if (isSupabaseConfigured) {
+  if (checkSupabaseConfigured()) {
     try {
-      await supabase
+      const client = getSupabaseClient();
+      await client
         .from('user_rosters')
-        .update({ user_name: cleanNew, updated_at: new Date().toISOString() })
+        .update({ user_name: cleanNew })
         .eq('room_code', cleanRoom)
         .eq('user_name', cleanOld);
     } catch {}
@@ -1059,17 +1209,15 @@ export async function clearSquadStars(
     });
   } catch {}
 
-  if (isSupabaseConfigured) {
+  if (checkSupabaseConfigured()) {
     try {
-      await supabase
+      const client = getSupabaseClient();
+      await client
         .from('user_rosters')
         .update({
           star_1_id: '',
           star_2_id: '',
           star_3_id: '',
-          is_locked: false,
-          device_id: 'UNLOCKED',
-          updated_at: new Date().toISOString(),
         })
         .eq('room_code', cleanRoom)
         .eq('user_name', cleanUser);
@@ -1126,7 +1274,7 @@ export function subscribeToRoomRosters(
     console.warn('EventSource initialization warning:', e);
   }
 
-  // 3. Smart polling fallback (every 2.5s) to guarantee background/mobile sync across devices
+  // 3. Smart polling fallback for Server API (every 2.5s)
   let lastRosterSnapshot = '';
   const pollInterval = setInterval(async () => {
     try {
@@ -1147,12 +1295,37 @@ export function subscribeToRoomRosters(
     } catch {}
   }, 2500);
 
-  // 4. Supabase realtime channel if configured
-  let channel: any = null;
-  if (isSupabaseConfigured) {
+  // 4. Supabase Direct Cloud Polling (every 2.5s) - GUARANTEES Vercel multi-device sync
+  let lastSbRosterSnapshot = '';
+  const sbPollInterval = setInterval(async () => {
+    if (!checkSupabaseConfigured()) return;
     try {
-      channel = supabase
-        .channel(`room-${clean}-${sport}`)
+      const client = getSupabaseClient();
+      const { data } = await client
+        .from('user_rosters')
+        .select('user_name, star_1_id, star_2_id, star_3_id')
+        .eq('room_code', clean);
+      if (data && Array.isArray(data)) {
+        const snapshot = JSON.stringify(
+          data.map((r: any) => `${r.user_name}:${r.star_1_id}:${r.star_2_id}:${r.star_3_id}`)
+        );
+        if (lastSbRosterSnapshot && snapshot !== lastSbRosterSnapshot) {
+          lastSbRosterSnapshot = snapshot;
+          onUpdate();
+        } else if (!lastSbRosterSnapshot) {
+          lastSbRosterSnapshot = snapshot;
+        }
+      }
+    } catch {}
+  }, 2500);
+
+  // 5. Supabase realtime channel if configured
+  let channel: any = null;
+  if (checkSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      channel = client
+        .channel(`room-${clean}`)
         .on(
           'postgres_changes',
           {
@@ -1166,7 +1339,7 @@ export function subscribeToRoomRosters(
         )
         .subscribe();
     } catch (err) {
-      console.warn(`Error subscribing to channel room-${clean}-${sport}:`, err);
+      console.warn(`Error subscribing to channel room-${clean}:`, err);
     }
   }
 
@@ -1176,9 +1349,11 @@ export function subscribeToRoomRosters(
       eventSource.close();
     }
     clearInterval(pollInterval);
-    if (channel && isSupabaseConfigured) {
+    clearInterval(sbPollInterval);
+    if (channel && checkSupabaseConfigured()) {
       try {
-        supabase.removeChannel(channel);
+        const client = getSupabaseClient();
+        client.removeChannel(channel);
       } catch (err) {
         console.warn(`Error removing channel:`, err);
       }

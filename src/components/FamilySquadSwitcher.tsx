@@ -45,7 +45,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
   const squadMap = new Map<string, { userName: string; isLocked?: boolean; starCount?: number; totalScore?: number }>();
   squads.forEach((s) => {
     const key = (s.userName || '').trim().toUpperCase();
-    if (key && !['P', 'PA', 'PAU', 'PAUL J'].includes(key)) {
+    if (key) {
       squadMap.set(key, { ...s, userName: key });
     }
   });

@@ -17,6 +17,11 @@ import {
   Radio,
   CheckCircle2,
   Clock,
+  Cloud,
+  Share2,
+  Copy,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import { SportId, UserRoster } from '../types';
 import {
@@ -28,6 +33,10 @@ import {
   toggleSquadLock,
   setAllSquadsLock,
   clearSquadStars,
+  resolveSupabaseAnonKey,
+  setCustomSupabaseKey,
+  checkSupabaseConfigured,
+  SUPABASE_URL,
 } from '../lib/supabaseClient';
 import {
   syncESPNData,
@@ -93,6 +102,77 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
   // Active NFL Week state
   const [activeNFLWeek, setActiveNFLWeekState] = useState<number>(() => getCurrentNFLWeek());
   const [isPurgingWeeks, setIsPurgingWeeks] = useState(false);
+
+  // Cloud Sync state
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => resolveSupabaseAnonKey());
+  const [isCloudConfigured, setIsCloudConfigured] = useState(() => checkSupabaseConfigured());
+  const [showSqlMigration, setShowSqlMigration] = useState(false);
+
+  const SUPABASE_RLS_MIGRATION_SQL = `-- Ensure user_rosters table has the compound uniqueness constraint
+CREATE TABLE IF NOT EXISTS public.user_rosters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_code TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    sport TEXT NOT NULL DEFAULT 'nfl',
+    star_1_id TEXT NOT NULL DEFAULT '',
+    star_2_id TEXT NOT NULL DEFAULT '',
+    star_3_id TEXT NOT NULL DEFAULT '',
+    is_locked BOOLEAN DEFAULT false,
+    device_id TEXT DEFAULT 'UNLOCKED',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_room_user_sport UNIQUE (room_code, user_name, sport)
+);
+
+-- Enable RLS
+ALTER TABLE public.user_rosters ENABLE ROW LEVEL SECURITY;
+
+-- Drop any restrictive legacy policies
+DROP POLICY IF EXISTS "Allow public read access on user_rosters" ON public.user_rosters;
+DROP POLICY IF EXISTS "Allow public insert/update on user_rosters" ON public.user_rosters;
+DROP POLICY IF EXISTS "Public all access user_rosters" ON public.user_rosters;
+
+-- Grant universal read/write access to user_rosters for couch play
+CREATE POLICY "Public all access user_rosters" 
+ON public.user_rosters 
+FOR ALL 
+USING (true) 
+WITH CHECK (true);
+
+-- Enable realtime stream for user_rosters
+ALTER PUBLICATION supabase_realtime ADD TABLE public.user_rosters;`;
+
+  const handleCopySqlMigration = async () => {
+    try {
+      await navigator.clipboard.writeText(SUPABASE_RLS_MIGRATION_SQL);
+      showToast('COPIED SUPABASE SQL MIGRATION TO CLIPBOARD!');
+    } catch {
+      showToast('Error copying SQL to clipboard.');
+    }
+  };
+
+  const handleSaveSupabaseKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = setCustomSupabaseKey(supabaseKeyInput);
+    setIsCloudConfigured(checkSupabaseConfigured());
+    if (success) {
+      showToast('🟢 Connected to Supabase Cloud Sync!');
+      onRefreshData();
+    } else {
+      showToast('Cleared Supabase key.');
+    }
+  };
+
+  const handleCopyOneTapLink = async () => {
+    const activeKey = resolveSupabaseAnonKey();
+    const keyParam = activeKey ? `&k=${encodeURIComponent(activeKey)}` : '';
+    const inviteUrl = `${window.location.origin}/?sport=${currentSport}&room=${currentRoom}${keyParam}`;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      showToast(`COPIED 1-TAP MULTI-DEVICE INVITE LINK!`);
+    } catch {
+      showToast(`Link: ${inviteUrl}`);
+    }
+  };
 
   const handleSetNFLWeek = (newWeek: number) => {
     setActiveNFLWeekState(newWeek);
@@ -515,6 +595,113 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                   })}
                 </div>
               )}
+            </div>
+
+            {/* SECTION: CLOUD SYNC & MULTI-DEVICE PERSISTENCE (SUPABASE) */}
+            <div className="p-3 bg-[#fae9c8] border-2 border-[#15803d] rounded-xs shadow-xs">
+              <div className="flex items-center justify-between border-b border-[#d4a86a] pb-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Cloud size={15} className="text-[#15803d]" />
+                  <span className="font-pixel text-xs font-bold text-[#15803d]">
+                    ☁️ MULTI-DEVICE CLOUD SYNC (SUPABASE)
+                  </span>
+                </div>
+                <span
+                  className={`font-pixel text-[8px] px-1.5 py-0.5 rounded-xs font-bold ${
+                    isCloudConfigured
+                      ? 'bg-[#15803d] text-white'
+                      : 'bg-[#b45309] text-white'
+                  }`}
+                >
+                  {isCloudConfigured ? '🟢 CONNECTED (MULTI-DEVICE LIVE)' : '🟡 STANDBY MODE'}
+                </span>
+              </div>
+
+              <p className="font-retro text-[11px] text-[#784610] mb-2 leading-tight">
+                Connects your squads to the persistent Supabase database so your friends and family across different devices, phones, and states see each other in real time.
+              </p>
+
+              {/* 1-Tap Invite Link */}
+              <div className="mb-3 p-2.5 bg-[#eafaf1] border border-[#22c55e] rounded-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-pixel text-[9px] font-bold text-[#14532d] flex items-center gap-1">
+                    <Globe size={11} /> 1-TAP MULTI-DEVICE LINK FOR ROOM {currentRoom}:
+                  </span>
+                  <span className="font-retro text-[9px] text-[#15803d]">Zero setup for friends</span>
+                </div>
+                <p className="font-retro text-[10px] text-[#166534] mb-2">
+                  Share this link with your sister, friends, or open it on your phone. It auto-connects directly to Room <strong>{currentRoom}</strong> with full cloud sync enabled!
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyOneTapLink}
+                  className="w-full py-1.5 px-3 bg-[#15803d] hover:bg-[#16a34a] text-white font-pixel text-[10px] font-bold rounded-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Copy size={12} />
+                  COPY 1-TAP MULTI-DEVICE LINK
+                </button>
+              </div>
+
+              {/* Key Config Form */}
+              <form onSubmit={handleSaveSupabaseKey} className="space-y-1.5 mb-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-pixel text-[9px] text-[#451a03]">
+                    SUPABASE ANON PUBLIC KEY:
+                  </label>
+                  <span className="font-retro text-[9px] text-[#784610]">
+                    Project: <code className="text-[#12579b]">sqntjgjqtwbcqpxcqzbg</code>
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="password"
+                    value={supabaseKeyInput}
+                    onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                    placeholder="Paste Supabase Anon Key (eyJhbGciOi...)"
+                    className="flex-1 px-2 py-1 bg-white border border-[#c99a57] font-retro text-xs text-[#451a03] rounded-xs"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1 bg-[#12579b] hover:bg-[#1a6cb8] text-white font-pixel text-[9px] font-bold rounded-xs cursor-pointer shrink-0"
+                  >
+                    SAVE KEY
+                  </button>
+                </div>
+                <p className="font-retro text-[9px] text-[#784610] italic">
+                  Tip: On Vercel, set Environment Variable <strong>VITE_SUPABASE_ANON_KEY</strong> to auto-connect for everyone permanently without needing a link parameter.
+                </p>
+              </form>
+
+              {/* Supabase SQL Migration Helper */}
+              <div className="pt-2 border-t border-[#d4a86a]">
+                <div className="flex items-center justify-between">
+                  <span className="font-pixel text-[9px] font-bold text-[#451a03] flex items-center gap-1">
+                    <ShieldCheck size={12} className="text-[#15803d]" />
+                    SUPABASE SQL EDITOR MIGRATION (RLS & SCHEMA):
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowSqlMigration(!showSqlMigration)}
+                      className="px-2 py-0.5 bg-[#f5d08c] hover:bg-[#ebc47a] text-[#451a03] font-pixel text-[8px] rounded-xs cursor-pointer"
+                    >
+                      {showSqlMigration ? 'HIDE SQL' : 'VIEW SQL'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopySqlMigration}
+                      className="px-2 py-0.5 bg-[#15803d] hover:bg-[#16a34a] text-white font-pixel text-[8px] font-bold rounded-xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy size={10} /> COPY SQL
+                    </button>
+                  </div>
+                </div>
+                {showSqlMigration && (
+                  <div className="mt-2 p-2 bg-[#1e293b] rounded-xs overflow-x-auto text-[9px] text-[#38bdf8] font-mono leading-relaxed border border-[#334155]">
+                    <pre>{SUPABASE_RLS_MIGRATION_SQL}</pre>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* SECTION 2: ESPN LIVE DATA & SCHEDULE SYNC */}

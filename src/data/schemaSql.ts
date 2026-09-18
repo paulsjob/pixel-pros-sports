@@ -132,19 +132,37 @@ CREATE TABLE IF NOT EXISTS public.rosters (
 
 -- 7b. MULTI-DEVICE SHARED FAMILY ROSTERS (Room Code System)
 CREATE TABLE IF NOT EXISTS public.user_rosters (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_code TEXT NOT NULL,
     user_name TEXT NOT NULL,
-    star_1_id TEXT NOT NULL,
-    star_2_id TEXT NOT NULL,
-    star_3_id TEXT NOT NULL,
+    sport TEXT NOT NULL DEFAULT 'nfl',
+    star_1_id TEXT NOT NULL DEFAULT '',
+    star_2_id TEXT NOT NULL DEFAULT '',
+    star_3_id TEXT NOT NULL DEFAULT '',
+    is_locked BOOLEAN DEFAULT false,
+    device_id TEXT DEFAULT 'UNLOCKED',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_user_rosters_room_user UNIQUE (room_code, user_name)
+    CONSTRAINT uq_room_user_sport UNIQUE (room_code, user_name, sport)
 );
 CREATE INDEX IF NOT EXISTS idx_user_rosters_room ON public.user_rosters(room_code);
+
+-- Enable RLS
 ALTER TABLE public.user_rosters ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access on user_rosters" ON public.user_rosters FOR SELECT USING (true);
-CREATE POLICY "Allow public insert/update on user_rosters" ON public.user_rosters FOR ALL USING (true);
+
+-- Drop any restrictive legacy policies
+DROP POLICY IF EXISTS "Allow public read access on user_rosters" ON public.user_rosters;
+DROP POLICY IF EXISTS "Allow public insert/update on user_rosters" ON public.user_rosters;
+DROP POLICY IF EXISTS "Public all access user_rosters" ON public.user_rosters;
+
+-- Grant universal read/write access to user_rosters for couch play
+CREATE POLICY "Public all access user_rosters" 
+ON public.user_rosters 
+FOR ALL 
+USING (true) 
+WITH CHECK (true);
+
+-- Enable realtime stream for user_rosters
+ALTER PUBLICATION supabase_realtime ADD TABLE public.user_rosters;
 
 -- 8. ROW LEVEL SECURITY (RLS) FOR SAFE KIDS APPLICATION
 ALTER TABLE public.sports ENABLE ROW LEVEL SECURITY;
