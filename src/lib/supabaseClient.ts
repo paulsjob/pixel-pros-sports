@@ -448,6 +448,22 @@ export async function fetchLiveNFLMatches(): Promise<Match[]> {
   return fetchLiveMatches('nfl');
 }
 
+async function apiFetch<T = any>(endpoint: string, options?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(endpoint, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeCompetitorId(id?: string | null): string | null {
   if (!id || typeof id !== 'string') return null;
   const trimmed = id.trim();
@@ -488,13 +504,12 @@ export async function upsertUserRoster(
     updated_at: new Date().toISOString(),
   };
 
+  // 1. Immediate local cache for zero UI lag
   try {
     const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
     const raw = localStorage.getItem(localKey);
     let rosters: UserRoster[] = raw ? JSON.parse(raw) : [];
-    const idx = rosters.findIndex(
-      (r) => r.user_name.toUpperCase() === cleanName
-    );
+    const idx = rosters.findIndex((r) => r.user_name.toUpperCase() === cleanName);
     if (idx >= 0) {
       rosters[idx] = { ...rosters[idx], ...record };
     } else {
@@ -512,48 +527,49 @@ export async function upsertUserRoster(
       : `pixel_pros_roster_${cleanRoom}_${cleanName}`;
     localStorage.setItem(rosterKey, JSON.stringify([record.star_1_id, record.star_2_id, record.star_3_id]));
     window.dispatchEvent(new CustomEvent('pixel_pros_roster_update', { detail: record }));
-  } catch {
-    // ignore local storage errors
-  }
+  } catch {}
 
+  // 2. Central persistent server database (cross-device multi-player)
   try {
-    if (!isSupabaseConfigured) {
-      return { success: true, data: record };
+    const apiRes = await apiFetch<{ success: boolean; data?: any }>('/api/rosters', {
+      method: 'POST',
+      body: JSON.stringify({
+        room_code: cleanRoom,
+        user_name: cleanName,
+        sport,
+        star_1_id: sanitizedS1 || '',
+        star_2_id: sanitizedS2 || '',
+        star_3_id: sanitizedS3 || '',
+        is_locked: guardedLocked,
+        device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
+      }),
+    });
+    if (apiRes && apiRes.success && apiRes.data) {
+      record.id = apiRes.data.id;
     }
-
-    const payload: any = {
-      room_code: cleanRoom,
-      user_name: cleanName,
-      sport,
-      star_1_id: sanitizedS1 || '',
-      star_2_id: sanitizedS2 || '',
-      star_3_id: sanitizedS3 || '',
-      is_locked: guardedLocked,
-      device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
-      updated_at: record.updated_at,
-    };
-
-    let { error } = await supabase
-      .from('user_rosters')
-      .upsert(payload, { onConflict: 'room_code,user_name,sport' });
-
-    // Fallback if postgres database constraint is still the legacy (room_code, user_name)
-    if (error && (error.code === '42P10' || error.message?.includes('conflict') || error.message?.includes('constraint'))) {
-      const fallback = await supabase
-        .from('user_rosters')
-        .upsert(payload, { onConflict: 'room_code,user_name' });
-      error = fallback.error;
-    }
-
-    if (error) {
-      console.error('Supabase user_rosters upsert error:', error);
-      return { success: false, data: record, error: error.message };
-    }
-    return { success: true, data: record };
-  } catch (err: any) {
-    console.error('Supabase user_rosters network error:', err);
-    return { success: false, data: record, error: err?.message || String(err) };
+  } catch (err) {
+    console.warn('Network upsert error to server API:', err);
   }
+
+  // 3. Supabase fallback if configured
+  if (isSupabaseConfigured) {
+    try {
+      const payload: any = {
+        room_code: cleanRoom,
+        user_name: cleanName,
+        sport,
+        star_1_id: sanitizedS1 || '',
+        star_2_id: sanitizedS2 || '',
+        star_3_id: sanitizedS3 || '',
+        is_locked: guardedLocked,
+        device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
+        updated_at: record.updated_at,
+      };
+      await supabase.from('user_rosters').upsert(payload, { onConflict: 'room_code,user_name,sport' });
+    } catch {}
+  }
+
+  return { success: true, data: record };
 }
 
 export const GHOST_USER_NAMES: string[] = [];
@@ -571,38 +587,48 @@ export interface ActiveRoomSummary {
 }
 
 export async function fetchAllActiveRooms(): Promise<ActiveRoomSummary[]> {
-  if (!isSupabaseConfigured) return [];
+  // 1. Query server API (shared across all devices)
   try {
-    const { data, error } = await supabase
-      .from('user_rosters')
-      .select('room_code, user_name, sport')
-      .not('room_code', 'is', null)
-      .not('user_name', 'is', null);
+    const apiRes = await apiFetch<{ success: boolean; rooms?: ActiveRoomSummary[] }>('/api/rooms');
+    if (apiRes && apiRes.success && Array.isArray(apiRes.rooms) && apiRes.rooms.length > 0) {
+      return apiRes.rooms;
+    }
+  } catch {}
 
-    if (error || !data) return [];
+  // 2. Supabase fallback if configured
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('user_rosters')
+        .select('room_code, user_name, sport')
+        .not('room_code', 'is', null)
+        .not('user_name', 'is', null);
 
-    const roomMap = new Map<string, { sport: SportId; squads: Set<string> }>();
-    data.forEach((row: any) => {
-      const code = (row.room_code || '').trim().toUpperCase();
-      const user = (row.user_name || '').trim().toUpperCase();
-      const sport = (row.sport || 'nfl').toLowerCase() === 'nba' ? 'nba' : 'nfl';
-      if (!code || !user) return;
+      if (!error && data) {
+        const roomMap = new Map<string, { sport: SportId; squads: Set<string> }>();
+        data.forEach((row: any) => {
+          const code = (row.room_code || '').trim().toUpperCase();
+          const user = (row.user_name || '').trim().toUpperCase();
+          const sport = (row.sport || 'nfl').toLowerCase() === 'nba' ? 'nba' : 'nfl';
+          if (!code || !user) return;
 
-      if (!roomMap.has(code)) {
-        roomMap.set(code, { sport, squads: new Set() });
+          if (!roomMap.has(code)) {
+            roomMap.set(code, { sport, squads: new Set() });
+          }
+          roomMap.get(code)!.squads.add(user);
+        });
+
+        return Array.from(roomMap.entries()).map(([roomCode, val]) => ({
+          roomCode,
+          sport: val.sport,
+          squadCount: val.squads.size,
+          squadNames: Array.from(val.squads),
+        }));
       }
-      roomMap.get(code)!.squads.add(user);
-    });
-
-    return Array.from(roomMap.entries()).map(([roomCode, val]) => ({
-      roomCode,
-      sport: val.sport,
-      squadCount: val.squads.size,
-      squadNames: Array.from(val.squads),
-    }));
-  } catch {
-    return [];
+    } catch {}
   }
+
+  return [];
 }
 
 export function getSquadLockState(roomCode: string, userName: string, sport: SportId = 'nfl'): boolean {
@@ -649,73 +675,104 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
         localRosters = parsed.filter((r: UserRoster) => !isGhostUser(r.user_name));
       }
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 
-  if (!isSupabaseConfigured) {
-    return localRosters;
-  }
-
+  // 1. Fetch from persistent server API (cross-device)
   try {
-    const { data, error } = await supabase
-      .from('user_rosters')
-      .select('*')
-      .eq('room_code', cleanRoom)
-      .not('user_name', 'is', null)
-      .order('updated_at', { ascending: false });
+    const apiRes = await apiFetch<{ success: boolean; rosters?: any[] }>(
+      `/api/rosters?roomCode=${encodeURIComponent(cleanRoom)}&sport=${encodeURIComponent(sport)}`
+    );
 
-    if (error || !data) {
-      return localRosters;
+    if (apiRes && apiRes.success && Array.isArray(apiRes.rosters)) {
+      const serverRosters: UserRoster[] = apiRes.rosters
+        .filter((r: any) => !isGhostUser(r.user_name))
+        .map((r: any) => {
+          const starIds = [r.star_1_id, r.star_2_id, r.star_3_id].filter(
+            (id) => id && typeof id === 'string' && id.trim() !== ''
+          );
+          const distinctStars = new Set(starIds);
+          const hasThreeDistinct = starIds.length === 3 && distinctStars.size === 3;
+          const isLocked = hasThreeDistinct && Boolean(r.is_locked === true || r.device_id === 'LOCKED');
+
+          setSquadLockState(cleanRoom, r.user_name, isLocked, sport);
+
+          return {
+            id: r.id,
+            room_code: (r.room_code || cleanRoom).toUpperCase(),
+            user_name: (r.user_name || '').trim().toUpperCase(),
+            sport: r.sport || sport,
+            device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
+            star_1_id: r.star_1_id || '',
+            star_2_id: r.star_2_id || '',
+            star_3_id: r.star_3_id || '',
+            is_locked: isLocked,
+            updated_at: r.updated_at || new Date().toISOString(),
+          };
+        });
+
+      // Update local storage cache
+      try {
+        const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
+        localStorage.setItem(localKey, JSON.stringify(serverRosters));
+      } catch {}
+
+      return serverRosters;
     }
-
-    const sportFiltered = data.filter((r: any) => {
-      const rowSport = String(r.sport || 'nfl').toLowerCase();
-      return sport === 'nba' ? rowSport === 'nba' : rowSport !== 'nba';
-    });
-
-    const map = new Map<string, UserRoster>();
-    localRosters.forEach((r) => {
-      if (isGhostUser(r.user_name)) return;
-      const key = r.user_name.trim().toUpperCase();
-      map.set(key, r);
-    });
-
-    sportFiltered.forEach((r: any) => {
-      if (isGhostUser(r.user_name)) return;
-      const key = (r.user_name || '').trim().toUpperCase();
-      if (!key) return;
-
-      const starIds = [r.star_1_id, r.star_2_id, r.star_3_id].filter(
-        (id) => id && typeof id === 'string' && id.trim() !== ''
-      );
-      const distinctStars = new Set(starIds);
-      const hasThreeDistinct = starIds.length === 3 && distinctStars.size === 3;
-
-      // Synchronize the lock state directly from the database column is_locked
-      const rawLocked = Boolean(r.is_locked === true || r.device_id === 'LOCKED');
-      const isLocked = hasThreeDistinct && rawLocked;
-
-      const entry: UserRoster = {
-        id: r.id,
-        room_code: (r.room_code || '').toUpperCase(),
-        user_name: key,
-        sport: r.sport || sport,
-        device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
-        star_1_id: r.star_1_id || '',
-        star_2_id: r.star_2_id || '',
-        star_3_id: r.star_3_id || '',
-        is_locked: isLocked,
-        updated_at: r.updated_at,
-      };
-      map.set(key, entry);
-      setSquadLockState(cleanRoom, key, isLocked, sport);
-    });
-
-    return Array.from(map.values());
-  } catch {
-    return localRosters;
+  } catch (apiErr) {
+    console.warn('Error fetching rosters from server API:', apiErr);
   }
+
+  // 2. Supabase fallback if configured
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('user_rosters')
+        .select('*')
+        .eq('room_code', cleanRoom)
+        .not('user_name', 'is', null)
+        .order('updated_at', { ascending: false });
+
+      if (!error && data) {
+        const sportFiltered = data.filter((r: any) => {
+          const rowSport = String(r.sport || 'nfl').toLowerCase();
+          return sport === 'nba' ? rowSport === 'nba' : rowSport !== 'nba';
+        });
+
+        const map = new Map<string, UserRoster>();
+        sportFiltered.forEach((r: any) => {
+          if (isGhostUser(r.user_name)) return;
+          const key = (r.user_name || '').trim().toUpperCase();
+          if (!key) return;
+
+          const starIds = [r.star_1_id, r.star_2_id, r.star_3_id].filter(
+            (id) => id && typeof id === 'string' && id.trim() !== ''
+          );
+          const distinctStars = new Set(starIds);
+          const hasThreeDistinct = starIds.length === 3 && distinctStars.size === 3;
+          const isLocked = hasThreeDistinct && Boolean(r.is_locked === true || r.device_id === 'LOCKED');
+
+          const entry: UserRoster = {
+            id: r.id,
+            room_code: (r.room_code || '').toUpperCase(),
+            user_name: key,
+            sport: r.sport || sport,
+            device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
+            star_1_id: r.star_1_id || '',
+            star_2_id: r.star_2_id || '',
+            star_3_id: r.star_3_id || '',
+            is_locked: isLocked,
+            updated_at: r.updated_at,
+          };
+          map.set(key, entry);
+          setSquadLockState(cleanRoom, key, isLocked, sport);
+        });
+
+        return Array.from(map.values());
+      }
+    } catch {}
+  }
+
+  return localRosters;
 }
 
 export async function deleteUserRoster(roomCode: string, userName: string, sport: SportId = 'nfl'): Promise<boolean> {
@@ -723,6 +780,7 @@ export async function deleteUserRoster(roomCode: string, userName: string, sport
   const cleanName = (userName || '').trim().toUpperCase();
   if (!cleanName) return false;
 
+  // Local storage cleanup
   try {
     const localKeys = [
       sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`,
@@ -736,9 +794,7 @@ export async function deleteUserRoster(roomCode: string, userName: string, sport
           const rosters: UserRoster[] = JSON.parse(raw);
           const filtered = rosters.filter((r) => r.user_name.toUpperCase() !== cleanName);
           localStorage.setItem(key, JSON.stringify(filtered));
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
     });
     localStorage.removeItem(`pixel_pros_roster_${cleanRoom}_${cleanName}`);
@@ -746,23 +802,24 @@ export async function deleteUserRoster(roomCode: string, userName: string, sport
     localStorage.removeItem(`pixel_pros_picks_locked_${cleanRoom}_${cleanName}`);
     localStorage.removeItem(`pixel_pros_picks_locked_${cleanRoom}_${cleanName}_${sport}`);
     localStorage.removeItem(`pixel_locked_${cleanRoom}_${cleanName}`);
+  } catch {}
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabase
-          .from('user_rosters')
-          .delete()
-          .eq('room_code', cleanRoom)
-          .eq('user_name', cleanName);
-      } catch {}
-    }
+  // Server API delete
+  try {
+    await apiFetch('/api/rosters', {
+      method: 'DELETE',
+      body: JSON.stringify({ room_code: cleanRoom, user_name: cleanName, sport }),
+    });
+  } catch {}
 
-    window.dispatchEvent(new CustomEvent('pixel_pros_roster_update', { detail: { room_code: cleanRoom, user_name: cleanName, deleted: true, sport } }));
-    return true;
-  } catch (err) {
-    console.warn('deleteUserRoster error:', err);
-    return false;
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('user_rosters').delete().eq('room_code', cleanRoom).eq('user_name', cleanName);
+    } catch {}
   }
+
+  window.dispatchEvent(new CustomEvent('pixel_pros_roster_update', { detail: { room_code: cleanRoom, user_name: cleanName, deleted: true, sport } }));
+  return true;
 }
 
 export async function resetRoomRosters(roomCode: string): Promise<boolean> {
@@ -779,22 +836,24 @@ export async function resetRoomRosters(roomCode: string): Promise<boolean> {
       }
     }
     keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {}
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabase
-          .from('user_rosters')
-          .delete()
-          .eq('room_code', cleanRoom);
-      } catch {}
-    }
+  // Server API reset
+  try {
+    await apiFetch('/api/rosters/reset', {
+      method: 'POST',
+      body: JSON.stringify({ room_code: cleanRoom }),
+    });
+  } catch {}
 
-    window.dispatchEvent(new CustomEvent('pixel_pros_roster_update', { detail: { room_code: cleanRoom, reset: true } }));
-    return true;
-  } catch (err) {
-    console.warn('resetRoomRosters error:', err);
-    return false;
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('user_rosters').delete().eq('room_code', cleanRoom);
+    } catch {}
   }
+
+  window.dispatchEvent(new CustomEvent('pixel_pros_roster_update', { detail: { room_code: cleanRoom, reset: true } }));
+  return true;
 }
 
 export async function renameUserRoster(
@@ -810,47 +869,51 @@ export async function renameUserRoster(
   if (!cleanOld || !cleanNew) return { success: false, error: 'Invalid squad name' };
   if (cleanOld === cleanNew) return { success: true };
 
+  // Local storage update
   try {
-    // 1. Update in Supabase
-    if (isSupabaseConfigured) {
-      const { error } = await supabase
+    const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      const rosters: UserRoster[] = JSON.parse(raw);
+      const idx = rosters.findIndex((r) => r.user_name.toUpperCase() === cleanOld);
+      if (idx >= 0) {
+        rosters[idx].user_name = cleanNew;
+        localStorage.setItem(localKey, JSON.stringify(rosters));
+      }
+    }
+    const oldLock = getSquadLockState(cleanRoom, cleanOld, sport);
+    setSquadLockState(cleanRoom, cleanNew, oldLock, sport);
+  } catch {}
+
+  // Server API rename
+  try {
+    await apiFetch('/api/rosters/rename', {
+      method: 'POST',
+      body: JSON.stringify({
+        room_code: cleanRoom,
+        old_user_name: cleanOld,
+        new_user_name: cleanNew,
+        sport,
+      }),
+    });
+  } catch {}
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase
         .from('user_rosters')
         .update({ user_name: cleanNew, updated_at: new Date().toISOString() })
         .eq('room_code', cleanRoom)
         .eq('user_name', cleanOld);
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    }
-
-    // 2. Update localStorage
-    const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
-    const raw = localStorage.getItem(localKey);
-    if (raw) {
-      try {
-        const rosters: UserRoster[] = JSON.parse(raw);
-        const idx = rosters.findIndex((r) => r.user_name.toUpperCase() === cleanOld);
-        if (idx >= 0) {
-          rosters[idx].user_name = cleanNew;
-          localStorage.setItem(localKey, JSON.stringify(rosters));
-        }
-      } catch {}
-    }
-
-    // Migrate lock state in local storage
-    const oldLock = getSquadLockState(cleanRoom, cleanOld, sport);
-    setSquadLockState(cleanRoom, cleanNew, oldLock, sport);
-
-    window.dispatchEvent(
-      new CustomEvent('pixel_pros_roster_update', {
-        detail: { room_code: cleanRoom, user_name: cleanNew, renamedFrom: cleanOld, sport },
-      })
-    );
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message || String(err) };
+    } catch {}
   }
+
+  window.dispatchEvent(
+    new CustomEvent('pixel_pros_roster_update', {
+      detail: { room_code: cleanRoom, user_name: cleanNew, renamedFrom: cleanOld, sport },
+    })
+  );
+  return { success: true };
 }
 
 export async function toggleSquadLock(
@@ -863,10 +926,23 @@ export async function toggleSquadLock(
   const cleanUser = (userName || '').trim().toUpperCase();
   if (!cleanUser) return false;
 
-  try {
-    setSquadLockState(cleanRoom, cleanUser, isLocked, sport);
+  setSquadLockState(cleanRoom, cleanUser, isLocked, sport);
 
-    if (isSupabaseConfigured) {
+  // Server API lock
+  try {
+    await apiFetch('/api/rosters/lock', {
+      method: 'POST',
+      body: JSON.stringify({
+        room_code: cleanRoom,
+        user_name: cleanUser,
+        is_locked: isLocked,
+        sport,
+      }),
+    });
+  } catch {}
+
+  if (isSupabaseConfigured) {
+    try {
       await supabase
         .from('user_rosters')
         .update({
@@ -876,18 +952,15 @@ export async function toggleSquadLock(
         })
         .eq('room_code', cleanRoom)
         .eq('user_name', cleanUser);
-    }
-
-    window.dispatchEvent(
-      new CustomEvent('pixel_pros_roster_update', {
-        detail: { room_code: cleanRoom, user_name: cleanUser, lockChanged: true, isLocked, sport },
-      })
-    );
-    return true;
-  } catch (err) {
-    console.warn('toggleSquadLock error:', err);
-    return false;
+    } catch {}
   }
+
+  window.dispatchEvent(
+    new CustomEvent('pixel_pros_roster_update', {
+      detail: { room_code: cleanRoom, user_name: cleanUser, lockChanged: true, isLocked, sport },
+    })
+  );
+  return true;
 }
 
 export async function setAllSquadsLock(
@@ -896,8 +969,37 @@ export async function setAllSquadsLock(
   sport: SportId = 'nfl'
 ): Promise<boolean> {
   const cleanRoom = (roomCode || 'COUCH').trim().toUpperCase();
+
+  // Local storage update
   try {
-    if (isSupabaseConfigured) {
+    const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      const rosters: UserRoster[] = JSON.parse(raw);
+      rosters.forEach((r) => {
+        r.is_locked = isLocked;
+        r.device_id = isLocked ? 'LOCKED' : 'UNLOCKED';
+        setSquadLockState(cleanRoom, r.user_name, isLocked, sport);
+      });
+      localStorage.setItem(localKey, JSON.stringify(rosters));
+    }
+  } catch {}
+
+  // Server API lock all
+  try {
+    await apiFetch('/api/rosters/lock', {
+      method: 'POST',
+      body: JSON.stringify({
+        room_code: cleanRoom,
+        is_locked: isLocked,
+        sport,
+        all: true,
+      }),
+    });
+  } catch {}
+
+  if (isSupabaseConfigured) {
+    try {
       await supabase
         .from('user_rosters')
         .update({
@@ -906,33 +1008,15 @@ export async function setAllSquadsLock(
           updated_at: new Date().toISOString(),
         })
         .eq('room_code', cleanRoom);
-    }
-
-    // Also update local rosters
-    const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
-    const raw = localStorage.getItem(localKey);
-    if (raw) {
-      try {
-        const rosters: UserRoster[] = JSON.parse(raw);
-        rosters.forEach((r) => {
-          r.is_locked = isLocked;
-          r.device_id = isLocked ? 'LOCKED' : 'UNLOCKED';
-          setSquadLockState(cleanRoom, r.user_name, isLocked, sport);
-        });
-        localStorage.setItem(localKey, JSON.stringify(rosters));
-      } catch {}
-    }
-
-    window.dispatchEvent(
-      new CustomEvent('pixel_pros_roster_update', {
-        detail: { room_code: cleanRoom, allLockChanged: true, isLocked, sport },
-      })
-    );
-    return true;
-  } catch (err) {
-    console.warn('setAllSquadsLock error:', err);
-    return false;
+    } catch {}
   }
+
+  window.dispatchEvent(
+    new CustomEvent('pixel_pros_roster_update', {
+      detail: { room_code: cleanRoom, allLockChanged: true, isLocked, sport },
+    })
+  );
+  return true;
 }
 
 export async function clearSquadStars(
@@ -944,10 +1028,39 @@ export async function clearSquadStars(
   const cleanUser = (userName || '').trim().toUpperCase();
   if (!cleanUser) return false;
 
-  try {
-    setSquadLockState(cleanRoom, cleanUser, false, sport);
+  setSquadLockState(cleanRoom, cleanUser, false, sport);
 
-    if (isSupabaseConfigured) {
+  try {
+    const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      const rosters: UserRoster[] = JSON.parse(raw);
+      const target = rosters.find((r) => r.user_name.toUpperCase() === cleanUser);
+      if (target) {
+        target.star_1_id = '';
+        target.star_2_id = '';
+        target.star_3_id = '';
+        target.is_locked = false;
+        target.device_id = 'UNLOCKED';
+        localStorage.setItem(localKey, JSON.stringify(rosters));
+      }
+    }
+  } catch {}
+
+  // Server API clear
+  try {
+    await apiFetch('/api/rosters/clear-stars', {
+      method: 'POST',
+      body: JSON.stringify({
+        room_code: cleanRoom,
+        user_name: cleanUser,
+        sport,
+      }),
+    });
+  } catch {}
+
+  if (isSupabaseConfigured) {
+    try {
       await supabase
         .from('user_rosters')
         .update({
@@ -960,35 +1073,15 @@ export async function clearSquadStars(
         })
         .eq('room_code', cleanRoom)
         .eq('user_name', cleanUser);
-    }
-
-    const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
-    const raw = localStorage.getItem(localKey);
-    if (raw) {
-      try {
-        const rosters: UserRoster[] = JSON.parse(raw);
-        const target = rosters.find((r) => r.user_name.toUpperCase() === cleanUser);
-        if (target) {
-          target.star_1_id = '';
-          target.star_2_id = '';
-          target.star_3_id = '';
-          target.is_locked = false;
-          target.device_id = 'UNLOCKED';
-          localStorage.setItem(localKey, JSON.stringify(rosters));
-        }
-      } catch {}
-    }
-
-    window.dispatchEvent(
-      new CustomEvent('pixel_pros_roster_update', {
-        detail: { room_code: cleanRoom, user_name: cleanUser, clearedStars: true, sport },
-      })
-    );
-    return true;
-  } catch (err) {
-    console.warn('clearSquadStars error:', err);
-    return false;
+    } catch {}
   }
+
+  window.dispatchEvent(
+    new CustomEvent('pixel_pros_roster_update', {
+      detail: { room_code: cleanRoom, user_name: cleanUser, clearedStars: true, sport },
+    })
+  );
+  return true;
 }
 
 export function subscribeToRoomRosters(
@@ -1000,8 +1093,8 @@ export function subscribeToRoomRosters(
   const onUpdate: () => void = typeof sportOrCb === 'function' ? sportOrCb : (maybeCb || (() => {}));
 
   const clean = (roomCode || (sport === 'nba' ? 'HOOPS' : 'COUCH')).trim().toUpperCase();
-  const channelName = `room-${clean}-${sport}`;
 
+  // 1. Listen for in-tab window events
   const handleLocalUpdate = (e: any) => {
     const detail = e?.detail;
     if (detail) {
@@ -1012,39 +1105,82 @@ export function subscribeToRoomRosters(
   };
   window.addEventListener('pixel_pros_roster_update', handleLocalUpdate);
 
-  if (!isSupabaseConfigured) {
-    return () => {
-      window.removeEventListener('pixel_pros_roster_update', handleLocalUpdate);
-    };
+  // 2. Server-Sent Events (SSE) stream for instant real-time pushes across all devices
+  let eventSource: EventSource | null = null;
+  try {
+    if (typeof EventSource !== 'undefined') {
+      eventSource = new EventSource(`/api/realtime?roomCode=${encodeURIComponent(clean)}&sport=${encodeURIComponent(sport)}`);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.room_code && data.room_code.toUpperCase() === clean) {
+            onUpdate();
+          }
+        } catch {}
+      };
+      eventSource.onerror = () => {
+        // SSE auto-reconnects natively; polling below acts as fallback
+      };
+    }
+  } catch (e) {
+    console.warn('EventSource initialization warning:', e);
   }
 
-  let channel: any = null;
-  try {
-    channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_rosters',
-        },
-        () => {
+  // 3. Smart polling fallback (every 2.5s) to guarantee background/mobile sync across devices
+  let lastRosterSnapshot = '';
+  const pollInterval = setInterval(async () => {
+    try {
+      const res = await apiFetch<{ success: boolean; rosters?: any[] }>(
+        `/api/rosters?roomCode=${encodeURIComponent(clean)}&sport=${encodeURIComponent(sport)}`
+      );
+      if (res && res.success && Array.isArray(res.rosters)) {
+        const snapshot = JSON.stringify(
+          res.rosters.map((r) => `${r.user_name}:${r.star_1_id}:${r.star_2_id}:${r.star_3_id}:${r.is_locked}`)
+        );
+        if (lastRosterSnapshot && snapshot !== lastRosterSnapshot) {
+          lastRosterSnapshot = snapshot;
           onUpdate();
+        } else if (!lastRosterSnapshot) {
+          lastRosterSnapshot = snapshot;
         }
-      )
-      .subscribe();
-  } catch (err) {
-    console.warn(`Error subscribing to channel ${channelName}:`, err);
+      }
+    } catch {}
+  }, 2500);
+
+  // 4. Supabase realtime channel if configured
+  let channel: any = null;
+  if (isSupabaseConfigured) {
+    try {
+      channel = supabase
+        .channel(`room-${clean}-${sport}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_rosters',
+          },
+          () => {
+            onUpdate();
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn(`Error subscribing to channel room-${clean}-${sport}:`, err);
+    }
   }
 
   return () => {
     window.removeEventListener('pixel_pros_roster_update', handleLocalUpdate);
-    if (channel) {
+    if (eventSource) {
+      eventSource.close();
+    }
+    clearInterval(pollInterval);
+    if (channel && isSupabaseConfigured) {
       try {
         supabase.removeChannel(channel);
       } catch (err) {
-        console.warn(`Error removing channel ${channelName}:`, err);
+        console.warn(`Error removing channel:`, err);
       }
     }
   };
