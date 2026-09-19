@@ -4,6 +4,7 @@
  */
 
 import { Competitor, Match } from '../types';
+import { NFL_ROSTER_MANIFEST, validateTeamRoster } from '../data/nflRosterManifest';
 
 export interface TeamMeta {
   code: string;
@@ -214,7 +215,70 @@ export function formatRealtimeGameSituation(
   return compact.singleLine;
 }
 
-export const DEFAULT_NFL_COMPETITORS: Competitor[] = [
+/**
+ * Master Manifest Competitor Builder:
+ * Converts the locked 32-team Starter Manifest into immutable Competitors.
+ * Strictly guarantees every NFL team has:
+ * - >= 1 QB
+ * - >= 2 RBs
+ * - >= 2 WRs
+ * - >= 1 TE
+ */
+export function buildManifestCompetitors(): Competitor[] {
+  const list: Competitor[] = [];
+
+  for (const [teamCode, athletes] of Object.entries(NFL_ROSTER_MANIFEST)) {
+    // Hard runtime assertion: throws if any team violates the Core Starter Quota
+    validateTeamRoster(teamCode, athletes);
+
+    const teamFullName = getTeamFullName(teamCode);
+    const colors = getTeamColors(teamCode);
+
+    for (const ath of athletes) {
+      const isPlaymaker = ath.position === 'QB';
+      const isScorer = ath.position === 'WR' || ath.position === 'K';
+      const posGeneric = isPlaymaker ? 'PLAYMAKER' : isScorer ? 'SCORER' : 'OFFENSE';
+
+      list.push({
+        id: `nfl_${ath.athleteId}`,
+        athleteId: ath.athleteId,
+        sportId: 'nfl',
+        displayName: ath.displayName,
+        shortName: ath.shortName,
+        uniformNumber: ath.uniformNumber,
+        teamName: teamFullName,
+        teamCode: teamCode,
+        positionGeneric: posGeneric,
+        position: ath.position,
+        rating: 90,
+        score: 0,
+        stats: {
+          pass_yds: 0,
+          rush_yds: 0,
+          rec_yds: 0,
+          tds: 0,
+          fgs: 0,
+          stops: 0,
+          total_yards: 0,
+          primaryMetricLabel: 'Touchdowns',
+          primaryMetricValue: 0,
+        },
+        badges: ['gold_star'],
+        avatar: {
+          helmetColor: colors.helmet,
+          jerseyColor: colors.jersey,
+          stripeColor: colors.stripe,
+          skinTone: ath.skinTone || '#e0ac69',
+          number: ath.uniformNumber,
+        },
+      });
+    }
+  }
+
+  return list;
+}
+
+const RAW_KNOWN_COMPETITORS: Competitor[] = [
   {
     id: 'mahomes',
     sportId: 'nfl',
@@ -969,6 +1033,52 @@ export const DEFAULT_NFL_COMPETITORS: Competitor[] = [
     },
   },
 ];
+
+function initializeDefaultNFLCompetitors(): Competitor[] {
+  const baseList = buildManifestCompetitors();
+  const map = new Map<string, Competitor>();
+
+  for (const c of baseList) {
+    const key = `${c.displayName.trim().toLowerCase()}__${c.teamCode.trim().toUpperCase()}`;
+    map.set(key, c);
+  }
+
+  for (const raw of RAW_KNOWN_COMPETITORS) {
+    if (!raw || !raw.displayName) continue;
+    const rawKey = `${raw.displayName.trim().toLowerCase()}__${(raw.teamCode || '').trim().toUpperCase()}`;
+    if (map.has(rawKey)) {
+      const existing = map.get(rawKey)!;
+      map.set(rawKey, {
+        ...existing,
+        score: raw.score ?? existing.score,
+        rating: raw.rating ?? existing.rating,
+        badges: raw.badges ?? existing.badges,
+        stats: { ...existing.stats, ...raw.stats },
+        avatar: { ...existing.avatar, ...raw.avatar, number: existing.uniformNumber },
+      });
+    } else {
+      // Try matching by display name
+      const nameOnly = raw.displayName.trim().toLowerCase();
+      for (const [mk, item] of map.entries()) {
+        if (item.displayName.trim().toLowerCase() === nameOnly) {
+          map.set(mk, {
+            ...item,
+            score: raw.score ?? item.score,
+            rating: raw.rating ?? item.rating,
+            badges: raw.badges ?? item.badges,
+            stats: { ...item.stats, ...raw.stats },
+            avatar: { ...item.avatar, ...raw.avatar, number: item.uniformNumber },
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+export const DEFAULT_NFL_COMPETITORS: Competitor[] = initializeDefaultNFLCompetitors();
 
 export const DEFAULT_NFL_MATCHES: Match[] = [
   {

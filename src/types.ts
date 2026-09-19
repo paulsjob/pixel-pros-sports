@@ -18,6 +18,8 @@ export interface AvatarConfig {
 
 export interface Competitor {
   id: string;
+  athleteId?: string;
+  athlete_id?: string;
   sportId: SportId;
   displayName: string;
   shortName: string;

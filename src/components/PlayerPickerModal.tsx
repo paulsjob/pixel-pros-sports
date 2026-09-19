@@ -71,14 +71,28 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
     const filtered = matches.filter((m) => {
       const matchSport = (m.sportId || (m as any).sport || '').toLowerCase();
       if (matchSport && matchSport !== sport.toLowerCase()) return false;
-      // STRICT FILTER: Only show games for the week that we are on (no past weeks, no future weeks)
+      // STRICT FILTER: Only show games for the current week
       if (sport === 'nfl') {
         if (m.week && m.week !== currentNFLWeek) return false;
       }
+      // GUARANTEE A: In the Star Picker, ONLY load games where state is 'pre' / 'in' (exclude 'final' / 'post')
+      const isFinal =
+        m.status === 'final' ||
+        (m as any).status?.type?.state === 'post' ||
+        (m as any).quarterTime?.toLowerCase().includes('final') ||
+        (m as any).periodLabel?.toLowerCase().includes('final');
+      return !isFinal;
+    });
+
+    // Fallback: If all games are completed (e.g. post-Monday night), show all week matches
+    const listToUse = filtered.length > 0 ? filtered : matches.filter((m) => {
+      const matchSport = (m.sportId || (m as any).sport || '').toLowerCase();
+      if (matchSport && matchSport !== sport.toLowerCase()) return false;
+      if (sport === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
       return true;
     });
 
-    return [...filtered].sort((a, b) => {
+    return [...listToUse].sort((a, b) => {
       if (a.status === 'live' && b.status !== 'live') return -1;
       if (b.status === 'live' && a.status !== 'live') return 1;
       if (a.status === 'upcoming' && b.status === 'final') return -1;
@@ -126,19 +140,19 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
     // STRICT DEDUPLICATION: Ensure no player ever appears more than once under any circumstance
     const seenIds = new Set<string>();
-    const seenPlayerKeys = new Set<string>();
+    const seenNames = new Set<string>();
     const deduped: Competitor[] = [];
 
     for (const player of list) {
       if (!player) continue;
       const pid = String(player.id || '').trim();
-      const normKey = `${(player.displayName || player.shortName || '').trim().toLowerCase()}_${(player.teamCode || '').trim().toUpperCase()}`;
+      const normName = (player.displayName || player.shortName || '').trim().toLowerCase();
 
       if (pid && seenIds.has(pid)) continue;
-      if (normKey && seenPlayerKeys.has(normKey)) continue;
+      if (normName && seenNames.has(normName)) continue;
 
       if (pid) seenIds.add(pid);
-      if (normKey) seenPlayerKeys.add(normKey);
+      if (normName) seenNames.add(normName);
       deduped.push(player);
     }
 

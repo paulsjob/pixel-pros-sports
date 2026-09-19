@@ -28,6 +28,22 @@ export interface ESPNSyncResult {
   details?: string[];
 }
 
+// Official ESPN NFL team IDs for all 32 franchises
+const ESPN_NFL_TEAM_ID_MAP: Record<string, string> = {
+  '1': 'ATL', '2': 'BUF', '3': 'CHI', '4': 'CIN', '5': 'CLE', '6': 'DAL', '7': 'DEN', '8': 'DET',
+  '9': 'GB', '10': 'TEN', '11': 'IND', '12': 'KC', '13': 'LV', '14': 'LAR', '15': 'MIA', '16': 'MIN',
+  '17': 'NE', '18': 'NO', '19': 'NYG', '20': 'NYJ', '21': 'PHI', '22': 'ARI', '23': 'PIT', '24': 'LAC',
+  '25': 'SF', '26': 'SEA', '27': 'TB', '28': 'WSH', '29': 'CAR', '30': 'JAX', '33': 'BAL', '34': 'HOU',
+};
+
+// Official ESPN NBA team IDs for all 30 franchises
+const ESPN_NBA_TEAM_ID_MAP: Record<string, string> = {
+  '1': 'ATL', '2': 'BOS', '3': 'NOP', '4': 'CHI', '5': 'CLE', '6': 'DAL', '7': 'DEN', '8': 'DET',
+  '9': 'GSW', '10': 'HOU', '11': 'IND', '12': 'LAC', '13': 'LAL', '14': 'MIA', '15': 'MIL', '16': 'MIN',
+  '17': 'BKN', '18': 'NYK', '19': 'ORL', '20': 'PHI', '21': 'PHX', '22': 'POR', '23': 'SAC', '24': 'SAS',
+  '25': 'OKC', '26': 'UTA', '27': 'WAS', '28': 'TOR', '29': 'MEM', '30': 'CHA',
+};
+
 const NFL_TEAM_CODE_MAP: Record<string, string> = {
   KAN: 'KC',
   'KANSAS CITY': 'KC',
@@ -99,12 +115,13 @@ export function setCurrentNFLWeek(weekNumber: number) {
 
 /**
  * Kid-friendly whole number Finger-Math points calculation for NFL
+ * (Touchdowns = 6, Field Goals = 3, Big Stops = 2, Scrimmage Yards = 1 pt per 10 yards)
  */
 function calculateNFLPoints(tds: number, fgs: number, stops: number, yards: number): number {
   const tdPts = (tds || 0) * 6;
   const fgPts = (fgs || 0) * 3;
   const defPts = (stops || 0) * 2;
-  const ydPts = Math.floor((yards || 0) / 50);
+  const ydPts = Math.floor((yards || 0) / 10);
   return tdPts + fgPts + defPts + ydPts;
 }
 
@@ -244,78 +261,91 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
         updated_at: new Date().toISOString(),
       });
 
-      // If game is live, attempt to fetch live boxscore summary for detailed player stats
-      if (status === 'live' && sport === 'nfl') {
+      // For each game, attempt to fetch full boxscore summary to extract actual in-game player statistics
+      let fetchedBoxscore = false;
+      if (sport === 'nfl') {
         try {
           const sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${evId}`, {
-            signal: AbortSignal.timeout(2500),
+            signal: AbortSignal.timeout(2800),
           });
           if (sumRes.ok) {
             const sumData = await sumRes.json();
             const playerGroups = sumData.boxscore?.players || [];
-            for (const pg of playerGroups) {
-              const teamAbbr = normalizeTeamCode(pg.team?.abbreviation || homeCode);
-              const statGroups = pg.statistics || [];
-              for (const sg of statGroups) {
-                const statCat = String(sg.name || '').toLowerCase();
-                const athletes = sg.athletes || [];
-                for (const item of athletes) {
-                  const ath = item.athlete;
-                  if (!ath) continue;
-                  const dName = ath.displayName || ath.fullName;
-                  if (!dName) continue;
-                  const athKey = `${dName.trim().toLowerCase()}_${teamAbbr.toUpperCase()}`;
-                  const statsArr: string[] = item.stats || [];
+            if (playerGroups.length > 0) {
+              fetchedBoxscore = true;
+              for (let pgIdx = 0; pgIdx < playerGroups.length; pgIdx++) {
+                const pg = playerGroups[pgIdx];
+                const pgTeamId = String(pg.team?.id || '');
+                let teamAbbr = '';
+                if (pgTeamId === String(awayItem?.team?.id)) teamAbbr = awayCode;
+                else if (pgTeamId === String(homeItem?.team?.id)) teamAbbr = homeCode;
+                else if (pg.team?.abbreviation) teamAbbr = normalizeTeamCode(pg.team.abbreviation);
+                else if (ESPN_NFL_TEAM_ID_MAP[pgTeamId]) teamAbbr = ESPN_NFL_TEAM_ID_MAP[pgTeamId];
+                else teamAbbr = pgIdx === 0 ? awayCode : homeCode;
 
-                  let existing = liveAthletesMap.get(athKey);
-                  if (!existing) {
-                    existing = {
-                      id: `${sport}-${ath.id || dName.toLowerCase().replace(/\s+/g, '-')}`,
-                      sportId: sport,
-                      displayName: dName,
-                      shortName: (ath.shortName || ath.lastName || dName.split(' ').pop() || 'STAR').toUpperCase(),
-                      uniformNumber: parseInt(ath.jersey || '10', 10),
-                      teamCode: teamAbbr,
-                      position: ath.position?.abbreviation || 'STAR',
-                      positionGeneric: ath.position?.abbreviation === 'QB' ? 'PLAYMAKER' : ath.position?.abbreviation === 'K' ? 'SCORER' : 'OFFENSE',
-                      pass_yds: 0,
-                      rush_yds: 0,
-                      rec_yds: 0,
-                      tds: 0,
-                      fgs: 0,
-                      stops: 0,
-                      total_yards: 0,
-                      score: 6,
-                    };
-                    liveAthletesMap.set(athKey, existing);
+                const statGroups = pg.statistics || [];
+                for (const sg of statGroups) {
+                  const catName = String(sg.name || '').toLowerCase();
+                  const athletes = sg.athletes || [];
+                  for (const item of athletes) {
+                    const ath = item.athlete;
+                    if (!ath) continue;
+                    const athId = String(ath.id || '');
+                    const dName = ath.displayName || ath.fullName;
+                    if (!dName) continue;
+                    // Key by unique athlete ID so one player NEVER gets duplicated across passing/rushing/receiving!
+                    const athKey = athId ? `ath_${athId}` : `name_${dName.trim().toLowerCase()}`;
+                    const statsArr: string[] = item.stats || [];
+
+                    let existing = liveAthletesMap.get(athKey);
+                    if (!existing) {
+                      existing = {
+                        id: `nfl_${athId || dName.toLowerCase().replace(/\s+/g, '-')}`,
+                        athleteId: athId,
+                        sportId: 'nfl',
+                        displayName: dName,
+                        shortName: (ath.shortName || ath.lastName || dName.split(' ').pop() || 'STAR').toUpperCase(),
+                        uniformNumber: parseInt(ath.jersey || '10', 10),
+                        teamCode: teamAbbr,
+                        position: ath.position?.abbreviation || 'STAR',
+                        positionGeneric: ath.position?.abbreviation === 'QB' ? 'PLAYMAKER' : ath.position?.abbreviation === 'K' ? 'SCORER' : 'OFFENSE',
+                        pass_yds: 0,
+                        rush_yds: 0,
+                        rec_yds: 0,
+                        tds: 0,
+                        fgs: 0,
+                        stops: 0,
+                        total_yards: 0,
+                        score: 0,
+                      };
+                      liveAthletesMap.set(athKey, existing);
+                    } else if (teamAbbr && (!existing.teamCode || existing.teamCode === 'PRO')) {
+                      existing.teamCode = teamAbbr;
+                    }
+
+                    if (catName === 'passing' && statsArr.length >= 4) {
+                      const yds = parseInt(statsArr[1] || '0', 10) || 0;
+                      const td = parseInt(statsArr[3] || '0', 10) || 0;
+                      existing.pass_yds = Math.max(existing.pass_yds, yds);
+                      existing.tds += td;
+                    } else if (catName === 'rushing' && statsArr.length >= 4) {
+                      const yds = parseInt(statsArr[1] || '0', 10) || 0;
+                      const td = parseInt(statsArr[3] || '0', 10) || 0;
+                      existing.rush_yds = Math.max(existing.rush_yds, yds);
+                      existing.tds += td;
+                    } else if (catName === 'receiving' && statsArr.length >= 4) {
+                      const yds = parseInt(statsArr[1] || '0', 10) || 0;
+                      const td = parseInt(statsArr[3] || '0', 10) || 0;
+                      existing.rec_yds = Math.max(existing.rec_yds, yds);
+                      existing.tds += td;
+                    } else if (catName === 'kicking' && statsArr.length >= 4) {
+                      const fgMade = parseInt((statsArr[0] || '0/0').split('/')[0] || '0', 10) || 0;
+                      existing.fgs = Math.max(existing.fgs, fgMade);
+                    } else if (catName === 'defensive' && statsArr.length >= 3) {
+                      const sacks = parseInt(statsArr[2] || '0', 10) || 0;
+                      if (sacks > 0) existing.stops += sacks;
+                    }
                   }
-
-                  if (statCat === 'passing' && statsArr.length >= 4) {
-                    const yds = parseInt(statsArr[1] || '0', 10) || 0;
-                    const td = parseInt(statsArr[3] || '0', 10) || 0;
-                    existing.pass_yds = Math.max(existing.pass_yds, yds);
-                    existing.tds = Math.max(existing.tds, td);
-                  } else if (statCat === 'rushing' && statsArr.length >= 4) {
-                    const yds = parseInt(statsArr[1] || '0', 10) || 0;
-                    const td = parseInt(statsArr[3] || '0', 10) || 0;
-                    existing.rush_yds = Math.max(existing.rush_yds, yds);
-                    if (td > 0) existing.tds += td;
-                  } else if (statCat === 'receiving' && statsArr.length >= 4) {
-                    const yds = parseInt(statsArr[1] || '0', 10) || 0;
-                    const td = parseInt(statsArr[3] || '0', 10) || 0;
-                    existing.rec_yds = Math.max(existing.rec_yds, yds);
-                    if (td > 0) existing.tds += td;
-                  } else if (statCat === 'kicking' && statsArr.length >= 4) {
-                    const fgMade = parseInt((statsArr[0] || '0/0').split('/')[0] || '0', 10) || 0;
-                    existing.fgs = Math.max(existing.fgs, fgMade);
-                  } else if (statCat === 'defensive' && statsArr.length >= 3) {
-                    const sacks = parseInt(statsArr[2] || '0', 10) || 0;
-                    if (sacks > 0) existing.stops += sacks;
-                  }
-
-                  existing.total_yards = existing.pass_yds + existing.rush_yds + existing.rec_yds;
-                  const pts = calculateNFLPoints(existing.tds, existing.fgs, existing.stops, existing.total_yards);
-                  existing.score = Math.max(pts, 6);
                 }
               }
             }
@@ -325,7 +355,7 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
         }
       }
 
-      // Extract player leaders from game competition (robust scoreboard fallback)
+      // If boxscore was not fetched or for additional stars, extract player leaders from game competition
       const leadersList = comp.leaders || [];
       for (const cat of leadersList) {
         const catName = String(cat.name || '').toLowerCase();
@@ -335,15 +365,35 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
           const ath = leaderItem.athlete;
           if (!ath) continue;
 
-          const athId = `${sport}-${ath.id}`;
+          const athId = String(ath.id || '');
           const displayName = ath.displayName || ath.fullName || 'Pro Star';
-          const shortName = (ath.shortName || ath.lastName || displayName.split(' ').pop() || 'STAR').toUpperCase();
-          const athTeam = normalizeTeamCode(ath.team?.abbreviation || homeCode);
-          const uniformNumber = parseInt(ath.jersey || '10', 10);
-          const displayVal = String(leaderItem.displayValue || '');
-          const athKey = `${displayName.trim().toLowerCase()}_${athTeam.toUpperCase()}`;
+          const athKey = athId ? `ath_${athId}` : `name_${displayName.trim().toLowerCase()}`;
+
+          // Precise Team Assignment: Check if athlete belongs to away or home team
+          const leaderTeamId = String(leaderItem.team?.id || ath.team?.id || '');
+          let athTeam = '';
+          if (leaderTeamId === String(awayItem?.team?.id)) {
+            athTeam = awayCode;
+          } else if (leaderTeamId === String(homeItem?.team?.id)) {
+            athTeam = homeCode;
+          } else if (sport === 'nfl' && ESPN_NFL_TEAM_ID_MAP[leaderTeamId]) {
+            athTeam = ESPN_NFL_TEAM_ID_MAP[leaderTeamId];
+          } else if (sport === 'nba' && ESPN_NBA_TEAM_ID_MAP[leaderTeamId]) {
+            athTeam = ESPN_NBA_TEAM_ID_MAP[leaderTeamId];
+          } else if (ath.team?.abbreviation) {
+            athTeam = normalizeTeamCode(ath.team.abbreviation);
+          } else if (leaderItem.team?.abbreviation) {
+            athTeam = normalizeTeamCode(leaderItem.team.abbreviation);
+          } else {
+            // Check default rosters for known team
+            const baseList = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+            const match = baseList.find((b) => b.displayName.toLowerCase() === displayName.toLowerCase());
+            athTeam = match ? match.teamCode : awayCode;
+          }
 
           let existing = liveAthletesMap.get(athKey);
+          const uniformNumber = parseInt(ath.jersey || '10', 10);
+          const displayVal = String(leaderItem.displayValue || '');
 
           if (sport === 'nfl') {
             let yards = 0;
@@ -366,10 +416,11 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
 
             if (!existing) {
               existing = {
-                id: athId,
+                id: `nfl_${athId || displayName.toLowerCase().replace(/\s+/g, '-')}`,
+                athleteId: athId,
                 sportId: 'nfl',
                 displayName,
-                shortName,
+                shortName: (ath.shortName || ath.lastName || displayName.split(' ').pop() || 'STAR').toUpperCase(),
                 uniformNumber,
                 teamCode: athTeam,
                 position: ath.position?.abbreviation || 'STAR',
@@ -381,9 +432,13 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
                 fgs: 0,
                 stops: 0,
                 total_yards: 0,
-                score: 6,
+                score: 0,
               };
               liveAthletesMap.set(athKey, existing);
+            } else {
+              if (athTeam && (!existing.teamCode || existing.teamCode === 'PRO')) {
+                existing.teamCode = athTeam;
+              }
             }
 
             if (catName.includes('pass')) existing.pass_yds = Math.max(existing.pass_yds, yards);
@@ -392,10 +447,6 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
             if (tds > 0) existing.tds = Math.max(existing.tds, tds);
             if (fgs > 0) existing.fgs = Math.max(existing.fgs, fgs);
             if (stops > 0) existing.stops = Math.max(existing.stops, stops);
-
-            existing.total_yards = existing.pass_yds + existing.rush_yds + existing.rec_yds;
-            const points = calculateNFLPoints(existing.tds, existing.fgs, existing.stops, existing.total_yards);
-            existing.score = Math.max(points, 6);
           } else {
             // NBA Parsing
             let pts = 20;
@@ -406,19 +457,18 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
 
             const ptsMatch = displayVal.match(/(\d+)\s*(?:PTS|pts)/i);
             if (ptsMatch) pts = parseInt(ptsMatch[1], 10);
-
             const rebMatch = displayVal.match(/(\d+)\s*(?:REB|reb)/i);
             if (rebMatch) reb = parseInt(rebMatch[1], 10);
-
             const astMatch = displayVal.match(/(\d+)\s*(?:AST|ast)/i);
             if (astMatch) ast = parseInt(astMatch[1], 10);
 
             if (!existing) {
               existing = {
-                id: athId,
+                id: `nba_${athId || displayName.toLowerCase().replace(/\s+/g, '-')}`,
+                athleteId: athId,
                 sportId: 'nba',
                 displayName,
-                shortName,
+                shortName: (ath.shortName || ath.lastName || displayName.split(' ').pop() || 'STAR').toUpperCase(),
                 uniformNumber,
                 teamCode: athTeam,
                 position: ath.position?.abbreviation || 'G',
@@ -428,44 +478,58 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
                 reb,
                 ast,
                 stops,
-                score: Math.max(calculateNBAPoints(pts, threes, reb, ast, stops), 12),
+                score: 0,
               };
               liveAthletesMap.set(athKey, existing);
             } else {
+              if (athTeam && (!existing.teamCode || existing.teamCode === 'PRO')) {
+                existing.teamCode = athTeam;
+              }
               existing.pts = Math.max(existing.pts || 0, pts);
               existing.threes = Math.max(existing.threes || 0, threes);
               existing.reb = Math.max(existing.reb || 0, reb);
               existing.ast = Math.max(existing.ast || 0, ast);
               existing.stops = Math.max(existing.stops || 0, stops);
-              existing.score = Math.max(calculateNBAPoints(existing.pts, existing.threes, existing.reb, existing.ast, existing.stops), 12);
             }
           }
         }
       }
     }
 
-    // Merge live athlete stats with base competitors to create a complete, deduplicated roster!
+    // Compute whole-number fantasy score ONCE for each unique athlete
+    for (const ath of liveAthletesMap.values()) {
+      if (sport === 'nfl') {
+        ath.total_yards = (ath.pass_yds || 0) + (ath.rush_yds || 0) + (ath.rec_yds || 0);
+        ath.score = calculateNFLPoints(ath.tds || 0, ath.fgs || 0, ath.stops || 0, ath.total_yards);
+      } else {
+        ath.score = calculateNBAPoints(ath.pts || 0, ath.threes || 0, ath.reb || 0, ath.ast || 0, ath.stops || 0);
+      }
+    }
+
+    // Merge live athlete stats with base competitors, keyed STRICTLY by normalized name to guarantee NO DUPLICATES!
     const baseCompetitors = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
     const finalCompetitorsMap = new Map<string, Competitor>();
 
-    // 1. Seed with base competitors
+    // 1. Seed base competitors
     for (const base of baseCompetitors) {
-      const key = `${(base.displayName || '').trim().toLowerCase()}_${(base.teamCode || '').trim().toUpperCase()}`;
-      finalCompetitorsMap.set(key, { ...base });
+      const normName = (base.displayName || '').trim().toLowerCase();
+      finalCompetitorsMap.set(normName, { ...base });
     }
 
-    // 2. Overlay live athlete data
-    for (const [key, live] of liveAthletesMap.entries()) {
-      const teamColors = sport === 'nba' ? getNBATeamColors(live.teamCode) : getTeamColors(live.teamCode);
+    // 2. Overlay live athlete data (updates ONLY stats and points, teamCode and uniformNumber are immutable!)
+    for (const live of liveAthletesMap.values()) {
+      const normName = (live.displayName || '').trim().toLowerCase();
 
-      if (finalCompetitorsMap.has(key)) {
-        const existing = finalCompetitorsMap.get(key)!;
-        const liveScore = Math.max(live.score, existing.score);
-        finalCompetitorsMap.set(key, {
+      if (finalCompetitorsMap.has(normName)) {
+        const existing = finalCompetitorsMap.get(normName)!;
+        // IMMUTABLE TEAM & UNIFORM: Do NOT allow live stats engine to swap player's team or jersey!
+        const finalScore = Math.max(live.score, existing.score || 0);
+
+        finalCompetitorsMap.set(normName, {
           ...existing,
-          score: liveScore,
-          rating: liveScore > 25 ? 99 : existing.rating,
-          badges: liveScore > 20 ? ['gold_star', 'diamond_crystal'] : existing.badges,
+          score: finalScore,
+          rating: finalScore > 25 ? 99 : existing.rating,
+          badges: finalScore > 20 ? ['gold_star', 'diamond_crystal'] : existing.badges,
           stats: {
             ...existing.stats,
             ...(sport === 'nfl'
@@ -495,8 +559,9 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
           },
         });
       } else {
-        // New live competitor discovered in game
-        finalCompetitorsMap.set(key, {
+        // Discovered live star
+        const teamColors = sport === 'nba' ? getNBATeamColors(live.teamCode) : getTeamColors(live.teamCode);
+        finalCompetitorsMap.set(normName, {
           id: live.id,
           sportId: sport,
           displayName: live.displayName,
@@ -543,32 +608,19 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
       }
     }
 
-    // 3. Strictly deduplicate by ID as well
-    const seenIds = new Set<string>();
-    const parsedCompetitors: Competitor[] = [];
-    for (const comp of finalCompetitorsMap.values()) {
-      if (!seenIds.has(comp.id)) {
-        seenIds.add(comp.id);
-        parsedCompetitors.push(comp);
-      }
-    }
+    const parsedCompetitors: Competitor[] = Array.from(finalCompetitorsMap.values());
 
-    // Build Supabase records from deduplicated competitors
+    // Build Supabase records strictly matching table schema:
+    // id, name, team, sport, position, score, stats, updated_at
     for (const comp of parsedCompetitors) {
       supabaseCompetitorRecords.push({
         id: comp.id,
-        sport_id: sport,
-        short_name: comp.shortName,
-        display_name: comp.displayName,
-        team_code: comp.teamCode,
-        team_name: comp.teamName,
-        uniform_number: comp.uniformNumber,
-        position: comp.position,
-        position_generic: comp.positionGeneric,
+        name: comp.displayName,
+        team: comp.teamCode,
+        sport: sport,
+        position: comp.position || 'STAR',
         score: comp.score,
-        fantasy_points: comp.score,
         stats: comp.stats,
-        is_active: true,
         updated_at: new Date().toISOString(),
       });
     }

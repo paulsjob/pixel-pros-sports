@@ -401,8 +401,37 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
       return fallback;
     }
 
-    const mapped = filtered.map(mapRowToCompetitor).sort((a, b) => b.score - a.score);
-    return deduplicateCompetitors(mapped);
+    const mapped = filtered.map(mapRowToCompetitor);
+    
+    // ARCHITECTURAL GUARANTEE: The Roster Manifest is the authoritative foundation.
+    // We seed ALL starters for all 32 teams (min 1 QB, 2 RB, 2 WR, 1 TE per team)
+    // and overlay live stats/scores from Supabase so no player is missing from unstarted games!
+    const baseList = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+    const mergedMap = new Map<string, Competitor>();
+
+    for (const b of baseList) {
+      const key = `${(b.displayName || '').trim().toLowerCase()}__${(b.teamCode || '').trim().toUpperCase()}`;
+      mergedMap.set(key, { ...b });
+    }
+
+    for (const s of mapped) {
+      const key = `${(s.displayName || '').trim().toLowerCase()}__${(s.teamCode || '').trim().toUpperCase()}`;
+      if (mergedMap.has(key)) {
+        const existing = mergedMap.get(key)!;
+        mergedMap.set(key, {
+          ...existing,
+          score: s.score !== undefined ? s.score : existing.score,
+          rating: s.rating || existing.rating,
+          badges: s.badges && s.badges.length > 0 ? s.badges : existing.badges,
+          stats: { ...existing.stats, ...s.stats },
+        });
+      } else {
+        mergedMap.set(key, s);
+      }
+    }
+
+    const mergedList = Array.from(mergedMap.values()).sort((a, b) => (b.score || 0) - (a.score || 0));
+    return deduplicateCompetitors(mergedList);
   } catch (err) {
     console.warn(`Exception during ${sport} competitors fetch:`, err);
     return fallback;
@@ -411,6 +440,35 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
 
 export async function fetchLiveNFLCompetitors(): Promise<Competitor[]> {
   return fetchLiveCompetitors('nfl');
+}
+
+export async function reseedMasterNFLManifest(): Promise<{ success: boolean; count: number; error?: string }> {
+  const allStarters = DEFAULT_NFL_COMPETITORS;
+  try {
+    localStorage.setItem('pixel_pros_synced_competitors_nfl', JSON.stringify(allStarters));
+
+    if (isSupabaseConfigured) {
+      const records = allStarters.map((comp) => ({
+        id: comp.id,
+        athlete_id: comp.athleteId || comp.id,
+        name: comp.displayName,
+        team: comp.teamCode,
+        sport: 'nfl',
+        position: comp.position || 'STAR',
+        score: comp.score,
+        stats: comp.stats,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase.from('competitors').upsert(records, { onConflict: 'id' });
+      if (error) {
+        console.warn('Error reseeding competitors to Supabase:', error);
+      }
+    }
+    return { success: true, count: allStarters.length };
+  } catch (err: any) {
+    return { success: false, count: 0, error: err?.message };
+  }
 }
 
 export async function fetchLiveMatches(sport: SportId = 'nfl'): Promise<Match[]> {
@@ -916,6 +974,182 @@ export async function fetchAllActiveRooms(
     squadCount: val.squads.size,
     squadNames: Array.from(val.squads),
   }));
+}
+
+export interface MasterRoomSquadDetail {
+  userName: string;
+  isLocked: boolean;
+  stars: string[];
+  totalScore?: number;
+  roster: UserRoster;
+}
+
+export interface MasterRoomData {
+  roomCode: string;
+  sport: SportId;
+  squads: MasterRoomSquadDetail[];
+}
+
+export async function fetchAllRoomsWithDetails(
+  currentRoomHint?: string,
+  currentSportHint?: SportId,
+  currentRostersHint?: UserRoster[]
+): Promise<MasterRoomData[]> {
+  const roomMap = new Map<string, { roomCode: string; sport: SportId; squadMap: Map<string, MasterRoomSquadDetail> }>();
+
+  function registerSquadDetail(
+    room: string,
+    squadName: string,
+    sport: SportId,
+    stars: string[] = ['', '', ''],
+    isLocked?: boolean,
+    totalScore?: number,
+    rosterObj?: UserRoster
+  ) {
+    const cleanRoom = (room || 'COUCH').trim().toUpperCase();
+    const cleanSport: SportId = sport === 'nba' ? 'nba' : 'nfl';
+    const key = `${cleanRoom}_${cleanSport}`;
+    if (!roomMap.has(key)) {
+      roomMap.set(key, { roomCode: cleanRoom, sport: cleanSport, squadMap: new Map() });
+    }
+    const rm = roomMap.get(key)!;
+    if (squadName) {
+      const cleanUser = squadName.trim().toUpperCase();
+      const locked = isLocked !== undefined ? isLocked : getSquadLockState(cleanRoom, cleanUser, cleanSport);
+      const effectiveRoster: UserRoster = rosterObj || {
+        room_code: cleanRoom,
+        user_name: cleanUser,
+        sport: cleanSport,
+        star_1_id: stars[0] || '',
+        star_2_id: stars[1] || '',
+        star_3_id: stars[2] || '',
+        is_locked: locked,
+      };
+      rm.squadMap.set(cleanUser, {
+        userName: cleanUser,
+        isLocked: locked,
+        stars,
+        totalScore,
+        roster: effectiveRoster,
+      });
+    }
+  }
+
+  // 1. Fetch from Supabase
+  if (isSupabaseConfigured) {
+    try {
+      const { data: dbRosters } = await supabase.from('user_rosters').select('*');
+      if (Array.isArray(dbRosters)) {
+        for (const row of dbRosters) {
+          const rCode = String(row.room_code || 'COUCH').toUpperCase();
+          const rSport: SportId = String(row.sport_id || row.sport || 'nfl').toLowerCase() === 'nba' ? 'nba' : 'nfl';
+          const rUser = String(row.user_name || '').toUpperCase();
+          if (rUser) {
+            registerSquadDetail(
+              rCode,
+              rUser,
+              rSport,
+              [row.star_1_id || '', row.star_2_id || '', row.star_3_id || ''],
+              row.is_locked,
+              undefined,
+              {
+                id: row.id,
+                room_code: rCode,
+                user_name: rUser,
+                sport: rSport,
+                star_1_id: row.star_1_id || '',
+                star_2_id: row.star_2_id || '',
+                star_3_id: row.star_3_id || '',
+                is_locked: row.is_locked,
+                updated_at: row.updated_at,
+              }
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('fetchAllRoomsWithDetails Supabase error:', e);
+    }
+  }
+
+  // 2. LocalStorage rosters
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+
+        if (key.startsWith('pixel_pros_rosters_')) {
+          const rest = key.replace('pixel_pros_rosters_', '');
+          const isNba = rest.endsWith('_nba');
+          const cleanCode = (isNba ? rest.replace('_nba', '') : rest).trim().toUpperCase();
+          const sport: SportId = isNba ? 'nba' : 'nfl';
+
+          try {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((r: any) => {
+                  const u = (r.user_name || r.userName || '').trim().toUpperCase();
+                  if (u) {
+                    registerSquadDetail(
+                      cleanCode,
+                      u,
+                      sport,
+                      [r.star_1_id || '', r.star_2_id || '', r.star_3_id || ''],
+                      r.is_locked,
+                      undefined,
+                      r
+                    );
+                  }
+                });
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Current Room Hint
+  if (currentRoomHint) {
+    const curCode = currentRoomHint.trim().toUpperCase();
+    const curSport = currentSportHint === 'nba' ? 'nba' : 'nfl';
+    if (Array.isArray(currentRostersHint)) {
+      currentRostersHint.forEach((r) => {
+        if (r.user_name) {
+          registerSquadDetail(
+            curCode,
+            r.user_name,
+            curSport,
+            [r.star_1_id || '', r.star_2_id || '', r.star_3_id || ''],
+            r.is_locked,
+            undefined,
+            r
+          );
+        }
+      });
+    } else {
+      registerSquadDetail(curCode, '', curSport);
+    }
+  }
+
+  // Ensure default rooms
+  registerSquadDetail('COUCH', '', 'nfl');
+  registerSquadDetail('HOOPS', '', 'nba');
+
+  return Array.from(roomMap.values())
+    .map((val) => ({
+      roomCode: val.roomCode,
+      sport: val.sport,
+      squads: Array.from(val.squadMap.values()),
+    }))
+    .sort((a, b) => {
+      if (currentRoomHint && a.roomCode === currentRoomHint.toUpperCase()) return -1;
+      if (currentRoomHint && b.roomCode === currentRoomHint.toUpperCase()) return 1;
+      return a.roomCode.localeCompare(b.roomCode);
+    });
 }
 
 export function getSquadLockState(roomCode: string, userName: string, sport: SportId = 'nfl'): boolean {

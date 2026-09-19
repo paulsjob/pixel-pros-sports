@@ -886,11 +886,13 @@ export default function App() {
 
                 <button
                   type="button"
+                  id="mobile-admin-console-btn"
                   onClick={() => setIsCommissionerOpen(true)}
-                  className="touch-manipulation w-6.5 h-6.5 flex items-center justify-center bg-[#1a2238] text-[#38bdf8] border border-[#273552] rounded-xs cursor-pointer shrink-0 active:scale-95"
-                  title="Commissioner Mode"
+                  className="touch-manipulation px-1.5 h-6.5 flex items-center justify-center gap-1 bg-[#1a2238] hover:bg-[#283554] text-[#38bdf8] border border-[#3b82f6]/60 rounded-xs cursor-pointer shrink-0 active:scale-95"
+                  title="Master Admin Console (Rooms, Squads & ESPN Data Sync)"
                 >
                   <ShieldAlert size={12} />
+                  <span className="font-pixel text-[9px] font-bold">ADMIN</span>
                 </button>
 
                 <button
@@ -1051,12 +1053,13 @@ export default function App() {
 
               <button
                 type="button"
+                id="desktop-admin-console-btn"
                 onClick={() => setIsCommissionerOpen(true)}
-                className="touch-manipulation flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-[#1a2238] hover:bg-[#283554] border border-[#3b82f6]/50 hover:border-[#38bdf8] text-[#38bdf8] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs shrink-0"
-                title="Commissioner & Admin Mode (Manage Rooms, Squads & Locks)"
+                className="touch-manipulation flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 bg-[#1a2238] hover:bg-[#283554] border border-[#3b82f6]/60 hover:border-[#38bdf8] text-[#38bdf8] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs shrink-0"
+                title="Master Admin Console (Manage Rooms, Squads & ESPN Data Sync)"
               >
-                <ShieldAlert size={11} className="text-[#38bdf8]" />
-                <span className="hidden xl:inline">COMMISH</span>
+                <ShieldAlert size={12} className="text-[#38bdf8]" />
+                <span className="hidden sm:inline font-bold">ADMIN</span>
               </button>
 
               <button
@@ -1385,7 +1388,7 @@ export default function App() {
                     className="text-[10px] font-pixel text-[#12579b] hover:text-[#1a6cb8] flex items-center gap-1 cursor-pointer underline"
                   >
                     <ShieldAlert size={12} />
-                    MANAGE ROOMS & DELETIONS (COMMISSIONER MODE)
+                    OPEN MASTER ADMIN & DATA SYNC CONSOLE
                   </button>
                 </div>
 
