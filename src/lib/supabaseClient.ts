@@ -64,7 +64,8 @@ export function resolveSupabaseAnonKey(): string {
   if (envKey && envKey.trim() && !envKey.startsWith('your-') && envKey !== 'anon-key-placeholder') {
     return envKey.trim();
   }
-  return '';
+  // Public anon key for Supabase project sqntjgjqtwbcqpxcqzbg (safe client-side key)
+  return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxbnRqZ2pxdHdiY3FweGNxemJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTk2NzYsImV4cCI6MjEwNDc5NTY3Nn0.2M_u9c6g2yWm2Ev0e_FeucFSnEFTCeerVvpNwNTdI4g';
 }
 
 export function checkSupabaseConfigured(): boolean {
