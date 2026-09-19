@@ -444,8 +444,10 @@ export async function fetchLiveNFLCompetitors(): Promise<Competitor[]> {
 
 export async function reseedMasterNFLManifest(): Promise<{ success: boolean; count: number; error?: string }> {
   const allStarters = DEFAULT_NFL_COMPETITORS;
+  const allMatches = DEFAULT_NFL_MATCHES;
   try {
     localStorage.setItem('pixel_pros_synced_competitors_nfl', JSON.stringify(allStarters));
+    localStorage.setItem('pixel_pros_synced_matches_nfl', JSON.stringify(allMatches));
 
     if (isSupabaseConfigured) {
       const records = allStarters.map((comp) => ({
@@ -464,6 +466,24 @@ export async function reseedMasterNFLManifest(): Promise<{ success: boolean; cou
       if (error) {
         console.warn('Error reseeding competitors to Supabase:', error);
       }
+
+      const matchRecords = allMatches.map((m) => ({
+        id: m.id,
+        sport_id: 'nfl',
+        sport: 'nfl',
+        home_team: m.homeTeamCode,
+        away_team: m.awayTeamCode,
+        home_team_code: m.homeTeamCode,
+        away_team_code: m.awayTeamCode,
+        home_score: m.homeScore || 0,
+        away_score: m.awayScore || 0,
+        status: m.status,
+        quarter_time: m.quarter_time || 'SCHEDULED',
+        scheduled_at: m.gameDate,
+        week: m.week || 2,
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('matches').upsert(matchRecords, { onConflict: 'id' });
     }
     return { success: true, count: allStarters.length };
   } catch (err: any) {
@@ -572,21 +592,21 @@ export async function fetchLiveMatches(sport: SportId = 'nfl'): Promise<Match[]>
       });
 
     if (sport === 'nfl') {
-      const hasDetOrBuf = mappedMatches.some(
-        (m) =>
-          m.homeTeamCode === 'BUF' ||
-          m.awayTeamCode === 'BUF' ||
-          m.home_team === 'BUF' ||
-          m.away_team === 'BUF' ||
-          m.homeTeamCode === 'DET' ||
-          m.awayTeamCode === 'DET'
-      );
-      if (!hasDetOrBuf) {
-        return sortLiveFirst(fallback);
-      }
-      // STRICT FILTER: No games apart from the week that we are on (no past weeks, no future weeks)
       const currentWeekOnly = mappedMatches.filter((m) => !m.week || m.week === currentNFLWeek);
-      return sortLiveFirst(currentWeekOnly.length > 0 ? currentWeekOnly : mappedMatches);
+      const baseList = currentWeekOnly.length > 0 ? currentWeekOnly : mappedMatches;
+
+      // Ensure all 16 NFL matchups covering all 32 teams are present
+      const existingMatchPairs = new Set(
+        baseList.map((m) => `${(m.awayTeamCode || m.away_team || '').trim().toUpperCase()}@${(m.homeTeamCode || m.home_team || '').trim().toUpperCase()}`)
+      );
+      const fullWeekList = [...baseList];
+      for (const defMatch of DEFAULT_NFL_MATCHES) {
+        const pair = `${(defMatch.awayTeamCode || defMatch.away_team || '').trim().toUpperCase()}@${(defMatch.homeTeamCode || defMatch.home_team || '').trim().toUpperCase()}`;
+        if (!existingMatchPairs.has(pair)) {
+          fullWeekList.push({ ...defMatch, week: currentNFLWeek, weekLabel: `Week ${currentNFLWeek}` });
+        }
+      }
+      return sortLiveFirst(fullWeekList);
     }
 
     return sortLiveFirst(mappedMatches);

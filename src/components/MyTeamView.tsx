@@ -3,7 +3,7 @@ import { Competitor, ActiveSlot, SquadSlots, Match, SportId } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Sparkles, X } from 'lucide-react';
 import { splitPlayerFirstLastName } from '../utils/formatters';
-import { formatRealtimeGameSituationCompact } from '../utils/teamData';
+import { formatRealtimeGameSituationCompact, getPlayerScoringDisplay } from '../utils/teamData';
 import { getCurrentNFLWeek } from '../lib/espnSync';
 
 interface MyTeamViewProps {
@@ -134,14 +134,16 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 0
               );
 
-              const statsLine =
-                sport === 'nba'
-                  ? `${threePm} 3PM · ${reb} REB · ${ast} AST`
-                  : tds > 0 || totalYds > 0
-                  ? `${tds} TD · ${totalYds} YDS`
-                  : '0 TD · 0 YDS';
+              const scoringInfo = player ? getPlayerScoringDisplay(player, playerMatch, sport) : null;
+              const statsLine = scoringInfo
+                ? scoringInfo.activeStatsLine
+                : sport === 'nba'
+                ? `${threePm} 3PM · ${reb} REB · ${ast} AST`
+                : tds > 0 || totalYds > 0
+                ? `${tds} TD · ${totalYds} YDS`
+                : '0 TD · 0 YDS';
 
-              const isOnFire = sport === 'nba' && (player?.score || 0) >= 40;
+              const isOnFire = sport === 'nba' && ((scoringInfo?.activeScore || player?.score || 0) >= 40);
 
               return (
                 <div
@@ -223,7 +225,12 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             #{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'}
                           </div>
 
-                          {gameSituation && (
+                          {/* Context / Game State line */}
+                          {scoringInfo?.gameState === 'pre' ? (
+                            <div className="font-pixel text-[9px] text-[#784610] font-bold truncate mt-0.5">
+                              PRE-GAME · {scoringInfo.contextBadgeText}
+                            </div>
+                          ) : gameSituation ? (
                             <div className="font-pixel text-[9px] whitespace-nowrap overflow-hidden mt-0.5">
                               {gameSituation.isLive ? (
                                 <span className="text-[#b91c1c] flex items-center gap-1 font-bold">
@@ -240,17 +247,34 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                                 </span>
                               )}
                             </div>
-                          )}
+                          ) : null}
 
-                          <div className="font-pixel text-[9px] text-[#5c3509] font-bold truncate mt-0.5">
-                            {statsLine}
-                          </div>
+                          {scoringInfo?.gameState === 'pre' && scoringInfo.hasHistoricalData ? (
+                            <div className="font-pixel text-[8px] text-[#784610] bg-[#fae5b8] px-1 py-0.5 rounded-2xs border border-[#c99a57] inline-block mt-0.5 truncate max-w-full">
+                              LAST: {scoringInfo.historicalScore}p ({scoringInfo.historicalStats})
+                            </div>
+                          ) : (
+                            <div className="font-pixel text-[9px] text-[#5c3509] font-bold truncate mt-0.5">
+                              {statsLine}
+                            </div>
+                          )}
                         </div>
 
                         <div className="shrink-0 flex flex-col items-end justify-center pl-1">
-                          <div className="px-2 py-1.5 bg-[#12579b] text-[#fae5b8] font-pixel text-xs border-2 border-[#0a2d52] shadow-[0_2px_0_0_#051a30] rounded-xs font-bold whitespace-nowrap text-center">
-                            {player.score ? `${player.score.toLocaleString()} PTS` : '0 PTS'}
-                          </div>
+                          {scoringInfo?.gameState === 'pre' ? (
+                            <div className="px-2 py-1 bg-[#475569] text-[#fae5b8] font-pixel text-xs border-2 border-[#1e293b] shadow-[0_2px_0_0_#0f172a] rounded-xs font-bold whitespace-nowrap text-center">
+                              0 PTS
+                              <div className="text-[7px] font-retro text-[#cbd5e1] font-normal leading-none">PRE</div>
+                            </div>
+                          ) : scoringInfo?.gameState === 'in' ? (
+                            <div className="px-2 py-1.5 bg-[#b91c1c] text-[#fef08a] font-pixel text-xs border-2 border-[#7f1d1d] shadow-[0_2px_0_0_#450a0a] rounded-xs font-bold whitespace-nowrap text-center animate-pulse">
+                              {scoringInfo.activeScore} PTS
+                            </div>
+                          ) : (
+                            <div className="px-2 py-1.5 bg-[#12579b] text-[#fae5b8] font-pixel text-xs border-2 border-[#0a2d52] shadow-[0_2px_0_0_#051a30] rounded-xs font-bold whitespace-nowrap text-center">
+                              {scoringInfo ? `${scoringInfo.activeScore.toLocaleString()} PTS` : '0 PTS'}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -282,7 +306,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             (#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'})
                           </div>
 
-                          {gameSituation ? (
+                          {/* Desktop Game Situation & Matchup Line */}
+                          {scoringInfo?.gameState === 'pre' ? (
+                            <div className="w-full text-center mt-1">
+                              <div className="font-pixel text-[10px] text-[#784610] font-bold">
+                                {playerMatch ? `${playerMatch.awayTeamCode || playerMatch.away_team} @ ${playerMatch.homeTeamCode || playerMatch.home_team} · ` : ''}PRE-GAME · {scoringInfo.contextBadgeText}
+                              </div>
+                            </div>
+                          ) : gameSituation ? (
                             <div className="w-full text-center mt-1">
                               {gameSituation.isLive ? (
                                 <div className="flex items-center justify-center gap-1.5 font-pixel text-[10px] text-[#b91c1c] font-bold">
@@ -304,16 +335,46 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           ) : null}
                         </div>
 
-                        <div className="w-full text-center mt-1.5">
-                          <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] font-bold whitespace-nowrap">
-                            {statsLine}
-                          </span>
-                        </div>
+                        {/* Middle Stat Section: Subtle Historical Chip for Pre-Game vs Live Stat Line */}
+                        {scoringInfo?.gameState === 'pre' ? (
+                          <div className="w-full flex flex-col items-center gap-1 mt-1">
+                            {scoringInfo.hasHistoricalData && (
+                              <div className="w-full py-1 px-2 bg-[#fae5b8] border border-[#c99a57] rounded-xs text-center shadow-2xs">
+                                <span className="font-pixel text-[9px] sm:text-[10px] text-[#784610] font-bold">
+                                  LAST GAME: {scoringInfo.historicalScore} PTS ({scoringInfo.historicalStats})
+                                </span>
+                              </div>
+                            )}
+                            <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] font-bold whitespace-nowrap">
+                              0 TD · 0 YDS
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="w-full text-center mt-1.5">
+                            <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] font-bold whitespace-nowrap">
+                              {statsLine}
+                            </span>
+                          </div>
+                        )}
 
                         <div className="w-full mt-2 text-center">
-                          <div className="w-full py-1.5 sm:py-2 bg-[#12579b] text-[#fae5b8] font-pixel text-xs sm:text-sm border-2 border-[#0a2d52] shadow-[0_3px_0_0_#051a30] rounded-xs font-bold whitespace-nowrap">
-                            {player.score ? `${player.score.toLocaleString()} PTS` : '0 PTS'}
-                          </div>
+                          {scoringInfo?.gameState === 'pre' ? (
+                            <div className="w-full py-1.5 sm:py-2 bg-[#475569] text-[#fae5b8] font-pixel text-xs sm:text-sm border-2 border-[#1e293b] shadow-[0_3px_0_0_#0f172a] rounded-xs font-bold whitespace-nowrap">
+                              0 PTS
+                              <div className="text-[8px] sm:text-[9px] font-retro text-[#cbd5e1] font-normal">
+                                (READY FOR KICKOFF)
+                              </div>
+                            </div>
+                          ) : scoringInfo?.gameState === 'in' ? (
+                            <div className="w-full py-1.5 sm:py-2 bg-[#b91c1c] text-[#fef08a] font-pixel text-xs sm:text-sm border-2 border-[#7f1d1d] shadow-[0_3px_0_0_#450a0a] rounded-xs font-bold whitespace-nowrap animate-pulse">
+                              {scoringInfo.activeScore} PTS <span className="text-[9px] text-white">LIVE</span>
+                            </div>
+                          ) : (
+                            <div className="w-full py-1.5 sm:py-2 bg-[#12579b] text-[#fae5b8] font-pixel text-xs sm:text-sm border-2 border-[#0a2d52] shadow-[0_3px_0_0_#051a30] rounded-xs font-bold whitespace-nowrap">
+                              {scoringInfo ? `${scoringInfo.activeScore.toLocaleString()} PTS` : '0 PTS'}{' '}
+                              <span className="text-[9px] text-[#93c5fd]">FINAL</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </>

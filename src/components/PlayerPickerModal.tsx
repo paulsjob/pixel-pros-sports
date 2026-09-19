@@ -4,6 +4,7 @@ import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Search } from 'lucide-react';
 import { splitPlayerFirstLastName } from '../utils/formatters';
 import { getCurrentNFLWeek } from '../lib/espnSync';
+import { getPlayerScoringDisplay } from '../utils/teamData';
 
 interface PlayerPickerModalProps {
   isOpen: boolean;
@@ -275,6 +276,14 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                 const isSelectedElsewhere = (selectedPlayerIds.includes(player.id) || selectedPlayerNormKeys.has(playerNorm)) && !isCurrentSlot;
                 const { firstName, lastName } = splitPlayerFirstLastName(player.displayName);
 
+                const playerMatch = matches?.find(m =>
+                  m.home_team === player.teamCode ||
+                  m.away_team === player.teamCode ||
+                  m.homeTeamCode === player.teamCode ||
+                  m.awayTeamCode === player.teamCode
+                );
+                const scoringInfo = getPlayerScoringDisplay(player, playerMatch, sport);
+
                 return (
                   <div
                     key={player.id}
@@ -323,9 +332,36 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                     </div>
 
                     <div className="w-full mb-2 py-0.5 px-2 bg-[#ebd2a4] border border-[#c99a57] rounded-2xs text-center shadow-2xs">
-                      <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
-                        {player.score || 0} PTS
-                      </span>
+                      {scoringInfo.gameState === 'pre' ? (
+                        <div className="flex flex-col items-center">
+                          <span className="font-pixel text-xs sm:text-sm font-bold text-[#475569]">
+                            0 PTS
+                          </span>
+                          {scoringInfo.hasHistoricalData && (
+                            <span className="font-pixel text-[8px] text-[#784610] font-bold">
+                              Last: {scoringInfo.historicalScore}p
+                            </span>
+                          )}
+                        </div>
+                      ) : scoringInfo.gameState === 'in' ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
+                            {scoringInfo.activeScore} PTS
+                          </span>
+                          <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
+                            LIVE
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
+                            {scoringInfo.activeScore} PTS
+                          </span>
+                          <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
+                            FINAL
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <button

@@ -45,6 +45,12 @@ export interface Competitor {
   };
   badges: string[];
   score: number;
+  current_score?: number;
+  current_stats?: string;
+  last_game_score?: number;
+  last_game_stats?: string;
+  lastGameScore?: number;
+  lastGameStats?: string;
   avatar: AvatarConfig;
 }
 

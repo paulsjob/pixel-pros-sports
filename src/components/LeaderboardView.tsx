@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Competitor, SportId, UserProfile, UserRoster } from '../types';
+import { Competitor, Match, SportId, UserProfile, UserRoster } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { PixelHelmetIcon, PixelShieldIcon } from './PixelBadges';
 import { Users, Sparkles } from 'lucide-react';
 import { splitPlayerFirstLastName, formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
 import { getDeviceId } from '../lib/deviceIdentity';
 import { isGhostUser } from '../lib/supabaseClient';
+import { getPlayerScoringDisplay } from '../utils/teamData';
 
 function formatPickedByName(rawName: string): string {
   const trimmed = (rawName || '').trim();
@@ -27,6 +28,7 @@ interface LeaderboardViewProps {
   user: UserProfile;
   nflCompetitors?: Competitor[];
   roomRosters?: UserRoster[];
+  matches?: Match[];
   roomCode: string;
   userName: string;
   sport?: SportId;
@@ -40,6 +42,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   user,
   nflCompetitors = [],
   roomRosters = [],
+  matches = [],
   roomCode,
   userName,
   sport = 'nfl',
@@ -56,10 +59,26 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const cleanRoom = (roomCode || 'COUCH').trim().toUpperCase();
   const activeNormalizedName = (userName || '').trim().toUpperCase();
 
+  const getPlayerLivePoints = (p: Competitor) => {
+    const match = matches.find(m =>
+      m.home_team === p.teamCode ||
+      m.away_team === p.teamCode ||
+      m.homeTeamCode === p.teamCode ||
+      m.awayTeamCode === p.teamCode
+    );
+    const info = getPlayerScoringDisplay(p, match, sport);
+    return info.gameState === 'pre' ? 0 : info.activeScore;
+  };
+
   // Top 20 NFL Competitors ordered by score DESC
   const top20Players = safeNflPlayers
     .slice()
-    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .sort((a, b) => {
+      const scoreB = getPlayerLivePoints(b);
+      const scoreA = getPlayerLivePoints(a);
+      if (scoreB !== scoreA && (scoreB > 0 || scoreA > 0)) return scoreB - scoreA;
+      return (b.score || 0) - (a.score || 0);
+    })
     .slice(0, 20);
 
   // Current active user roster entry for this room
@@ -103,8 +122,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     const star3 = safeNflPlayers.find((p) => p.id === entry.star_3_id);
     const starPlayers = [star1, star2, star3].filter(Boolean) as Competitor[];
 
-    // Calculate dynamic total: (Star 1 pts) + (Star 2 pts) + (Star 3 pts)
-    const sumPoints = starPlayers.reduce((sum, p) => sum + (p.score || 0), 0);
+    // Calculate dynamic total: (Star 1 live pts) + (Star 2 live pts) + (Star 3 live pts)
+    const sumPoints = starPlayers.reduce((sum, p) => sum + getPlayerLivePoints(p), 0);
 
     return {
       userName: entryName,
@@ -294,7 +313,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                               }`}
                               title={`${star.displayName} (${star.teamCode})`}
                             >
-                              ★ {formatPlayerInitialLastName(star.displayName)} ({star.score ? `${star.score}p` : '0p'})
+                              ★ {formatPlayerInitialLastName(star.displayName)} ({getPlayerLivePoints(star)}p)
                             </span>
                           );
                         })}

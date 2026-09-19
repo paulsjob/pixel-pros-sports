@@ -1,6 +1,6 @@
 import { Match, Competitor, SportId } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS } from '../utils/teamData';
+import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS, DEFAULT_NFL_MATCHES } from '../utils/teamData';
 import { getNBATeamFullName, getNBATeamColors, DEFAULT_NBA_COMPETITORS } from '../utils/nbaTeamData';
 
 const SKIN_TONES = ['#f8d9b6', '#e0ac69', '#c68642', '#8d5524', '#523318'];
@@ -145,7 +145,10 @@ function calculateNBAPoints(pts: number, threes: number, reb: number, ast: numbe
  * NOTE: Strictly enforces CURRENT WEEK ONLY for NFL — no past weeks, no future weeks.
  */
 export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResult> {
-  const url = sport === 'nba' ? ESPN_NBA_SCOREBOARD : ESPN_NFL_SCOREBOARD;
+  const currentWeekNumber = getCurrentNFLWeek();
+  const url = sport === 'nba'
+    ? ESPN_NBA_SCOREBOARD
+    : `${ESPN_NFL_SCOREBOARD}?seasontype=2&week=${currentWeekNumber}`;
   const sportLabel = sport.toUpperCase();
 
   try {
@@ -623,6 +626,35 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
         stats: comp.stats,
         updated_at: new Date().toISOString(),
       });
+    }
+
+    // GUARANTEE: For NFL, ensure all 16 games covering all 32 teams are always present
+    if (sport === 'nfl') {
+      const existingMatchPairs = new Set(
+        parsedMatches.map((m) => `${(m.awayTeamCode || m.away_team || '').trim().toUpperCase()}@${(m.homeTeamCode || m.home_team || '').trim().toUpperCase()}`)
+      );
+      for (const defMatch of DEFAULT_NFL_MATCHES) {
+        const pair = `${(defMatch.awayTeamCode || defMatch.away_team || '').trim().toUpperCase()}@${(defMatch.homeTeamCode || defMatch.home_team || '').trim().toUpperCase()}`;
+        if (!existingMatchPairs.has(pair)) {
+          parsedMatches.push({ ...defMatch, week: currentWeekNumber, weekLabel: `Week ${currentWeekNumber}` });
+          supabaseMatchRecords.push({
+            id: defMatch.id,
+            sport_id: 'nfl',
+            sport: 'nfl',
+            home_team: defMatch.homeTeamCode,
+            away_team: defMatch.awayTeamCode,
+            home_team_code: defMatch.homeTeamCode,
+            away_team_code: defMatch.awayTeamCode,
+            home_score: defMatch.homeScore || 0,
+            away_score: defMatch.awayScore || 0,
+            status: defMatch.status,
+            quarter_time: defMatch.quarter_time || 'SCHEDULED',
+            scheduled_at: defMatch.gameDate,
+            week: currentWeekNumber,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      }
     }
 
     // Sort matches so live games (e.g. DET @ BUF) are front and center!

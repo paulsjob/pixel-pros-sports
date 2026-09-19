@@ -3,7 +3,7 @@
  * Strictly authentic colors, full names, and game situation formatters.
  */
 
-import { Competitor, Match } from '../types';
+import { Competitor, Match, SportId } from '../types';
 import { NFL_ROSTER_MANIFEST, validateTeamRoster } from '../data/nflRosterManifest';
 
 export interface TeamMeta {
@@ -1418,4 +1418,117 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     gameDate: '2026-09-22T00:15Z',
   },
 ];
+
+export type PlayerGameState = 'pre' | 'in' | 'post';
+
+export interface PlayerScoringInfo {
+  gameState: PlayerGameState;
+  activeScore: number;
+  activeStatsLine: string;
+  historicalScore: number;
+  historicalStats: string;
+  hasHistoricalData: boolean;
+  contextBadgeText: string;
+  isLive: boolean;
+  isFinal: boolean;
+}
+
+export function getPlayerGameState(match: Match | null | undefined): PlayerGameState {
+  if (!match) return 'pre';
+  const rawStatus = (match.status || '').toLowerCase();
+  const rawState = ((match as any).status?.type?.state || '').toLowerCase();
+  const qTime = (match.quarterTime || match.quarter_time || match.periodLabel || '').toLowerCase();
+
+  if (rawStatus === 'final' || rawState === 'post' || qTime.includes('final')) {
+    return 'post';
+  }
+  if (
+    rawStatus === 'live' ||
+    rawState === 'in' ||
+    qTime.includes('1st') ||
+    qTime.includes('2nd') ||
+    qTime.includes('3rd') ||
+    qTime.includes('4th') ||
+    qTime.includes('ot') ||
+    qTime.includes('half') ||
+    qTime.includes('q')
+  ) {
+    return 'in';
+  }
+  return 'pre';
+}
+
+export function getPlayerScoringDisplay(
+  player: Competitor,
+  match: Match | null | undefined,
+  sport: SportId = 'nfl'
+): PlayerScoringInfo {
+  const gameState = getPlayerGameState(match);
+
+  // NBA baseline stats
+  const threePm = Number(player.stats?.three_pm ?? player.stats?.threes ?? 0);
+  const reb = Number(player.stats?.reb ?? player.stats?.rebounds ?? 0);
+  const ast = Number(player.stats?.ast ?? player.stats?.assists ?? 0);
+
+  // NFL baseline stats
+  const passYds = Number(player.stats?.pass_yds ?? player.stats?.passing_yards ?? player.stats?.passingYards ?? 0);
+  const rushYds = Number(player.stats?.rush_yds ?? player.stats?.rushing_yards ?? player.stats?.rushingYards ?? 0);
+  const recYds = Number(player.stats?.rec_yds ?? player.stats?.receiving_yards ?? player.stats?.receivingYards ?? 0);
+  const totalYds = passYds + rushYds + recYds;
+  const tds = Number(player.stats?.tds ?? player.stats?.touchdowns ?? 0);
+
+  const fullStatsLine = sport === 'nba'
+    ? `${threePm} 3PM · ${reb} REB · ${ast} AST`
+    : (tds > 0 || totalYds > 0)
+    ? `${tds} TD · ${totalYds} YDS`
+    : '0 TD · 0 YDS';
+
+  const historicalScore = player.last_game_score ?? player.lastGameScore ?? player.score ?? 0;
+  const historicalStats = player.last_game_stats ?? player.lastGameStats ?? fullStatsLine;
+
+  const contextText = match
+    ? (match.quarter_time || match.quarterTime || match.periodLabel || 'SUN 1:00 PM ET')
+    : 'SCHEDULED';
+
+  if (gameState === 'pre') {
+    return {
+      gameState: 'pre',
+      activeScore: 0,
+      activeStatsLine: sport === 'nba' ? '0 3PM · 0 REB · 0 AST' : '0 TD · 0 YDS',
+      historicalScore,
+      historicalStats,
+      hasHistoricalData: historicalScore > 0,
+      contextBadgeText: contextText,
+      isLive: false,
+      isFinal: false,
+    };
+  }
+
+  if (gameState === 'in') {
+    return {
+      gameState: 'in',
+      activeScore: player.score || 0,
+      activeStatsLine: fullStatsLine,
+      historicalScore,
+      historicalStats,
+      hasHistoricalData: true,
+      contextBadgeText: contextText.toLowerCase().includes('live') || contextText.includes('Q') ? contextText : `LIVE · ${contextText}`,
+      isLive: true,
+      isFinal: false,
+    };
+  }
+
+  // 'post' (Final)
+  return {
+    gameState: 'post',
+    activeScore: player.score || 0,
+    activeStatsLine: fullStatsLine,
+    historicalScore,
+    historicalStats,
+    hasHistoricalData: true,
+    contextBadgeText: 'FINAL',
+    isLive: false,
+    isFinal: true,
+  };
+}
 

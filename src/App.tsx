@@ -1140,6 +1140,7 @@ export default function App() {
                 user={activeUser}
                 nflCompetitors={roster}
                 roomRosters={roomRosters}
+                matches={matches}
                 roomCode={roomCode}
                 userName={userName}
                 sport={currentSport}
@@ -1208,6 +1209,12 @@ export default function App() {
         {detailedPlayer && (
           <PlayerCardModal
             player={detailedPlayer}
+            match={matches.find(m =>
+              m.home_team === detailedPlayer.teamCode ||
+              m.away_team === detailedPlayer.teamCode ||
+              m.homeTeamCode === detailedPlayer.teamCode ||
+              m.awayTeamCode === detailedPlayer.teamCode
+            ) || null}
             onClose={() => setDetailedPlayer(null)}
             sport={currentSport}
             isLocked={isCurrentSquadLocked}
