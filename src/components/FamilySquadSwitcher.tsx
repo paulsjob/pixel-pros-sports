@@ -99,28 +99,28 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
   const quickFamilySuggestions = ['DAD', 'MOM', 'LEO', 'VIOLET', 'KID 1', 'KID 2'];
 
   return (
-    <div className="w-full bg-[#080d1a] border-b-2 border-[#1a264a] box-border">
+    <>
+      <div className="hidden sm:block w-full bg-[#080d1a] border-b-2 border-[#1a264a] box-border">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full py-1 sm:py-1.5 box-border">
         <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar flex-nowrap py-0.5">
           
-          {/* Left: Mobile Room Code Button (< sm) or Desktop SQUADS: Label (>= sm) */}
-          <div className="flex items-center gap-1.5 shrink-0 select-none">
-            {/* Mobile: Interactive Room Badge */}
+          {/* Left: Interactive Room Code Button & SQUADS Label */}
+          <div className="flex items-center gap-2 shrink-0 select-none">
             <button
               type="button"
+              id="squad-switcher-room-button"
               onClick={onOpenRoomModal}
-              className="sm:hidden touch-manipulation flex items-center gap-1 px-1.5 py-0.5 bg-[#15233d] hover:bg-[#1f345b] border border-[#38bdf8]/50 hover:border-[#38bdf8] text-[#fae5b8] rounded-2xs font-pixel text-[9px] font-bold whitespace-nowrap active:translate-y-0.5 cursor-pointer shadow-2xs"
-              title="Tap to switch room"
+              className="touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 bg-[#15233d] hover:bg-[#1f345b] border border-[#38bdf8]/60 hover:border-[#38bdf8] text-[#fae5b8] rounded-xs font-pixel text-[9px] sm:text-[10px] font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs transition-all"
+              title="Click to view and switch rooms"
             >
               <span className="text-xs">🛋️</span>
-              <span className="text-[#f59e0b] font-bold">{roomCode}</span>
-              <span className="text-[8px] text-[#94a3b8]">✏️</span>
+              <span className="text-[#38bdf8] font-bold">ROOM:</span>
+              <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
+              <span className="text-[9px] text-[#93c5fd]">✏️</span>
             </button>
 
-            {/* Desktop: 🛋️ SQUADS: */}
-            <div className="hidden sm:flex items-center gap-1.5 shrink-0 select-none">
-              <span className="text-sm">🛋️</span>
-              <span className="font-pixel text-xs text-[#38bdf8] whitespace-nowrap font-bold">
+            <div className="hidden xs:flex items-center gap-1 shrink-0 select-none">
+              <span className="font-pixel text-[10px] sm:text-xs text-[#38bdf8] whitespace-nowrap font-bold">
                 SQUADS:
               </span>
             </div>
@@ -232,6 +232,8 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
           <span className="hidden xs:inline sm:inline tracking-wider">LIVE SYNC</span>
         </div>
       </div>
+    </div>
+  </div>
 
       {/* Add Squad Drawer (Fixed bottom, keyboard-safe) */}
       {isAdding && (
@@ -348,7 +350,6 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
           </div>
         </div>
       )}
-      </div>
-    </div>
+    </>
   );
 };

@@ -16,6 +16,7 @@ import {
   isGhostUser,
   fetchAllActiveRooms,
   registerActiveRoom,
+  registerActiveUser,
   ActiveRoomSummary,
   resolveSupabaseAnonKey,
   setCustomSupabaseKey,
@@ -34,7 +35,7 @@ import { CommissionerModal } from './components/CommissionerModal';
 import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
 import { DEFAULT_NFL_MATCHES } from './utils/teamData';
 import { DEFAULT_NBA_MATCHES } from './utils/nbaTeamData';
-import { Users, Trophy, HelpCircle, Share2, ShieldAlert } from 'lucide-react';
+import { Users, Trophy, HelpCircle, Share2, ShieldAlert, Plus } from 'lucide-react';
 
 export default function App() {
   const [currentSport, setCurrentSport] = useState<SportId>(() => {
@@ -235,6 +236,7 @@ export default function App() {
         setRoomCode(clean);
         setTempRoomCode(clean);
         localStorage.setItem(`pixel_pros_room_code_${urlSport || currentSport}`, clean);
+        registerActiveRoom(clean, urlSport || currentSport);
         showToast(`Joined Room ${clean}!`);
       }
 
@@ -410,6 +412,7 @@ export default function App() {
     setIsLocked(false);
 
     await upsertUserRoster(roomCode, cleanName, null, null, null, false, currentSport);
+    registerActiveUser(cleanName, currentSport).catch(() => {});
     const updated = await fetchRoomRosters(roomCode, currentSport);
     setRoomRosters(updated);
 
@@ -831,6 +834,8 @@ export default function App() {
     });
   }
 
+  const maxSquadScore = squadPillsData.reduce((max, s) => Math.max(max, s.totalScore ?? 0), 0);
+
   const activeUser: UserProfile = {
     ...INITIAL_USER,
     username: userName,
@@ -843,13 +848,131 @@ export default function App() {
     <ErrorBoundary>
       <div className="h-[100dvh] flex flex-col overflow-hidden bg-[#0b1021] text-[#fae5b8] selection:bg-[#12579b] selection:text-white">
         <header className="flex-shrink-0 z-40 bg-[#080d1a] border-b-2 border-[#1a264a] w-full shadow-md overflow-x-hidden box-border">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full py-1.5 sm:py-2 flex items-center justify-between gap-1 sm:gap-3 flex-nowrap box-border">
+          {/* Mobile Header (2-Row Layout, screen width <= 600px) */}
+          <div className="sm:hidden w-full flex flex-col box-border">
+            {/* Row 1: Left: Logo (PROS) | Center: Sport switcher [ 🏈 | 🏀 ] | Right: Pinned Room badge + Rules */}
+            <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-[#1a264a]/80 bg-[#080d1a] gap-1.5">
+              {/* Left: Logo text shortened to "PROS" or helmet icon */}
+              <button
+                type="button"
+                onClick={() => setCurrentTab('squad')}
+                className="touch-manipulation flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-left shrink-0"
+              >
+                <PixelHelmetIcon size={18} color={currentSport === 'nba' ? '#ea580c' : '#155e9e'} />
+                <span className="font-pixel text-[11px] text-[#fae5b8] tracking-wider font-bold">PROS</span>
+              </button>
+
+              {/* Center: Sport switcher [ 🏈 | 🏀 ] in compact pill */}
+              <div className="shrink-0 flex items-center justify-center">
+                <SportSwitcher currentSport={currentSport} onSportChange={handleSportChange} />
+              </div>
+
+              {/* Right: Pinned Room badge with edit pencil: [ 🛋️ ROOM_CODE ✏️ ] + [ ? ] rules button. NEVER cut off! */}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  id="mobile-header-room-edit-button"
+                  onClick={() => {
+                    setTempRoomCode(roomCode);
+                    setIsRoomModalOpen(true);
+                  }}
+                  className="touch-manipulation flex items-center gap-1 px-1.5 py-0.5 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/70 rounded-xs font-pixel text-[10px] text-[#fae5b8] shadow-xs active:scale-95 transition-all shrink-0"
+                  title="View and Switch Database Rooms"
+                >
+                  <span className="text-xs select-none">{currentSport === 'nba' ? '🏀' : '🛋️'}</span>
+                  <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
+                  <span className="text-[9px] text-[#93c5fd]">✏️</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRulesModalOpen(true)}
+                  className="touch-manipulation w-6.5 h-6.5 flex items-center justify-center bg-[#1a2238] text-[#fde047] border border-[#273552] rounded-xs cursor-pointer shrink-0 active:scale-95"
+                  title="How Scoring Works"
+                >
+                  <HelpCircle size={13} />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Left: Navigation tabs [ SQUAD ] [ BOARD ] (shrink-0) | Right: Horizontal scrolling squad chips with hidden scrollbar */}
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-[#090e1f] w-full box-border">
+              {/* Left: Navigation tabs [ SQUAD ] [ BOARD ] */}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('squad')}
+                  className={`touch-manipulation px-2 py-0.5 flex items-center gap-1 font-pixel text-[9px] border-2 cursor-pointer transition-all ${
+                    currentTab === 'squad'
+                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'
+                      : 'bg-[#1a2238] text-[#fae5b8]/75 border-[#273552]'
+                  }`}
+                >
+                  <Users size={11} className={currentTab === 'squad' ? 'text-[#38bdf8]' : ''} />
+                  <span>SQUAD</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('couch')}
+                  className={`touch-manipulation px-2 py-0.5 flex items-center gap-1 font-pixel text-[9px] border-2 cursor-pointer transition-all ${
+                    currentTab === 'couch'
+                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'
+                      : 'bg-[#1a2238] text-[#fae5b8]/75 border-[#273552]'
+                  }`}
+                >
+                  <Trophy size={11} className={currentTab === 'couch' ? 'text-[#38bdf8]' : ''} />
+                  <span>BOARD</span>
+                </button>
+              </div>
+
+              {/* Right: Horizontal scrolling squad chips with hidden scrollbar */}
+              <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar touch-pan-x pl-1">
+                {squadPillsData.map((squad) => {
+                  const isActive = squad.userName === (userName || '').toUpperCase();
+                  const isLeader = maxSquadScore > 0 && (squad.totalScore ?? 0) === maxSquadScore;
+                  return (
+                    <button
+                      key={squad.userName}
+                      type="button"
+                      onClick={() => handleSelectSquad(squad.userName)}
+                      className={`touch-manipulation shrink-0 flex items-center gap-1 px-1.5 py-0.5 font-pixel text-[9px] rounded-xs border-2 whitespace-nowrap active:scale-95 transition-all ${
+                        isActive
+                          ? 'bg-[#155e9e] text-[#fae5b8] border-[#38bdf8] font-bold shadow-xs'
+                          : 'bg-[#1a2238] text-[#94a3b8] border-[#273552]'
+                      }`}
+                    >
+                      {isLeader ? '👑' : isActive ? <span className="text-[#fde047]">★</span> : null}
+                      <span className="truncate max-w-[65px]">{squad.userName}</span>
+                      {squad.isLocked && <span className="text-[8px]">🔒</span>}
+                      <span className="text-[8px] bg-[#0a2d52] text-[#fde047] px-1 rounded-2xs font-bold">
+                        {squad.totalScore ?? 0}p
+                      </span>
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddSquadDrawerOpen(true)}
+                  className="touch-manipulation shrink-0 flex items-center gap-1 px-1.5 py-0.5 font-pixel text-[9px] rounded-xs border-2 border-dashed border-[#16a34a] bg-[#14532d]/50 text-[#4ade80] hover:bg-[#16a34a] hover:text-white font-bold whitespace-nowrap active:scale-95"
+                  title="Add Squad"
+                >
+                  <Plus size={10} />
+                  <span>+ ADD</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop & Landscape Header (> 600px) */}
+          <div className="hidden sm:flex max-w-5xl mx-auto px-2 sm:px-6 w-full py-1.5 sm:py-2 items-center justify-between gap-1.5 sm:gap-3 box-border overflow-x-auto no-scrollbar">
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
               <button
                 onClick={() => setCurrentTab('squad')}
                 className="touch-manipulation flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-transparent border-0 p-0 text-left shrink-0"
               >
-                <PixelHelmetIcon size={22} color={currentSport === 'nba' ? '#ea580c' : '#155e9e'} />
+                <PixelHelmetIcon size={20} color={currentSport === 'nba' ? '#ea580c' : '#155e9e'} />
                 <span className="font-pixel text-[11px] sm:text-base text-[#fae5b8] tracking-wider group-hover:text-white transition-colors whitespace-nowrap">
                   PIXEL PROS
                 </span>
@@ -861,42 +984,31 @@ export default function App() {
             <nav className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={() => setCurrentTab('squad')}
-                className={`touch-manipulation px-2 py-1 sm:px-4 sm:py-1.5 flex items-center justify-center gap-1 font-pixel text-[10px] sm:text-xs border-2 cursor-pointer transition-all ${
+                className={`touch-manipulation px-2 py-1 sm:px-3 sm:py-1.5 flex items-center justify-center gap-1 font-pixel text-[10px] sm:text-xs border-2 cursor-pointer transition-all ${
                   currentTab === 'squad'
                     ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'
                     : 'bg-[#1a2238] text-[#fae5b8]/75 border-[#273552]'
                 }`}
               >
-                <Users size={13} className={currentTab === 'squad' ? 'text-[#38bdf8]' : ''} />
-                <span className="md:hidden">SQUAD</span>
-                <span className="hidden md:inline">MY SQUAD</span>
+                <Users size={12} className={currentTab === 'squad' ? 'text-[#38bdf8]' : ''} />
+                <span>SQUAD</span>
               </button>
 
               <button
                 onClick={() => setCurrentTab('couch')}
-                className={`touch-manipulation px-2 py-1 sm:px-4 sm:py-1.5 flex items-center justify-center gap-1 font-pixel text-[10px] sm:text-xs border-2 cursor-pointer transition-all ${
+                className={`touch-manipulation px-2 py-1 sm:px-3 sm:py-1.5 flex items-center justify-center gap-1 font-pixel text-[10px] sm:text-xs border-2 cursor-pointer transition-all ${
                   currentTab === 'couch'
                     ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'
                     : 'bg-[#1a2238] text-[#fae5b8]/75 border-[#273552]'
                 }`}
               >
-                <Trophy size={13} className={currentTab === 'couch' ? 'text-[#38bdf8]' : ''} />
-                <span className="md:hidden">BOARD</span>
-                <span className="hidden md:inline">COUCH BOARD</span>
+                <Trophy size={12} className={currentTab === 'couch' ? 'text-[#38bdf8]' : ''} />
+                <span>BOARD</span>
               </button>
             </nav>
 
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleShareRoom}
-                className="touch-manipulation flex items-center gap-1 px-1.5 sm:px-2 py-1 bg-[#064e3b] hover:bg-[#047857] text-[#34d399] hover:text-white border border-[#059669] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs"
-                title="Invite to Room"
-              >
-                <Share2 size={12} />
-                <span className="hidden xs:inline">INVITE</span>
-              </button>
-
+              {/* Room badge is prioritized first on right - NEVER cut off */}
               <button
                 type="button"
                 id="header-room-edit-button"
@@ -904,32 +1016,43 @@ export default function App() {
                   setTempRoomCode(roomCode);
                   setIsRoomModalOpen(true);
                 }}
-                className="touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 py-1 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/60 rounded-xs font-pixel text-[10px] sm:text-xs text-[#fae5b8] shadow-xs cursor-pointer active:scale-95 transition-all"
+                className="touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 py-1 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/70 rounded-xs font-pixel text-[10px] sm:text-xs text-[#fae5b8] shadow-xs cursor-pointer active:scale-95 transition-all shrink-0"
                 title="View and Switch Database Rooms"
               >
-                <span className="text-[#38bdf8]">ROOM:</span>
+                <span className="text-xs select-none">{currentSport === 'nba' ? '🏀' : '🛋️'}</span>
+                <span className="hidden md:inline text-[#38bdf8]">ROOM:</span>
                 <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
-                <span className="ml-0.5 px-1.5 py-0.5 bg-[#f59e0b] hover:bg-[#fbbf24] text-[#0f172a] font-bold text-[9px] rounded-2xs uppercase shadow-xs">
+                <span className="px-1 py-0.5 bg-[#f59e0b] text-[#0f172a] font-bold text-[8px] sm:text-[9px] rounded-2xs uppercase shadow-xs">
                   EDIT
                 </span>
               </button>
 
               <button
                 type="button"
+                onClick={handleShareRoom}
+                className="touch-manipulation flex items-center gap-1 px-1.5 sm:px-2 py-1 bg-[#064e3b] hover:bg-[#047857] text-[#34d399] hover:text-white border border-[#059669] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs shrink-0"
+                title="Invite to Room"
+              >
+                <Share2 size={12} />
+                <span className="hidden lg:inline">INVITE</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsCommissionerOpen(true)}
-                className="touch-manipulation flex items-center gap-1 px-1.5 sm:px-2 py-1 bg-[#1a2238] hover:bg-[#283554] border border-[#3b82f6]/50 hover:border-[#38bdf8] text-[#38bdf8] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs"
+                className="touch-manipulation flex items-center gap-1 px-1.5 sm:px-2 py-1 bg-[#1a2238] hover:bg-[#283554] border border-[#3b82f6]/50 hover:border-[#38bdf8] text-[#38bdf8] rounded-xs font-pixel text-[9px] sm:text-xs cursor-pointer shadow-xs shrink-0"
                 title="Commissioner & Admin Mode (Manage Rooms, Squads & Locks)"
               >
-                <ShieldAlert size={13} className="text-[#38bdf8]" />
-                <span className="hidden xs:inline">COMMISH</span>
+                <ShieldAlert size={12} className="text-[#38bdf8]" />
+                <span className="hidden lg:inline">COMMISH</span>
               </button>
 
               <button
                 onClick={() => setIsRulesModalOpen(true)}
-                className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-[#1a2238] text-[#fde047] border-2 border-[#273552] rounded-xs cursor-pointer"
+                className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-[#1a2238] text-[#fde047] border-2 border-[#273552] rounded-xs cursor-pointer shrink-0"
                 title="How Scoring Works"
               >
-                <HelpCircle size={15} />
+                <HelpCircle size={14} />
               </button>
             </div>
           </div>
@@ -960,7 +1083,7 @@ export default function App() {
         )}
 
         <main
-          className={`flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 sm:px-6 sm:py-4 overscroll-contain relative box-border ${
+          className={`flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1.5 sm:px-6 sm:py-4 overscroll-contain relative box-border ${
             currentSport === 'nba' ? 'basketball-court' : 'football-field'
           }`}
         >
@@ -976,7 +1099,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="relative z-10 max-w-5xl mx-auto px-2 sm:px-4 py-2 sm:py-4 box-border">
+          <div className="relative z-10 max-w-5xl mx-auto w-full px-0.5 sm:px-4 py-1 sm:py-4 box-border">
             {currentTab === 'squad' && (
               <MyTeamView
                 slots={squadSlots}

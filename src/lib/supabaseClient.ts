@@ -725,10 +725,16 @@ export interface ActiveRoomSummary {
 
 export async function fetchAllActiveRooms(
   currentRoomHint?: string,
-  currentSportHint?: SportId,
+  currentSportHint: SportId = 'nfl',
   currentRostersHint?: UserRoster[]
 ): Promise<ActiveRoomSummary[]> {
   const roomMap = new Map<string, { roomCode: string; sport: SportId; squads: Set<string> }>();
+
+  // Ensure default rooms exist
+  const defaultNfl = 'COUCH';
+  const defaultNba = 'HOOPS';
+  roomMap.set(`${defaultNfl}_nfl`, { roomCode: defaultNfl, sport: 'nfl', squads: new Set() });
+  roomMap.set(`${defaultNba}_nba`, { roomCode: defaultNba, sport: 'nba', squads: new Set() });
 
   const registerSquad = (
     room?: string | null,
@@ -749,17 +755,35 @@ export async function fetchAllActiveRooms(
     }
   };
 
-  // 1. Supabase (if configured) - queries all room records across all users
+  // 1. Supabase (if configured) - queries public.rooms and public.user_rosters directly
   if (checkSupabaseConfigured()) {
     try {
       const client = getSupabaseClient();
-      const { data, error } = await client
+
+      // 1a. Fetch registered rooms from public.rooms
+      const { data: roomsData, error: roomsError } = await client
+        .from('rooms')
+        .select('code, sport');
+
+      if (!roomsError && roomsData && Array.isArray(roomsData)) {
+        roomsData.forEach((r: any) => {
+          const code = (r.code || '').trim().toUpperCase();
+          const sport = (r.sport || 'nfl').toLowerCase() as SportId;
+          const key = `${code}_${sport}`;
+          if (!roomMap.has(key)) {
+            roomMap.set(key, { roomCode: code, sport, squads: new Set() });
+          }
+        });
+      }
+
+      // 1b. Fetch all rosters to populate squad names and discover rooms
+      const { data: rosterData, error: rosterError } = await client
         .from('user_rosters')
         .select('room_code, user_name, sport')
         .not('room_code', 'is', null);
 
-      if (!error && data && Array.isArray(data)) {
-        data.forEach((row: any) => {
+      if (!rosterError && rosterData && Array.isArray(rosterData)) {
+        rosterData.forEach((row: any) => {
           registerSquad(row.room_code, row.user_name, row.sport || 'nfl');
         });
       }
@@ -1422,13 +1446,14 @@ export function subscribeToRoomRosters(
     try {
       const client = getSupabaseClient();
       channel = client
-        .channel(`room-${clean}`)
+        .channel(`room_sync_${clean}_${sport}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
             table: 'user_rosters',
+            filter: `room_code=eq.${clean}`,
           },
           () => {
             onUpdate();
@@ -1528,12 +1553,42 @@ export function subscribeToRealtimeScores(
 }
 
 export async function registerActiveRoom(roomCode: string, sport: SportId = 'nfl'): Promise<void> {
-  const clean = (roomCode || '').trim().toUpperCase();
-  if (!clean) return;
+  const cleanCode = (roomCode || '').trim().toUpperCase();
+  if (!cleanCode) return;
+
+  if (checkSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      await client.from('rooms').upsert(
+        { code: cleanCode, sport: sport.toLowerCase() },
+        { onConflict: 'code,sport' }
+      );
+    } catch (err) {
+      console.warn('Could not register room in Supabase rooms table:', err);
+    }
+  }
+
   try {
     await apiFetch('/api/rooms', {
       method: 'POST',
-      body: JSON.stringify({ room_code: clean, sport }),
+      body: JSON.stringify({ room_code: cleanCode, sport }),
     });
   } catch {}
+}
+
+export async function registerActiveUser(userName: string, sport: SportId = 'nfl'): Promise<void> {
+  const cleanName = (userName || '').trim().toUpperCase();
+  if (!cleanName) return;
+
+  if (checkSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      await client.from('users').upsert(
+        { username: cleanName, favorite_sport: sport.toLowerCase(), last_active: new Date().toISOString() },
+        { onConflict: 'username' }
+      );
+    } catch {
+      // Table may not exist yet if user hasn't run the SQL script; silently ignore
+    }
+  }
 }

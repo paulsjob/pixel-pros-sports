@@ -60,30 +60,30 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     <div className="w-full box-border">
       
       {/* Centered Hero Focus: 3 Star Podiums */}
-      <div className="pixel-box-cream p-3.5 sm:p-5 md:p-6 rounded-xs w-full shadow-[0_8px_0_0_#0a0f1d] border-4 border-[#1a2238] box-border">
+      <div className="pixel-box-cream p-2 sm:p-4 md:p-6 rounded-xs w-full shadow-[0_8px_0_0_#0a0f1d] border-4 border-[#1a2238] box-border">
         
         {/* Clean Header Bar */}
-        <div className="flex items-center justify-between border-b-2 border-[#d4a86a] pb-2 mb-3 sm:mb-4">
-          <h2 className="font-pixel text-xs sm:text-base text-[#5c3509] tracking-wider uppercase flex items-center gap-2">
-            <Sparkles size={16} className="text-[#b45309]" />
-            <span>
+        <div className="flex items-center justify-between border-b-2 border-[#d4a86a] pb-1.5 sm:pb-2 mb-2 sm:mb-4 gap-1.5 sm:gap-2">
+          <h2 className="font-pixel text-[10px] xs:text-xs sm:text-base text-[#5c3509] tracking-wider uppercase flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
+            <Sparkles size={14} className="text-[#b45309] shrink-0" />
+            <span className="whitespace-nowrap overflow-hidden text-ellipsis">
               {sport === 'nba'
                 ? userName
-                  ? `${userName.toUpperCase()}'S 3 NBA STARS`
-                  : 'YOUR 3 NBA STARS'
+                  ? `${userName.toUpperCase()}'S NBA STARS`
+                  : 'YOUR NBA STARS'
                 : userName
-                ? `${userName.toUpperCase()}'S 3 NFL STARS`
-                : 'YOUR 3 NFL STARS'}
+                ? `${userName.toUpperCase()}'S NFL STARS`
+                : 'YOUR NFL STARS'}
             </span>
           </h2>
-          <span className="font-pixel text-[11px] sm:text-xs text-[#fae5b8] bg-[#12579b] px-2.5 py-1 border border-[#0a2d52] rounded-xs shrink-0 whitespace-nowrap font-bold">
+          <span className="font-pixel text-[9px] xs:text-[10px] sm:text-xs text-[#fae5b8] bg-[#12579b] px-1.5 py-0.5 sm:px-2.5 sm:py-1 border border-[#0a2d52] rounded-xs shrink-0 whitespace-nowrap font-bold">
             {isEmptySquadState ? 'NO SQUAD' : `${filledCount}/3 SET`}
           </span>
         </div>
 
         {/* 3 Prominent Star Podiums with generous breathing room & Empty State Overlay */}
         <div className="relative">
-          <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 w-full transition-opacity duration-200 ${isEmptySquadState ? 'opacity-25 pointer-events-none select-none' : ''}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3 md:gap-6 w-full transition-opacity duration-200 ${isEmptySquadState ? 'opacity-25 pointer-events-none select-none' : ''}`}>
             {SLOT_CONFIG.map(({ key, label }) => {
               const player = slots[key];
               const { firstName, lastName } = player
@@ -161,14 +161,18 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       onSelectSlot(key);
                     }
                   }}
-                  className={`touch-manipulation rounded-xs transition-all box-border min-h-0 md:min-h-[310px] flex flex-col justify-between p-2.5 sm:p-3.5 md:p-4 ${
+                  className={`touch-manipulation rounded-xs transition-all box-border min-h-0 ${
+                    player
+                      ? 'min-h-[70px] md:min-h-[310px] p-2 sm:p-3.5 md:p-4'
+                      : 'h-[62px] sm:h-[65px] md:h-auto md:min-h-[310px] p-1.5 md:p-4'
+                  } flex flex-col justify-between ${
                     effectiveIsLocked && !player
                       ? 'bg-[#e4cb9c] border-3 border-[#94713a] cursor-not-allowed shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                      : 'bg-[#ebd2a4] border-3 border-[#c99a57] cursor-pointer hover:bg-[#fae9c8] group shadow-[0_4px_0_0_#a77b3b] active:translate-y-0.5'
+                      : 'bg-[#ebd2a4] border-3 border-[#c99a57] cursor-pointer hover:bg-[#fae9c8] group shadow-[0_3px_0_0_#a77b3b] active:translate-y-0.5'
                   }`}
                 >
-                  {/* Star Slot Badge Header */}
-                  <div className="w-full flex items-center justify-between mb-1.5 md:mb-2">
+                  {/* Star Slot Badge Header (Shown on desktop always, on mobile only when player selected) */}
+                  <div className={`w-full ${player ? 'flex' : 'hidden md:flex'} items-center justify-between mb-1 md:mb-2`}>
                     <span className="px-2 py-0.5 md:px-2.5 md:py-1 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] md:text-xs border border-[#0a2d52] rounded-xs shadow-xs font-bold tracking-wider whitespace-nowrap">
                       {label}
                     </span>
@@ -315,19 +319,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     </>
                   ) : (
                     <>
-                      {/* Mobile Empty Slot */}
-                      <div className="md:hidden flex items-center justify-center gap-2.5 py-3 px-3 w-full border-2 border-dashed border-[#b45309] rounded-xs group-hover:border-[#12579b] group-hover:bg-[#f6ebd4] transition-all my-1 animate-pulse">
-                        <div className="w-7 h-7 rounded-full bg-[#fae5b8] border-2 border-[#b45309] flex items-center justify-center text-[#b45309] group-hover:text-[#12579b] group-hover:border-[#12579b] font-pixel text-sm font-bold shrink-0">
-                          +
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <span className="font-pixel text-[11px] text-[#b45309] group-hover:text-[#12579b] font-bold">
-                            + TAP TO PICK STAR
-                          </span>
-                          <span className="font-retro text-[10px] text-[#784610]">
-                            ASSIGN {label}
-                          </span>
-                        </div>
+                      {/* Mobile Empty Slot - Compact ~65px height on a single centered line */}
+                      <div className="md:hidden flex items-center justify-center h-full w-full border-2 border-dashed border-[#b45309] rounded-xs group-hover:border-[#12579b] group-hover:bg-[#f6ebd4] transition-all px-2 animate-pulse">
+                        <span className="font-pixel text-[11px] text-[#b45309] group-hover:text-[#12579b] font-bold whitespace-nowrap text-center">
+                          [ + TAP TO PICK {label} ]
+                        </span>
                       </div>
 
                       {/* Desktop Empty Slot */}
@@ -412,7 +408,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
 
       {/* Arcade Lock / Unlock Action Bar */}
       {!isEmptySquadState && (
-        <div className="mt-3 sm:mt-4 w-full box-border">
+        <div className="mt-2 sm:mt-4 w-full box-border">
           {hasThreeDistinct && effectiveIsLocked ? (
             <div className="w-full px-3 sm:px-5 py-2.5 sm:py-3.5 bg-[#064e3b] text-[#fae5b8] border-3 border-[#047857] shadow-[0_4px_0_0_#022c22] rounded-xs flex items-center justify-between gap-2 sm:gap-4 box-border">
               <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">

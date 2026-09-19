@@ -20,7 +20,7 @@ export const SportSwitcher: React.FC<SportSwitcherProps> = ({
       <button
         type="button"
         onClick={() => onSportChange('nfl')}
-        className={`touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 font-pixel text-[10px] sm:text-xs rounded-2xs cursor-pointer transition-all active:translate-y-0.5 select-none ${
+        className={`touch-manipulation flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-0.5 sm:py-1 font-pixel text-[10px] sm:text-xs rounded-2xs cursor-pointer transition-all active:translate-y-0.5 select-none ${
           currentSport === 'nfl'
             ? 'bg-[#15803d] text-white border border-[#22c55e] shadow-[0_2px_0_0_#052e16] font-bold'
             : 'text-[#94a3b8] hover:text-[#fae5b8] hover:bg-[#15233d]/60 border border-transparent'
@@ -28,14 +28,14 @@ export const SportSwitcher: React.FC<SportSwitcherProps> = ({
         title="Switch to NFL Fantasy"
       >
         <span className="text-xs select-none">🏈</span>
-        <span>NFL</span>
+        <span className="hidden sm:inline">NFL</span>
       </button>
 
       {/* NBA Button */}
       <button
         type="button"
         onClick={() => onSportChange('nba')}
-        className={`touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 font-pixel text-[10px] sm:text-xs rounded-2xs cursor-pointer transition-all active:translate-y-0.5 select-none ${
+        className={`touch-manipulation flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-0.5 sm:py-1 font-pixel text-[10px] sm:text-xs rounded-2xs cursor-pointer transition-all active:translate-y-0.5 select-none ${
           currentSport === 'nba'
             ? 'bg-[#c2410c] text-[#fef08a] border border-[#f97316] shadow-[0_2px_0_0_#431407] font-bold animate-pulse'
             : 'text-[#94a3b8] hover:text-[#fae5b8] hover:bg-[#15233d]/60 border border-transparent'
@@ -43,7 +43,7 @@ export const SportSwitcher: React.FC<SportSwitcherProps> = ({
         title="Switch to NBA Fantasy"
       >
         <span className="text-xs select-none">🏀</span>
-        <span>NBA</span>
+        <span className="hidden sm:inline">NBA</span>
       </button>
     </div>
   );
