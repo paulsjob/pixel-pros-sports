@@ -96,6 +96,20 @@ const KNOWN_NUMBERS: Record<string, number> = {
   'caleb williams': 18,
   'dj moore': 2,
   'dallas goedert': 88,
+  'cam ward': 1,
+  'tony pollard': 20,
+  'calvin ridley': 0,
+  'will levis': 8,
+  'tyjae spears': 2,
+  'elic ayomanor': 5,
+  'a.j. brown': 11,
+  'devonta smith': 6,
+  'jahan dotson': 4,
+  'kenneth gainwell': 14,
+  'julius chestnut': 36,
+  'daniel bellinger': 82,
+  'chimere dike': 17,
+  'mitchell trubisky': 10,
 };
 
 export function getUniformNumber(name?: string, id?: string): number {

@@ -274,20 +274,16 @@ export function mapRowToCompetitor(row: any): Competitor {
 
 export function deduplicateCompetitors(competitors: Competitor[]): Competitor[] {
   if (!Array.isArray(competitors)) return [];
-  const seenIds = new Set<string>();
-  const seenNames = new Set<string>();
+  const seenKeys = new Set<string>();
   const deduped: Competitor[] = [];
 
   for (const c of competitors) {
     if (!c) continue;
-    const cid = String(c.id || '').trim();
-    const normKey = `${(c.displayName || c.shortName || '').trim().toLowerCase()}_${(c.teamCode || '').trim().toUpperCase()}`;
+    const normKey = `${(c.displayName || c.shortName || '').trim().toLowerCase()}__${(c.teamCode || '').trim().toUpperCase()}`;
+    if (!normKey || normKey === '__') continue;
 
-    if (cid && seenIds.has(cid)) continue;
-    if (normKey && seenNames.has(normKey)) continue;
-
-    if (cid) seenIds.add(cid);
-    if (normKey) seenNames.add(normKey);
+    if (seenKeys.has(normKey)) continue;
+    seenKeys.add(normKey);
     deduped.push(c);
   }
 

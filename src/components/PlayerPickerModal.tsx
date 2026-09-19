@@ -4,7 +4,8 @@ import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Search } from 'lucide-react';
 import { splitPlayerFirstLastName } from '../utils/formatters';
 import { getCurrentNFLWeek } from '../lib/espnSync';
-import { getPlayerScoringDisplay } from '../utils/teamData';
+import { getPlayerScoringDisplay, DEFAULT_NFL_MATCHES } from '../utils/teamData';
+import { DEFAULT_NBA_MATCHES } from '../utils/nbaTeamData';
 
 interface PlayerPickerModalProps {
   isOpen: boolean;
@@ -68,32 +69,42 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   const currentNFLWeek = getCurrentNFLWeek();
 
   const activeMatches = useMemo(() => {
-    if (!Array.isArray(matches)) return [];
-    const filtered = matches.filter((m) => {
+    const defaultList = sport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES;
+    const baseMatches = Array.isArray(matches) && matches.length > 0 ? matches : defaultList;
+
+    // Filter to current sport and current NFL week
+    const sportMatches = baseMatches.filter((m) => {
       const matchSport = (m.sportId || (m as any).sport || '').toLowerCase();
       if (matchSport && matchSport !== sport.toLowerCase()) return false;
-      // STRICT FILTER: Only show games for the current week
       if (sport === 'nfl') {
         if (m.week && m.week !== currentNFLWeek) return false;
       }
-      // GUARANTEE A: In the Star Picker, ONLY load games where state is 'pre' / 'in' (exclude 'final' / 'post')
-      const isFinal =
-        m.status === 'final' ||
-        (m as any).status?.type?.state === 'post' ||
-        (m as any).quarterTime?.toLowerCase().includes('final') ||
-        (m as any).periodLabel?.toLowerCase().includes('final');
-      return !isFinal;
-    });
-
-    // Fallback: If all games are completed (e.g. post-Monday night), show all week matches
-    const listToUse = filtered.length > 0 ? filtered : matches.filter((m) => {
-      const matchSport = (m.sportId || (m as any).sport || '').toLowerCase();
-      if (matchSport && matchSport !== sport.toLowerCase()) return false;
-      if (sport === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
       return true;
     });
 
-    return [...listToUse].sort((a, b) => {
+    // Ensure all 16 games on the NFL slate (all 32 teams) are represented
+    const combined = [...sportMatches];
+    if (sport === 'nfl') {
+      const existingPairs = new Set(
+        combined.map((m) => {
+          const away = normalizeCode(m.awayTeamCode || m.away_team || '');
+          const home = normalizeCode(m.homeTeamCode || m.home_team || '');
+          return `${away}@${home}`;
+        })
+      );
+
+      for (const defMatch of DEFAULT_NFL_MATCHES) {
+        const away = normalizeCode(defMatch.awayTeamCode || defMatch.away_team || '');
+        const home = normalizeCode(defMatch.homeTeamCode || defMatch.home_team || '');
+        const pair = `${away}@${home}`;
+        if (!existingPairs.has(pair)) {
+          combined.push({ ...defMatch, week: currentNFLWeek, weekLabel: `Week ${currentNFLWeek}` });
+          existingPairs.add(pair);
+        }
+      }
+    }
+
+    return combined.sort((a, b) => {
       if (a.status === 'live' && b.status !== 'live') return -1;
       if (b.status === 'live' && a.status !== 'live') return 1;
       if (a.status === 'upcoming' && b.status === 'final') return -1;
@@ -140,20 +151,17 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
     }
 
     // STRICT DEDUPLICATION: Ensure no player ever appears more than once under any circumstance
-    const seenIds = new Set<string>();
-    const seenNames = new Set<string>();
+    const seenKeys = new Set<string>();
     const deduped: Competitor[] = [];
 
     for (const player of list) {
       if (!player) continue;
-      const pid = String(player.id || '').trim();
-      const normName = (player.displayName || player.shortName || '').trim().toLowerCase();
+      const key = `${(player.displayName || player.shortName || '').trim().toLowerCase()}__${(player.teamCode || (player as any).team || '').trim().toUpperCase()}`;
 
-      if (pid && seenIds.has(pid)) continue;
-      if (normName && seenNames.has(normName)) continue;
+      if (!key || key === '__') continue;
+      if (seenKeys.has(key)) continue;
 
-      if (pid) seenIds.add(pid);
-      if (normName) seenNames.add(normName);
+      seenKeys.add(key);
       deduped.push(player);
     }
 
@@ -197,18 +205,18 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           </button>
         </div>
 
-        <div className="shrink-0 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar touch-pan-x">
-          <div className="px-2 py-1 bg-[#271604] text-[#fae5b8] font-pixel text-[9px] sm:text-[10px] rounded-xs border border-[#5c3509] shrink-0 font-bold whitespace-nowrap">
-            {sport === 'nfl' ? `WEEK ${currentNFLWeek} ONLY` : `TONIGHT'S ACTION`}
+        <div className="shrink-0 flex flex-wrap items-center gap-1 sm:gap-1.5 p-1.5 bg-[#ecd7ab]/75 rounded-xs border-2 border-[#c99a57] max-h-24 sm:max-h-28 overflow-y-auto custom-scrollbar touch-pan-y shadow-inner">
+          <div className="px-2 py-1 bg-[#271604] text-[#fae5b8] font-pixel text-[9px] sm:text-[10px] rounded-xs border border-[#5c3509] shrink-0 font-bold whitespace-nowrap shadow-xs">
+            {sport === 'nfl' ? `WEEK ${currentNFLWeek} (${activeMatches.length} GAMES)` : `TONIGHT (${activeMatches.length} GAMES)`}
           </div>
 
           <button
             type="button"
             onClick={() => setSelectedGameFilter('ALL')}
-            className={`touch-manipulation px-3 py-1.5 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 ${
+            className={`touch-manipulation px-2.5 py-1 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 ${
               selectedGameFilter === 'ALL'
-                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold'
-                : 'bg-[#ebd2a4] hover:bg-[#fae9c8] text-[#5c3509] border-[#c99a57]'
+                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
+                : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
             }`}
           >
             ★ ALL {sport.toUpperCase()} STARS
@@ -220,24 +228,29 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
             const isSelected = selectedGameFilter === match.id || selectedGameFilter === `${away}@${home}`;
 
             const isLive = match.status === 'live';
+            const isFinal = match.status === 'final' || String((match as any).status?.type?.state || '').toLowerCase() === 'post';
 
             return (
               <button
                 key={match.id}
                 type="button"
-                onClick={() => setSelectedGameFilter(match.id)}
-                className={`touch-manipulation px-2.5 py-1.5 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 flex items-center gap-1 ${
+                onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : match.id)}
+                className={`touch-manipulation px-2 py-1 font-pixel text-[9px] sm:text-[10px] border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 flex items-center gap-1 ${
                   isSelected
-                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold'
+                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
                     : isLive
-                    ? 'bg-[#ffe8e8] hover:bg-[#ffd5d5] text-[#900] border-[#c0392b]'
-                    : 'bg-[#ebd2a4] hover:bg-[#fae9c8] text-[#5c3509] border-[#c99a57]'
+                    ? 'bg-[#ffe8e8] hover:bg-[#ffd5d5] text-[#900] border-[#c0392b] font-bold'
+                    : isFinal
+                    ? 'bg-[#d8c29a] hover:bg-[#fae5b8] text-[#5c3509]/85 border-[#b38947]'
+                    : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
                 }`}
+                title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
               >
                 {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
                 <span className="font-bold">{away}</span>
                 <span className="opacity-70 mx-0.5">@</span>
                 <span className="font-bold">{home}</span>
+                {isFinal && <span className="text-[7px] text-[#784610] font-sans uppercase font-bold opacity-75 ml-0.5">FIN</span>}
               </button>
             );
           })}

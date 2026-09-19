@@ -507,6 +507,58 @@ app.get('/api/rooms', (req: Request, res: Response) => {
 });
 
 // -------------------------------------------------------------
+// ESPN Proxy Endpoints (Zero-CORS backend fetching)
+// -------------------------------------------------------------
+app.get('/api/espn/scoreboard', async (req: Request, res: Response) => {
+  try {
+    const sport = req.query.sport === 'nba' ? 'nba' : 'nfl';
+    const week = req.query.week ? String(req.query.week) : '';
+    const seasonType = req.query.seasontype ? String(req.query.seasontype) : '2';
+
+    const baseUrl = sport === 'nba'
+      ? 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard'
+      : 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
+
+    const params = new URLSearchParams();
+    if (sport === 'nfl') {
+      params.set('seasontype', seasonType);
+      if (week) params.set('week', week);
+    }
+    const fullUrl = `${baseUrl}?${params.toString()}`;
+    const resp = await fetch(fullUrl, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      res.status(resp.status).json({ error: `ESPN returned ${resp.status}` });
+      return;
+    }
+    const data = await resp.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to proxy ESPN scoreboard' });
+  }
+});
+
+app.get('/api/espn/summary', async (req: Request, res: Response) => {
+  try {
+    const event = String(req.query.event || '');
+    const sport = req.query.sport === 'nba' ? 'basketball/nba' : 'football/nfl';
+    if (!event) {
+      res.status(400).json({ error: 'event ID is required' });
+      return;
+    }
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/summary?event=${event}`;
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      res.status(resp.status).json({ error: `ESPN returned ${resp.status}` });
+      return;
+    }
+    const data = await resp.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to proxy ESPN summary' });
+  }
+});
+
+// -------------------------------------------------------------
 // Vite middleware / Static Serving Setup
 // -------------------------------------------------------------
 async function startServer() {

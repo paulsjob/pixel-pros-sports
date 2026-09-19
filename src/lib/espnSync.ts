@@ -151,10 +151,24 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     : `${ESPN_NFL_SCOREBOARD}?seasontype=2&week=${currentWeekNumber}`;
   const sportLabel = sport.toUpperCase();
 
+  const proxyUrl = sport === 'nba'
+    ? '/api/espn/scoreboard?sport=nba'
+    : `/api/espn/scoreboard?sport=nfl&seasontype=2&week=${currentWeekNumber}`;
+
   try {
-    const resp = await fetch(url, { cache: 'no-store' });
-    if (!resp.ok) {
-      throw new Error(`ESPN API returned HTTP ${resp.status}`);
+    let resp: Response;
+    try {
+      // 1. Attempt backend proxy first (100% immune to browser CORS)
+      resp = await fetch(proxyUrl, { cache: 'no-store' });
+      if (!resp.ok) {
+        throw new Error(`Proxy status ${resp.status}`);
+      }
+    } catch {
+      // 2. Direct fallback if running in standalone/SPA preview mode
+      resp = await fetch(url, { cache: 'no-store' });
+      if (!resp.ok) {
+        throw new Error(`ESPN API returned HTTP ${resp.status}`);
+      }
     }
 
     const data = await resp.json();
@@ -268,9 +282,17 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
       let fetchedBoxscore = false;
       if (sport === 'nfl') {
         try {
-          const sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${evId}`, {
-            signal: AbortSignal.timeout(2800),
-          });
+          let sumRes: Response;
+          try {
+            sumRes = await fetch(`/api/espn/summary?sport=nfl&event=${evId}`, {
+              signal: AbortSignal.timeout(2800),
+            });
+            if (!sumRes.ok) throw new Error('Proxy summary failed');
+          } catch {
+            sumRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${evId}`, {
+              signal: AbortSignal.timeout(2800),
+            });
+          }
           if (sumRes.ok) {
             const sumData = await sumRes.json();
             const playerGroups = sumData.boxscore?.players || [];
