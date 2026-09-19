@@ -12,19 +12,19 @@ export default defineConfig(() => {
         process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://sqntjgjqtwbcqpxcqzbg.supabase.co'
       ),
       'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxbnRqZ2pxdHdiY3FweGNxemJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTk2NzYsImV4cCI6MjEwNDc5NTY3Nn0.2M_u9c6g2yWm2Ev0e_FeucFSnEFTCeerVvpNwNTdI4g'
       ),
       'process.env.VITE_SUPABASE_URL': JSON.stringify(
         process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://sqntjgjqtwbcqpxcqzbg.supabase.co'
       ),
       'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxbnRqZ2pxdHdiY3FweGNxemJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTk2NzYsImV4cCI6MjEwNDc5NTY3Nn0.2M_u9c6g2yWm2Ev0e_FeucFSnEFTCeerVvpNwNTdI4g'
       ),
       'process.env.SUPABASE_URL': JSON.stringify(
         process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://sqntjgjqtwbcqpxcqzbg.supabase.co'
       ),
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxbnRqZ2pxdHdiY3FweGNxemJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTk2NzYsImV4cCI6MjEwNDc5NTY3Nn0.2M_u9c6g2yWm2Ev0e_FeucFSnEFTCeerVvpNwNTdI4g'
       ),
     },
     resolve: {

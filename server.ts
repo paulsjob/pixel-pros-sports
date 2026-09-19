@@ -32,6 +32,7 @@ interface StoredRoster {
 interface ServerDB {
   rosters: StoredRoster[];
   locks: Record<string, boolean>; // key: `${room}_${user}_${sport}`
+  rooms?: Record<string, { sport: 'nfl' | 'nba'; createdAt: string }>;
 }
 
 function ensureDataDir(): void {
@@ -54,6 +55,7 @@ function loadDatabase(): ServerDB {
         return {
           rosters: parsed.rosters,
           locks: parsed.locks || {},
+          rooms: parsed.rooms || {},
         };
       }
     } catch (err) {
@@ -64,6 +66,10 @@ function loadDatabase(): ServerDB {
   const initialDB: ServerDB = {
     rosters: [],
     locks: {},
+    rooms: {
+      COUCH_nfl: { sport: 'nfl', createdAt: new Date().toISOString() },
+      HOOPS_nba: { sport: 'nba', createdAt: new Date().toISOString() },
+    },
   };
   saveDatabase(initialDB);
   return initialDB;
@@ -243,6 +249,9 @@ app.post('/api/rosters', (req: Request, res: Response) => {
     dbState.rosters.push(updatedRecord);
   }
 
+  if (!dbState.rooms) dbState.rooms = {};
+  dbState.rooms[`${cleanRoom}_${cleanSport}`] = { sport: cleanSport, createdAt: new Date().toISOString() };
+
   saveDatabase(dbState);
   broadcastRoomUpdate(cleanRoom, cleanSport, { action: 'upsert', roster: updatedRecord });
 
@@ -323,6 +332,11 @@ app.post('/api/rosters/reset', (req: Request, res: Response) => {
   const cleanRoom = (room_code || 'COUCH').trim().toUpperCase();
 
   dbState.rosters = dbState.rosters.filter((r) => (r.room_code || '').trim().toUpperCase() !== cleanRoom);
+
+  if (dbState.rooms) {
+    delete dbState.rooms[`${cleanRoom}_nfl`];
+    delete dbState.rooms[`${cleanRoom}_nba`];
+  }
 
   for (const k of Object.keys(dbState.locks)) {
     if (k.startsWith(`${cleanRoom}_`)) {
@@ -418,22 +432,65 @@ app.post('/api/rosters/clear-stars', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
-// 10. List all active rooms across all devices
+// 10. Register or touch an active room
+app.post('/api/rooms', (req: Request, res: Response) => {
+  const { room_code, sport = 'nfl' } = req.body;
+  const cleanCode = (room_code || '').trim().toUpperCase();
+  const cleanSport: 'nfl' | 'nba' = (sport || '').toString().toLowerCase() === 'nba' ? 'nba' : 'nfl';
+
+  if (cleanCode) {
+    if (!dbState.rooms) dbState.rooms = {};
+    dbState.rooms[`${cleanCode}_${cleanSport}`] = {
+      sport: cleanSport,
+      createdAt: new Date().toISOString(),
+    };
+    saveDatabase(dbState);
+  }
+
+  res.json({ success: true });
+});
+
+// 11. List all active rooms across all devices
 app.get('/api/rooms', (req: Request, res: Response) => {
   const roomMap = new Map<string, { sport: 'nfl' | 'nba'; squads: Set<string> }>();
+
+  // Ensure default rooms are present
+  roomMap.set('COUCH_nfl', { sport: 'nfl', squads: new Set() });
+  roomMap.set('HOOPS_nba', { sport: 'nba', squads: new Set() });
+
+  // Include registered rooms
+  if (dbState.rooms) {
+    Object.entries(dbState.rooms).forEach(([mapKey, meta]) => {
+      if (!roomMap.has(mapKey)) {
+        roomMap.set(mapKey, { sport: meta.sport, squads: new Set() });
+      }
+    });
+  }
+
+  // Include optional query hint ?roomCode=
+  const hintRoom = (req.query.roomCode as string || '').trim().toUpperCase();
+  const hintSport: 'nfl' | 'nba' = (req.query.sport as string || '').toLowerCase() === 'nba' ? 'nba' : 'nfl';
+  if (hintRoom) {
+    const hintKey = `${hintRoom}_${hintSport}`;
+    if (!roomMap.has(hintKey)) {
+      roomMap.set(hintKey, { sport: hintSport, squads: new Set() });
+    }
+  }
 
   dbState.rosters.forEach((r) => {
     const code = (r.room_code || '').trim().toUpperCase();
     const user = (r.user_name || '').trim().toUpperCase();
     const sport: 'nfl' | 'nba' = r.sport === 'nba' ? 'nba' : 'nfl';
 
-    if (!code || !user) return;
+    if (!code) return;
     const mapKey = `${code}_${sport}`;
 
     if (!roomMap.has(mapKey)) {
       roomMap.set(mapKey, { sport, squads: new Set() });
     }
-    roomMap.get(mapKey)!.squads.add(user);
+    if (user) {
+      roomMap.get(mapKey)!.squads.add(user);
+    }
   });
 
   const summaries = Array.from(roomMap.entries()).map(([key, val]) => {

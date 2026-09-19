@@ -15,6 +15,7 @@ import {
   setSquadLockState,
   isGhostUser,
   fetchAllActiveRooms,
+  registerActiveRoom,
   ActiveRoomSummary,
   resolveSupabaseAnonKey,
   setCustomSupabaseKey,
@@ -133,7 +134,7 @@ export default function App() {
     if (isRoomModalOpen) {
       setTempRoomCode(roomCode);
       setIsLoadingRooms(true);
-      fetchAllActiveRooms()
+      fetchAllActiveRooms(roomCode, currentSport, roomRosters)
         .then((rooms) => {
           setAvailableRooms(rooms);
         })
@@ -141,37 +142,59 @@ export default function App() {
           setIsLoadingRooms(false);
         });
     }
-  }, [isRoomModalOpen, roomCode]);
+  }, [isRoomModalOpen, roomCode, currentSport, roomRosters]);
 
   const consolidatedCouches = useMemo(() => {
-    const map = new Map<string, { roomCode: string; sport: SportId; squadCount: number }>();
+    const map = new Map<string, { roomCode: string; sport: SportId; squadCount: number; squadNames: string[] }>();
 
-    // 1. Only include active rooms that actually have squads in Supabase for this sport
-    availableRooms
-      .filter((r) => r.squadCount > 0 && r.sport === currentSport)
-      .forEach((r) => {
-        const code = (r.roomCode || '').trim().toUpperCase();
-        if (!code) return;
-        map.set(code, {
-          roomCode: code,
-          sport: r.sport,
-          squadCount: r.squadCount,
-        });
+    // 1. Include ALL available rooms stored on the database
+    availableRooms.forEach((r) => {
+      const code = (r.roomCode || '').trim().toUpperCase();
+      if (!code) return;
+      map.set(code, {
+        roomCode: code,
+        sport: r.sport || currentSport,
+        squadCount: r.squadCount || 0,
+        squadNames: r.squadNames || [],
       });
+    });
 
-    // 2. Default room COUCH / HOOPS is always available
+    // 2. Ensure current room is always present with its current squads
+    const currentCode = (roomCode || '').trim().toUpperCase();
+    if (currentCode) {
+      const existing = map.get(currentCode);
+      const activeSquads = roomRosters
+        .filter((r) => !isGhostUser(r.user_name))
+        .map((r) => r.user_name.toUpperCase());
+      map.set(currentCode, {
+        roomCode: currentCode,
+        sport: currentSport,
+        squadCount: Math.max(existing?.squadCount || 0, activeSquads.length),
+        squadNames: Array.from(new Set([...(existing?.squadNames || []), ...activeSquads])),
+      });
+    }
+
+    // 3. Default room COUCH / HOOPS is always available
     const defaultCode = currentSport === 'nba' ? 'HOOPS' : 'COUCH';
     if (!map.has(defaultCode)) {
       map.set(defaultCode, {
         roomCode: defaultCode,
         sport: currentSport,
         squadCount: 0,
+        squadNames: [],
       });
     }
 
-    // Sort by squad count descending (most populated couch first)
-    return Array.from(map.values()).sort((a, b) => b.squadCount - a.squadCount);
-  }, [availableRooms, currentSport]);
+    // Sort: Current room first, then by squad count descending, then alphabetical
+    return Array.from(map.values()).sort((a, b) => {
+      const aIsCurrent = a.roomCode === currentCode;
+      const bIsCurrent = b.roomCode === currentCode;
+      if (aIsCurrent && !bIsCurrent) return -1;
+      if (!aIsCurrent && bIsCurrent) return 1;
+      if (b.squadCount !== a.squadCount) return b.squadCount - a.squadCount;
+      return a.roomCode.localeCompare(b.roomCode);
+    });
+  }, [availableRooms, currentSport, roomCode, roomRosters]);
 
   const previousRoom = useMemo(() => {
     const defaultCode = currentSport === 'nba' ? 'HOOPS' : 'COUCH';
@@ -445,6 +468,11 @@ export default function App() {
     const scopedUser = (localStorage.getItem(`pixel_pros_user_${currentSport}_${clean}`) || '').toUpperCase();
     setUserName(scopedUser);
 
+    registerActiveRoom(clean, currentSport);
+    fetchAllActiveRooms(clean, currentSport).then((rooms) => {
+      setAvailableRooms(rooms);
+    });
+
     showToast(`Switched to Room ${clean}!`);
   };
 
@@ -557,7 +585,7 @@ export default function App() {
           fetchLiveCompetitors(currentSport),
           fetchLiveMatches(currentSport),
           fetchRoomRosters(roomCode, currentSport),
-          fetchAllActiveRooms(),
+          fetchAllActiveRooms(roomCode, currentSport),
         ]);
 
         if (!active) return;
@@ -871,15 +899,19 @@ export default function App() {
 
               <button
                 type="button"
+                id="header-room-edit-button"
                 onClick={() => {
                   setTempRoomCode(roomCode);
                   setIsRoomModalOpen(true);
                 }}
-                className="hidden sm:flex touch-manipulation items-center gap-1 px-1.5 sm:px-2 py-1 bg-[#1a2238] hover:bg-[#232e4b] border border-[#273552] rounded-xs font-pixel text-[9px] sm:text-xs text-[#fae5b8] shadow-xs"
+                className="touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 py-1 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/60 rounded-xs font-pixel text-[10px] sm:text-xs text-[#fae5b8] shadow-xs cursor-pointer active:scale-95 transition-all"
+                title="View and Switch Database Rooms"
               >
                 <span className="text-[#38bdf8]">ROOM:</span>
-                <span className="text-[#f59e0b] font-bold">{roomCode}</span>
-                <span className="text-[9px]">Edit</span>
+                <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
+                <span className="ml-0.5 px-1.5 py-0.5 bg-[#f59e0b] hover:bg-[#fbbf24] text-[#0f172a] font-bold text-[9px] rounded-2xs uppercase shadow-xs">
+                  EDIT
+                </span>
               </button>
 
               <button
@@ -1125,22 +1157,37 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Consolidated Active Couches */}
+                {/* Consolidated Active Database Rooms */}
                 <div className="mb-3.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-pixel text-[10px] text-[#5c3509] font-bold">
-                      ⭐ ACTIVE COUCHES (Tap to Join):
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-pixel text-[10px] text-[#5c3509] font-bold flex items-center gap-1">
+                      ⭐ ALL ROOMS ON DATABASE:
                     </span>
-                    {isLoadingRooms && (
-                      <span className="font-retro text-[10px] text-[#8c532b] animate-pulse">Syncing...</span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLoadingRooms(true);
+                        fetchAllActiveRooms(roomCode, currentSport, roomRosters)
+                          .then((rooms) => {
+                            setAvailableRooms(rooms);
+                            showToast('Refreshed rooms from database!');
+                          })
+                          .finally(() => {
+                            setIsLoadingRooms(false);
+                          });
+                      }}
+                      className="font-pixel text-[9px] text-[#12579b] hover:text-[#1a6cb8] underline cursor-pointer flex items-center gap-1"
+                    >
+                      {isLoadingRooms ? 'SYNCING...' : '🔄 REFRESH'}
+                    </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-0.5">
                     {consolidatedCouches.map((c) => {
                       const isCurrent = (roomCode || '').toUpperCase() === c.roomCode.toUpperCase();
                       const teamCountLabel = c.squadCount === 1 ? '1 Team' : `${c.squadCount} Teams`;
                       const icon = c.sport === 'nba' ? '🏀' : '🛋️';
+                      const teamsPreview = c.squadNames && c.squadNames.length > 0 ? c.squadNames.join(', ') : 'No teams yet';
 
                       return (
                         <button
@@ -1151,17 +1198,36 @@ export default function App() {
                             handleCommitRoomCode(c.roomCode);
                             setIsRoomModalOpen(false);
                           }}
-                          className={`touch-manipulation px-2.5 py-1.5 font-pixel text-[10px] rounded-xs border-2 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:translate-y-0.5 ${
+                          className={`touch-manipulation p-2 font-pixel text-left rounded-xs border-2 transition-all flex items-center justify-between gap-2 cursor-pointer shadow-xs active:translate-y-0.5 ${
                             isCurrent
                               ? 'bg-[#12579b] text-white border-[#0a2e52] shadow-[0_2px_0_0_#0a2e52]'
                               : 'bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-[#c99a57] hover:border-[#b48340]'
                           }`}
                         >
-                          <span className="text-xs">{icon}</span>
-                          <span className="font-bold tracking-wider">{c.roomCode}</span>
-                          <span className={`text-[9px] ${isCurrent ? 'text-[#bfdbfe]' : 'text-[#784610] font-retro font-bold'}`}>
-                            ({teamCountLabel})
-                          </span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base">{icon}</span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold tracking-wider text-xs sm:text-sm">{c.roomCode}</span>
+                                {isCurrent && (
+                                  <span className="text-[8px] px-1 py-0.2 bg-[#f59e0b] text-[#0f172a] font-bold rounded-2xs uppercase">
+                                    CURRENT
+                                  </span>
+                                )}
+                              </div>
+                              <div className={`text-[9px] font-retro truncate ${isCurrent ? 'text-[#bfdbfe]' : 'text-[#784610]'}`}>
+                                {c.squadCount > 0 ? `Teams: ${teamsPreview}` : 'Ready for first squad'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className={`text-[10px] font-bold font-retro block ${isCurrent ? 'text-[#fde047]' : 'text-[#12579b]'}`}>
+                              {teamCountLabel}
+                            </span>
+                            <span className={`text-[8px] uppercase ${isCurrent ? 'text-white/80' : 'text-[#8c532b]'}`}>
+                              {isCurrent ? 'Active' : 'Tap to Enter →'}
+                            </span>
+                          </div>
                         </button>
                       );
                     })}
