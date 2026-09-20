@@ -399,30 +399,20 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
 
     const mapped = filtered.map(mapRowToCompetitor);
     
-    // ARCHITECTURAL GUARANTEE: The Roster Manifest is the authoritative foundation.
-    // We seed ALL starters for all 32 teams (min 1 QB, 2 RB, 2 WR, 1 TE per team)
-    // and overlay live stats/scores from Supabase so no player is missing from unstarted games!
+    // DYNAMIC ESPN DATA FIRST: Supabase rows contain real dynamic starters from ESPN depth charts.
+    // We treat Supabase rows as authoritative, and only use baseList for missing offline fallbacks.
     const baseList = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
     const mergedMap = new Map<string, Competitor>();
 
-    for (const b of baseList) {
-      const key = `${(b.displayName || '').trim().toLowerCase()}__${(b.teamCode || '').trim().toUpperCase()}`;
-      mergedMap.set(key, { ...b });
-    }
-
     for (const s of mapped) {
       const key = `${(s.displayName || '').trim().toLowerCase()}__${(s.teamCode || '').trim().toUpperCase()}`;
-      if (mergedMap.has(key)) {
-        const existing = mergedMap.get(key)!;
-        mergedMap.set(key, {
-          ...existing,
-          score: s.score !== undefined ? s.score : existing.score,
-          rating: s.rating || existing.rating,
-          badges: s.badges && s.badges.length > 0 ? s.badges : existing.badges,
-          stats: { ...existing.stats, ...s.stats },
-        });
-      } else {
-        mergedMap.set(key, s);
+      mergedMap.set(key, s);
+    }
+
+    for (const b of baseList) {
+      const key = `${(b.displayName || '').trim().toLowerCase()}__${(b.teamCode || '').trim().toUpperCase()}`;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, { ...b });
       }
     }
 

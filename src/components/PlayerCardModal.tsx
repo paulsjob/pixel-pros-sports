@@ -101,7 +101,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-      <div className="inspector-modal w-[92vw] max-w-[440px] mx-auto box-border overflow-x-hidden relative p-3.5 sm:p-4 bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_8px_0_0_#0a0f1d] rounded-xs my-auto max-h-[90vh] flex flex-col justify-between overflow-y-auto">
+      <div className="inspector-modal w-[92vw] max-w-[460px] mx-auto box-border overflow-x-hidden relative p-3.5 sm:p-4 pb-6 bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_8px_0_0_#0a0f1d] rounded-xs my-auto max-h-[90vh] flex flex-col justify-between overflow-y-auto no-scrollbar">
         
         {/* Header */}
         <div className="modal-header flex justify-between items-start w-full mb-2 sm:mb-3 pb-2 sm:pb-2.5 border-b-2 border-[#e2ba7d] shrink-0">
@@ -299,68 +299,68 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           <div className="space-y-1.5 text-xs font-retro text-[#5c3509] pr-1">
             {sport === 'nba' ? (
               <>
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🎯</span><span>{threePm} 3-POINTERS</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#b45309] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaThreePts} PTS</span>
+                  <span className="breakdown-pts text-[#b45309]">+{nbaThreePts} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🤝</span><span>{ast} ASSISTS</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaAstPts} PTS</span>
+                  <span className="breakdown-pts text-[#12579b]">+{nbaAstPts} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🏀</span><span>{reb} REBOUNDS</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaRebPts} PTS</span>
+                  <span className="breakdown-pts text-[#12579b]">+{nbaRebPts} PTS</span>
                 </div>
 
                 {bigStops > 0 && (
-                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>🛡️</span><span>{bigStops} BIG STOPS</span>
                     </span>
-                    <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                    <span className="breakdown-dots text-[#c99a57]">
                       ....................................................................
                     </span>
-                    <span className="text-[#15803d] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaStopPts} PTS</span>
+                    <span className="breakdown-pts text-[#15803d]">+{nbaStopPts} PTS</span>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>⚡</span><span>{pts} REAL PTS (1/3)</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaGamePts} PTS</span>
+                  <span className="breakdown-pts text-[#12579b]">+{nbaGamePts} PTS</span>
                 </div>
 
                 {nbaAdjustment !== 0 && (
-                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>{nbaAdjustment > 0 ? '🌟' : '⚠️'}</span>
                       <span>{nbaAdjustment > 0 ? 'BONUS / ADJUSTMENT' : 'DEDUCTIONS'}</span>
                     </span>
-                    <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                    <span className="breakdown-dots text-[#c99a57]">
                       ....................................................................
                     </span>
-                    <span className={`font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap ${nbaAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
+                    <span className={`breakdown-pts ${nbaAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
                       {nbaAdjustment > 0 ? `+${nbaAdjustment}` : `${nbaAdjustment}`} PTS
                     </span>
                   </div>
@@ -368,58 +368,58 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               </>
             ) : (
               <>
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🏈</span><span>{tds} TOUCHDOWNS (6/td)</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#b45309] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{tdPoints} PTS</span>
+                  <span className="breakdown-pts text-[#b45309]">+{tdPoints} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>⚡</span><span>{passYds} PASSING YDS (25/pt)</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{passPoints} PTS</span>
+                  <span className="breakdown-pts text-[#12579b]">+{passPoints} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🏃</span><span>{rushYds} RUSHING YDS (10/pt)</span>
                   </span>
-                  <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                  <span className="breakdown-dots text-[#c99a57]">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{rushPoints} PTS</span>
+                  <span className="breakdown-pts text-[#12579b]">+{rushPoints} PTS</span>
                 </div>
 
                 {recYds > 0 && (
-                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>🙌</span><span>{recYds} RECEIVING YDS (10/pt)</span>
                     </span>
-                    <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                    <span className="breakdown-dots text-[#c99a57]">
                       ....................................................................
                     </span>
-                    <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{recPoints} PTS</span>
+                    <span className="breakdown-pts text-[#12579b]">+{recPoints} PTS</span>
                   </div>
                 )}
 
                 {nflAdjustment !== 0 && (
-                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>{nflAdjustment > 0 ? '🌟' : '⚠️'}</span>
                       <span>{nflAdjustment > 0 ? '2-PT CONV / BONUS' : 'TURNOVER / SACK DEDUCTIONS'}</span>
                     </span>
-                    <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
+                    <span className="breakdown-dots text-[#c99a57]">
                       ....................................................................
                     </span>
-                    <span className={`font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
+                    <span className={`breakdown-pts ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
                       {nflAdjustment > 0 ? `+${nflAdjustment}` : `${nflAdjustment}`} PTS
                     </span>
                   </div>
@@ -427,11 +427,14 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               </>
             )}
 
-            <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs sm:text-sm font-bold shadow-xs mt-1.5">
-              <span className="tracking-wider">
+            <div className="points-breakdown-row py-2 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs sm:text-sm font-bold shadow-xs mt-2">
+              <span className="tracking-wider shrink-0 whitespace-nowrap">
                 {scoringInfo.gameState === 'pre' ? 'LAST GAME TOTAL:' : 'TOTAL SCORE:'}
               </span>
-              <span className="text-[#fde047] text-sm sm:text-base font-bold">
+              <span className="breakdown-dots text-[#93c5fd] opacity-30">
+                ....................................................................
+              </span>
+              <span className="breakdown-pts text-[#fde047] text-sm sm:text-base font-bold">
                 {breakdownTargetScore} PTS
               </span>
             </div>

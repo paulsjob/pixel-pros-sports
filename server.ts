@@ -558,6 +558,46 @@ app.get('/api/espn/summary', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/espn/depthchart', async (req: Request, res: Response) => {
+  try {
+    const teamId = String(req.query.teamId || req.query.team || '');
+    if (!teamId) {
+      res.status(400).json({ error: 'teamId is required' });
+      return;
+    }
+    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/depthcharts`;
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      res.status(resp.status).json({ error: `ESPN returned ${resp.status}` });
+      return;
+    }
+    const data = await resp.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to proxy ESPN depthchart' });
+  }
+});
+
+app.get('/api/espn/roster', async (req: Request, res: Response) => {
+  try {
+    const teamId = String(req.query.teamId || req.query.team || '');
+    if (!teamId) {
+      res.status(400).json({ error: 'teamId is required' });
+      return;
+    }
+    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/roster`;
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      res.status(resp.status).json({ error: `ESPN returned ${resp.status}` });
+      return;
+    }
+    const data = await resp.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to proxy ESPN roster' });
+  }
+});
+
 app.post('/api/espn/sync', async (req: Request, res: Response) => {
   try {
     const result = await syncESPNToSupabase();

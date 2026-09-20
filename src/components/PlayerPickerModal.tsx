@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Competitor, Match, ActiveSlot, SportId } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Search } from 'lucide-react';
@@ -142,6 +142,57 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
     );
   }, [selectedGameFilter, activeMatches]);
 
+  const carouselRef = useRef<HTMLDivElement>(null);
+
+  const scrollCarousel = (amount: number) => {
+    if (carouselRef.current) {
+      carouselRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+  };
+
+  const currentMatchIndex = useMemo(() => {
+    if (!selectedGameFilter || selectedGameFilter === 'ALL') return -1;
+    return activeMatches.findIndex((m) => {
+      const away = normalizeCode(m.awayTeamCode || m.away_team || '');
+      const home = normalizeCode(m.homeTeamCode || m.home_team || '');
+      return `${away}@${home}` === selectedGameFilter || m.id === selectedGameFilter;
+    });
+  }, [selectedGameFilter, activeMatches]);
+
+  const handlePrevGameMobile = () => {
+    if (activeMatches.length === 0) return;
+    if (currentMatchIndex === -1) {
+      const last = activeMatches[activeMatches.length - 1];
+      const away = normalizeCode(last.awayTeamCode || last.away_team || '');
+      const home = normalizeCode(last.homeTeamCode || last.home_team || '');
+      setSelectedGameFilter(`${away}@${home}`);
+    } else if (currentMatchIndex === 0) {
+      setSelectedGameFilter('ALL');
+    } else {
+      const prev = activeMatches[currentMatchIndex - 1];
+      const away = normalizeCode(prev.awayTeamCode || prev.away_team || '');
+      const home = normalizeCode(prev.homeTeamCode || prev.home_team || '');
+      setSelectedGameFilter(`${away}@${home}`);
+    }
+  };
+
+  const handleNextGameMobile = () => {
+    if (activeMatches.length === 0) return;
+    if (currentMatchIndex === -1) {
+      const first = activeMatches[0];
+      const away = normalizeCode(first.awayTeamCode || first.away_team || '');
+      const home = normalizeCode(first.homeTeamCode || first.home_team || '');
+      setSelectedGameFilter(`${away}@${home}`);
+    } else if (currentMatchIndex === activeMatches.length - 1) {
+      setSelectedGameFilter('ALL');
+    } else {
+      const next = activeMatches[currentMatchIndex + 1];
+      const away = normalizeCode(next.awayTeamCode || next.away_team || '');
+      const home = normalizeCode(next.homeTeamCode || next.home_team || '');
+      setSelectedGameFilter(`${away}@${home}`);
+    }
+  };
+
   const filteredPlayers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let list = Array.isArray(allPlayers) ? [...allPlayers] : [];
@@ -245,7 +296,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-3xl bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_8px_0_0_#0a0f1d] p-3 sm:p-5 rounded-xs my-auto max-h-[92vh] flex flex-col box-border gap-2.5 sm:gap-3">
+      <div className="relative w-[96vw] max-w-5xl bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_8px_0_0_#0a0f1d] p-3 sm:p-5 rounded-xs my-auto max-h-[92vh] flex flex-col box-border gap-2.5 sm:gap-3">
         <div className="flex items-center justify-between pb-2 sm:pb-3 border-b-2 border-[#d4a86a] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-base sm:text-xl select-none">{sport === 'nba' ? '🏀' : '⭐'}</span>
@@ -264,56 +315,148 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           </button>
         </div>
 
-        <div className="shrink-0 flex flex-nowrap items-center gap-1 sm:gap-1.5 p-1.5 bg-[#ecd7ab]/75 rounded-xs border-2 border-[#c99a57] overflow-x-auto overflow-y-hidden no-scrollbar touch-pan-x shadow-inner">
-          <div className="px-2 py-1 bg-[#271604] text-[#fae5b8] font-pixel text-[9px] sm:text-[10px] rounded-xs border border-[#5c3509] shrink-0 font-bold whitespace-nowrap shadow-xs">
-            {sport === 'nfl' ? `WEEK ${currentNFLWeek} (${activeMatches.length} GAMES)` : `TONIGHT (${activeMatches.length} GAMES)`}
+        {/* Mobile Viewport Matchup Stepper (< 640px) */}
+        <div className="flex sm:hidden flex-col gap-1.5 p-1.5 bg-[#ecd7ab]/85 rounded-xs border-2 border-[#c99a57] shadow-inner shrink-0">
+          <div className="flex items-center justify-between gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSelectedGameFilter('ALL')}
+              className={`touch-manipulation px-2 py-1 font-pixel text-[9px] border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 ${
+                selectedGameFilter === 'ALL'
+                  ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
+                  : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
+              }`}
+            >
+              ★ ALL STARS
+            </button>
+
+            <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
+              <button
+                type="button"
+                onClick={handlePrevGameMobile}
+                className="touch-manipulation px-2 py-1 bg-[#fae5b8] hover:bg-[#fff7ed] active:bg-[#ecd7ab] text-[#5c3509] border-2 border-[#1a2238] rounded-xs font-pixel text-[9px] font-bold shrink-0 cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all"
+                title="Previous Matchup"
+              >
+                ◀ PREV
+              </button>
+
+              <div
+                onClick={() => {
+                  if (currentMatchIndex !== -1) {
+                    setSelectedGameFilter('ALL');
+                  }
+                }}
+                className="flex-1 text-center font-pixel text-[9px] text-[#5c3509] truncate px-1 py-1 bg-[#fae5b8] border border-[#c99a57] rounded-xs font-bold cursor-pointer"
+                title={currentMatchIndex === -1 ? 'Showing All Matchups' : 'Click to show All Stars'}
+              >
+                {currentMatchIndex === -1 ? (
+                  <span className="text-[#12579b]">WEEK {currentNFLWeek} ({activeMatches.length} G)</span>
+                ) : (
+                  (() => {
+                    const m = activeMatches[currentMatchIndex];
+                    const away = normalizeCode(m.awayTeamCode || m.away_team || '');
+                    const home = normalizeCode(m.homeTeamCode || m.home_team || '');
+                    return (
+                      <span className="truncate">
+                        {away}@{home} ({currentMatchIndex + 1}/{activeMatches.length})
+                      </span>
+                    );
+                  })()
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNextGameMobile}
+                className="touch-manipulation px-2 py-1 bg-[#fae5b8] hover:bg-[#fff7ed] active:bg-[#ecd7ab] text-[#5c3509] border-2 border-[#1a2238] rounded-xs font-pixel text-[9px] font-bold shrink-0 cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all"
+                title="Next Matchup"
+              >
+                NEXT ▶
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Universal Game Matchup Carousel (Desktop & Tablet >= 640px) */}
+        <div className="hidden sm:flex shrink-0 items-center gap-1.5 p-1.5 bg-[#ecd7ab]/80 rounded-xs border-2 border-[#c99a57] shadow-inner">
+          <div className="px-2 py-1 bg-[#271604] text-[#fae5b8] font-pixel text-[10px] rounded-xs border border-[#5c3509] shrink-0 font-bold whitespace-nowrap shadow-xs">
+            {sport === 'nfl' ? `WEEK ${currentNFLWeek} (${activeMatches.length})` : `TONIGHT (${activeMatches.length})`}
           </div>
 
           <button
             type="button"
             onClick={() => setSelectedGameFilter('ALL')}
-            className={`touch-manipulation px-2.5 py-1 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 ${
+            className={`touch-manipulation px-2.5 py-1 font-pixel text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 ${
               selectedGameFilter === 'ALL'
                 ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
                 : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
             }`}
           >
-            ★ ALL {sport.toUpperCase()} STARS
+            ★ ALL STARS
           </button>
 
-          {activeMatches.map((match) => {
-            const away = normalizeCode(match.awayTeamCode || match.away_team || '');
-            const home = normalizeCode(match.homeTeamCode || match.home_team || '');
-            const pairKey = `${away}@${home}`;
-            const isSelected = selectedGameFilter === pairKey || selectedGameFilter === match.id;
+          <div className="h-6 w-[2px] bg-[#c99a57]/70 shrink-0 mx-0.5" />
 
-            const isLive = match.status === 'live';
-            const isFinal = match.status === 'final' || String((match as any).status?.type?.state || '').toLowerCase() === 'post';
+          {/* Left Arrow Button */}
+          <button
+            type="button"
+            onClick={() => scrollCarousel(-220)}
+            className="touch-manipulation w-7 h-7 bg-[#fae5b8] hover:bg-[#fff7ed] active:bg-[#ebd2a4] text-[#5c3509] border-2 border-[#1a2238] rounded-xs font-pixel text-xs shrink-0 cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all flex items-center justify-center select-none"
+            title="Scroll Left"
+          >
+            ◀
+          </button>
 
-            return (
-              <button
-                key={pairKey || match.id}
-                type="button"
-                onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
-                className={`touch-manipulation px-2 py-1 font-pixel text-[9px] sm:text-[10px] border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 flex items-center gap-1 ${
-                  isSelected
-                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
-                    : isLive
-                    ? 'bg-[#ffe8e8] hover:bg-[#ffd5d5] text-[#900] border-[#c0392b] font-bold'
-                    : isFinal
-                    ? 'bg-[#d8c29a] hover:bg-[#fae5b8] text-[#5c3509]/85 border-[#b38947]'
-                    : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                }`}
-                title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
-              >
-                {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
-                <span className="font-bold">{away}</span>
-                <span className="opacity-70 mx-0.5">@</span>
-                <span className="font-bold">{home}</span>
-                {isFinal && <span className="text-[7px] text-[#784610] font-sans uppercase font-bold opacity-75 ml-0.5">FIN</span>}
-              </button>
-            );
-          })}
+          {/* Center Scroll Track: Contains all 16 matchup pills */}
+          <div
+            ref={carouselRef}
+            className="flex-1 flex items-center gap-1.5 overflow-x-auto overflow-y-hidden no-scrollbar touch-pan-x scroll-smooth min-w-0"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {activeMatches.map((match) => {
+              const away = normalizeCode(match.awayTeamCode || match.away_team || '');
+              const home = normalizeCode(match.homeTeamCode || match.home_team || '');
+              const pairKey = `${away}@${home}`;
+              const isSelected = selectedGameFilter === pairKey || selectedGameFilter === match.id;
+
+              const isLive = match.status === 'live';
+              const isFinal = match.status === 'final' || String((match as any).status?.type?.state || '').toLowerCase() === 'post';
+
+              return (
+                <button
+                  key={pairKey || match.id}
+                  type="button"
+                  onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
+                  className={`touch-manipulation px-2.5 py-1 font-pixel text-[10px] border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 flex items-center gap-1 ${
+                    isSelected
+                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
+                      : isLive
+                      ? 'bg-[#ffe8e8] hover:bg-[#ffd5d5] text-[#900] border-[#c0392b] font-bold'
+                      : isFinal
+                      ? 'bg-[#d8c29a] hover:bg-[#fae5b8] text-[#5c3509]/85 border-[#b38947]'
+                      : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
+                  }`}
+                  title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
+                >
+                  {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
+                  <span className="font-bold">{away}</span>
+                  <span className="opacity-70 mx-0.5">@</span>
+                  <span className="font-bold">{home}</span>
+                  {isFinal && <span className="text-[7px] text-[#784610] font-sans uppercase font-bold opacity-75 ml-0.5">FIN</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right Arrow Button */}
+          <button
+            type="button"
+            onClick={() => scrollCarousel(220)}
+            className="touch-manipulation w-7 h-7 bg-[#fae5b8] hover:bg-[#fff7ed] active:bg-[#ebd2a4] text-[#5c3509] border-2 border-[#1a2238] rounded-xs font-pixel text-xs shrink-0 cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all flex items-center justify-center select-none"
+            title="Scroll Right"
+          >
+            ▶
+          </button>
         </div>
 
         <div className="relative flex items-center shrink-0">

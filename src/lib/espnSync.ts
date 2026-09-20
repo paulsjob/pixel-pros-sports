@@ -2,6 +2,7 @@ import { Match, Competitor, SportId } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS, DEFAULT_NFL_MATCHES } from '../utils/teamData';
 import { getNBATeamFullName, getNBATeamColors, DEFAULT_NBA_COMPETITORS } from '../utils/nbaTeamData';
+import { runPureDynamicDepthChartSync } from './espnDepthChartSync';
 
 const SKIN_TONES = ['#f8d9b6', '#e0ac69', '#c68642', '#8d5524', '#523318'];
 
@@ -529,7 +530,22 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     }
 
     // Merge live athlete stats with base competitors, keyed STRICTLY by normalized name to guarantee NO DUPLICATES!
-    const baseCompetitors = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+    let baseCompetitors: Competitor[] = [];
+    if (sport === 'nfl') {
+      try {
+        const dynamicDepth = await runPureDynamicDepthChartSync();
+        if (dynamicDepth.success && dynamicDepth.competitors.length > 0) {
+          baseCompetitors = dynamicDepth.competitors;
+        }
+      } catch (depthErr) {
+        console.warn('[ESPN Sync] Dynamic depth chart sync notice:', depthErr);
+      }
+      if (baseCompetitors.length === 0) {
+        baseCompetitors = DEFAULT_NFL_COMPETITORS;
+      }
+    } else {
+      baseCompetitors = DEFAULT_NBA_COMPETITORS;
+    }
     const finalCompetitorsMap = new Map<string, Competitor>();
 
     // 1. Seed base competitors
@@ -633,15 +649,18 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     const parsedCompetitors: Competitor[] = Array.from(finalCompetitorsMap.values());
 
     // Build Supabase records strictly matching table schema:
-    // id, name, team, sport, position, score, stats, updated_at
+    // id, athlete_id, name, jersey, team, sport, position, score, stats, updated_at
     for (const comp of parsedCompetitors) {
       supabaseCompetitorRecords.push({
         id: comp.id,
+        athlete_id: comp.athleteId || comp.id.replace(/^nfl_|^nba_/, ''),
         name: comp.displayName,
+        jersey: String(comp.uniformNumber || ''),
         team: comp.teamCode,
         sport: sport,
         position: comp.position || 'STAR',
         score: comp.score,
+        current_score: comp.score,
         stats: comp.stats,
         updated_at: new Date().toISOString(),
       });
@@ -713,7 +732,11 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
           }
         }
         if (supabaseCompetitorRecords.length > 0) {
-          await supabase.from('competitors').upsert(supabaseCompetitorRecords, { onConflict: 'id' });
+          try {
+            await supabase.from('competitors').upsert(supabaseCompetitorRecords, { onConflict: 'athlete_id,game_id' } as any);
+          } catch {
+            await supabase.from('competitors').upsert(supabaseCompetitorRecords, { onConflict: 'id' });
+          }
         }
         supabaseSuccess = true;
       } catch (err) {

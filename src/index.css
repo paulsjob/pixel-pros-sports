@@ -154,3 +154,33 @@ main::-webkit-scrollbar {
     height: 0 !important;
   }
 }
+
+/* Points Breakdown formatting to prevent text or points value clipping */
+.points-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-left: 10px;
+  padding-right: 14px;
+  box-sizing: border-box;
+}
+
+.breakdown-dots {
+  flex: 1;
+  min-width: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  margin: 0 8px;
+  opacity: 0.4;
+  user-select: none;
+}
+
+.breakdown-pts {
+  flex-shrink: 0;
+  min-width: 65px;
+  text-align: right;
+  font-weight: bold;
+  white-space: nowrap;
+}
+

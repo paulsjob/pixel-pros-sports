@@ -44,6 +44,7 @@ import {
   reseedMasterNFLManifest,
 } from '../lib/supabaseClient';
 import { syncESPNData, getLastESPNSyncTime, getCurrentNFLWeek } from '../lib/espnSync';
+import { runPureDynamicDepthChartSync } from '../lib/espnDepthChartSync';
 import { DEFAULT_NFL_MATCHES, NFL_TEAMS, getTeamFullName } from '../utils/teamData';
 import { NFL_ROSTER_MANIFEST } from '../data/nflRosterManifest';
 
@@ -91,6 +92,8 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
   const [syncingNFL, setSyncingNFL] = useState(false);
   const [syncingNBA, setSyncingNBA] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [depthSyncLoading, setDepthSyncLoading] = useState(false);
+  const [depthSyncProgress, setDepthSyncProgress] = useState<string | null>(null);
 
   // New room & squad forms
   const [newRoomCode, setNewRoomCode] = useState('');
@@ -135,9 +138,39 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
     setExpandedRooms({});
   };
 
+  const handleRunDepthChartPipeline = async () => {
+    setDepthSyncLoading(true);
+    setDepthSyncProgress('Querying ESPN depth charts for all 32 teams...');
+    try {
+      const res = await runPureDynamicDepthChartSync((msg) => {
+        setDepthSyncProgress(msg);
+      });
+      if (res.success) {
+        showToast(`⚡ Live ESPN Depth Charts: Resolved & synced ${res.count} starters across all 32 teams!`);
+        onRefreshData();
+      } else {
+        showToast(res.error || 'Failed to sync ESPN depth charts');
+      }
+    } catch (err: any) {
+      showToast(`Depth chart sync error: ${err.message}`);
+    } finally {
+      setDepthSyncLoading(false);
+      setDepthSyncProgress(null);
+    }
+  };
+
   const handleReseedNFLManifest = async () => {
     setReseedLoading(true);
     try {
+      // Prioritize live ESPN depth chart resolution with zero hardcoded names
+      const dynRes = await runPureDynamicDepthChartSync();
+      if (dynRes.success && dynRes.count > 0) {
+        showToast(`⚡ Live ESPN Depth Charts: Programmatically synced ${dynRes.count} active starters!`);
+        onRefreshData();
+        return;
+      }
+
+      // Fallback
       const res = await reseedMasterNFLManifest();
       if (res.success) {
         showToast(`Reseeded all ${res.count} NFL starters from Master Manifest!`);
@@ -145,6 +178,8 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
       } else {
         showToast(res.error || 'Failed to reseed manifest');
       }
+    } catch (err: any) {
+      showToast(`Sync notice: ${err.message}`);
     } finally {
       setReseedLoading(false);
     }
@@ -366,8 +401,8 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-xs font-sans">
-      <div className="relative w-full max-w-5xl bg-slate-950 border border-slate-800 text-slate-100 rounded-xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-3 bg-black/85 backdrop-blur-xs font-sans">
+      <div className="relative w-[95vw] max-w-[1500px] h-[92vh] max-h-[92vh] my-[2vh] mx-auto bg-slate-950 border border-slate-800 text-slate-100 rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header Bar */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-slate-900/90 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
@@ -591,11 +626,11 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                   {/* Rooms Table */}
                   <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/30">
                     <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      <div className="col-span-3 sm:col-span-3">Room Code</div>
-                      <div className="col-span-2 sm:col-span-2">Sport</div>
+                      <div className="col-span-3 sm:col-span-2">Room Code</div>
+                      <div className="col-span-2 sm:col-span-1">Sport</div>
                       <div className="col-span-2 sm:col-span-2">Squads</div>
                       <div className="col-span-2 sm:col-span-2">Status</div>
-                      <div className="col-span-3 sm:col-span-3 text-right">Actions</div>
+                      <div className="col-span-3 sm:col-span-5 text-right">Actions</div>
                     </div>
 
                     {loadingRooms && allRooms.length === 0 ? (
@@ -626,7 +661,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                   : 'hover:bg-slate-900/50'
                               }`}
                             >
-                              <div className="col-span-3 sm:col-span-3 flex items-center gap-2">
+                              <div className="col-span-3 sm:col-span-2 flex items-center gap-2">
                                 <span className="text-slate-400">
                                   {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                 </span>
@@ -640,7 +675,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 )}
                               </div>
 
-                              <div className="col-span-2 sm:col-span-2">
+                              <div className="col-span-2 sm:col-span-1">
                                 <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider ${
                                   room.sport === 'nfl'
                                     ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
@@ -670,41 +705,42 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 )}
                               </div>
 
-                              <div className="col-span-3 sm:col-span-3 flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <div className="col-span-3 sm:col-span-5 flex items-center justify-end gap-1.5 sm:gap-2" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
                                   onClick={() => handleLockAllInRoom(room.roomCode, room.sport, false)}
-                                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                                   title="Unlock all squads in this room"
                                 >
-                                  <Unlock size={11} />
-                                  <span className="hidden xl:inline">Unlock All</span>
+                                  <Unlock size={12} className="text-emerald-400" />
+                                  <span className="hidden sm:inline">Unlock All</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleLockAllInRoom(room.roomCode, room.sport, true)}
-                                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                                   title="Lock all squads in this room"
                                 >
-                                  <Lock size={11} />
-                                  <span className="hidden xl:inline">Lock All</span>
+                                  <Lock size={12} className="text-amber-400" />
+                                  <span className="hidden sm:inline">Lock All</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleCopyOneTapLink(room.roomCode, room.sport)}
-                                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                                   title="Copy 1-tap invite link"
                                 >
-                                  <Copy size={13} />
+                                  <Copy size={12} className="text-blue-400" />
+                                  <span className="hidden md:inline">Copy Link</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setRoomToDelete({ room: room.roomCode, sport: room.sport })}
-                                  className="px-2 py-1 rounded bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-red-300 border border-red-800/40 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                                  className="px-2.5 py-1 rounded bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-white border border-red-800/60 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                                   title="Wipe room and squads"
                                 >
-                                  <Trash2 size={11} />
-                                  <span className="hidden lg:inline">Wipe Room</span>
+                                  <Trash2 size={12} className="text-red-400" />
+                                  <span className="hidden sm:inline">Wipe Room</span>
                                 </button>
                               </div>
                             </div>
@@ -1013,6 +1049,44 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                       <span>{syncResult}</span>
                     </div>
                   )}
+
+                  {/* Pure Dynamic Depth Chart Engine Banner Card */}
+                  <div className="p-4 bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-500/40 rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-400 shrink-0">
+                          <Sparkles size={16} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-semibold text-white">⚡ Pure Dynamic Depth Chart Pipeline</h4>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                              Zero Hardcoded Names
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-0.5">
+                            Pulls live depth charts from ESPN (<code className="text-blue-300 bg-slate-950/80 px-1 py-0.5 rounded text-[11px]">/teams/&#123;id&#125;/depthcharts</code>) across all 32 NFL franchises. Resolves dynamic starters (QB, RB 1-2, WR 1-3, TE 1) and filters injury inactives.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRunDepthChartPipeline}
+                        disabled={depthSyncLoading}
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-md shrink-0"
+                      >
+                        <RefreshCw size={13} className={depthSyncLoading ? 'animate-spin' : ''} />
+                        <span>{depthSyncLoading ? 'Crawling 32 Depth Charts...' : 'Run Dynamic 32-Team Pipeline'}</span>
+                      </button>
+                    </div>
+
+                    {depthSyncProgress && (
+                      <div className="px-3 py-2 bg-slate-950/80 border border-blue-500/30 rounded-lg text-xs font-mono text-blue-300 flex items-center gap-2 animate-pulse">
+                        <Terminal size={12} className="text-blue-400 shrink-0" />
+                        <span>{depthSyncProgress}</span>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* NFL Sync Card */}
