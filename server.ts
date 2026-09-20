@@ -558,6 +558,62 @@ app.get('/api/espn/summary', async (req: Request, res: Response) => {
   }
 });
 
+app.post('/api/espn/sync', async (req: Request, res: Response) => {
+  try {
+    await syncESPNToSupabase();
+    res.json({ success: true, message: 'ESPN Week 3 matches synced to Supabase successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Background Poller: Writes real ESPN Week 3 games to Supabase
+// -------------------------------------------------------------
+async function syncESPNToSupabase() {
+  try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://iugxryuapgocygjckxve.supabase.co';
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1Z3hyeXVhcGdvY3lnamNreHZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIwNDQzMDMsImV4cCI6MjA1NzYyMDMwM30.4i4n4wHwM9uPms3xGv0_oPjWbF_K0Y8l7p4m1Q2k5zM';
+    if (!supabaseUrl || !supabaseKey) return;
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const sb = createClient(supabaseUrl, supabaseKey);
+
+    const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=3');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data.events)) return;
+
+    const records = data.events
+      .map((ev: any) => {
+        const comp = ev.competitions?.[0];
+        const home = comp?.competitors?.find((c: any) => c.homeAway === 'home');
+        const away = comp?.competitors?.find((c: any) => c.homeAway === 'away');
+        return {
+          id: String(ev.id),
+          sport: 'nfl',
+          home_team: home?.team?.abbreviation || '',
+          away_team: away?.team?.abbreviation || '',
+          home_score: parseInt(home?.score || '0', 10),
+          away_score: parseInt(away?.score || '0', 10),
+          quarter_time: ev.status?.type?.detail || 'SCHEDULED',
+          status: ev.status?.type?.state === 'post' ? 'final' : ev.status?.type?.state === 'in' ? 'live' : 'scheduled',
+          updated_at: new Date().toISOString(),
+        };
+      })
+      .filter((r: any) => r.home_team && r.away_team);
+
+    if (records.length > 0) {
+      const { error } = await sb.from('matches').upsert(records);
+      if (!error) {
+        console.log(`[ESPN Sync] Successfully synced ${records.length} Week 3 matches to Supabase matches table.`);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[ESPN Sync] Background sync error:', err.message);
+  }
+}
+
 // -------------------------------------------------------------
 // Vite middleware / Static Serving Setup
 // -------------------------------------------------------------
@@ -578,6 +634,9 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Pixel Pros server running at http://0.0.0.0:${PORT} [persistent storage enabled]`);
+    // Run initial ESPN sync and set periodic interval
+    syncESPNToSupabase();
+    setInterval(syncESPNToSupabase, 180000);
   });
 }
 

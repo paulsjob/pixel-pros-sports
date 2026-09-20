@@ -70,9 +70,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     return info.gameState === 'pre' ? 0 : info.activeScore;
   };
 
-  // Top 20 NFL Competitors ordered by score DESC
+  // Top 20 NFL Competitors ordered by score DESC with duplicate ID filtering
+  const seenPlayerIds = new Set<string>();
   const top20Players = safeNflPlayers
-    .slice()
+    .filter((p) => {
+      if (!p || !p.id) return false;
+      if (seenPlayerIds.has(p.id)) return false;
+      seenPlayerIds.add(p.id);
+      return true;
+    })
     .sort((a, b) => {
       const scoreB = getPlayerLivePoints(b);
       const scoreA = getPlayerLivePoints(a);

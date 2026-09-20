@@ -94,6 +94,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       );
 
       for (const defMatch of DEFAULT_NFL_MATCHES) {
+        if (defMatch.week && defMatch.week !== currentNFLWeek) continue;
         const away = normalizeCode(defMatch.awayTeamCode || defMatch.away_team || '');
         const home = normalizeCode(defMatch.homeTeamCode || defMatch.home_team || '');
         const pair = `${away}@${home}`;
@@ -116,12 +117,12 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   }, [matches, sport, currentNFLWeek]);
 
   const activeMatchObj = useMemo(() => {
-    if (selectedGameFilter === 'ALL') return null;
+    if (!selectedGameFilter || selectedGameFilter === 'ALL') return null;
     return (
       activeMatches.find((m) => {
         const away = normalizeCode(m.awayTeamCode || m.away_team || '');
         const home = normalizeCode(m.homeTeamCode || m.home_team || '');
-        return m.id === selectedGameFilter || `${away}@${home}` === selectedGameFilter;
+        return `${away}@${home}` === selectedGameFilter || m.id === selectedGameFilter;
       }) || null
     );
   }, [selectedGameFilter, activeMatches]);
@@ -130,13 +131,26 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
     const q = searchQuery.trim().toLowerCase();
     let list = Array.isArray(allPlayers) ? [...allPlayers] : [];
 
-    if (activeMatchObj) {
-      const away = normalizeCode(activeMatchObj.awayTeamCode || activeMatchObj.away_team || '');
-      const home = normalizeCode(activeMatchObj.homeTeamCode || activeMatchObj.home_team || '');
-      list = list.filter((p) => {
-        const playerTeam = normalizeCode(p.teamCode || (p as any).team || '');
-        return playerTeam === away || playerTeam === home;
-      });
+    // Filter by selected game matchup: strictly include BOTH Away AND Home teams, NEVER other teams
+    if (selectedGameFilter && selectedGameFilter !== 'ALL') {
+      let filterAway = '';
+      let filterHome = '';
+
+      if (selectedGameFilter.includes('@')) {
+        const parts = selectedGameFilter.split('@');
+        filterAway = normalizeCode(parts[0]);
+        filterHome = normalizeCode(parts[1]);
+      } else if (activeMatchObj) {
+        filterAway = normalizeCode(activeMatchObj.awayTeamCode || activeMatchObj.away_team || '');
+        filterHome = normalizeCode(activeMatchObj.homeTeamCode || activeMatchObj.home_team || '');
+      }
+
+      if (filterAway || filterHome) {
+        list = list.filter((p) => {
+          const playerTeam = normalizeCode(p.teamCode || (p as any).team || '');
+          return (filterAway && playerTeam === filterAway) || (filterHome && playerTeam === filterHome);
+        });
+      }
     }
 
     if (q) {
@@ -150,23 +164,26 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       );
     }
 
-    // STRICT DEDUPLICATION: Ensure no player ever appears more than once under any circumstance
+    // STRICT DEDUPLICATION: Ensure no player or ID ever appears more than once under any circumstance
     const seenKeys = new Set<string>();
+    const seenIds = new Set<string>();
     const deduped: Competitor[] = [];
 
     for (const player of list) {
       if (!player) continue;
-      const key = `${(player.displayName || player.shortName || '').trim().toLowerCase()}__${(player.teamCode || (player as any).team || '').trim().toUpperCase()}`;
+      const idKey = player.id ? String(player.id) : '';
+      const nameKey = `${(player.displayName || player.shortName || '').trim().toLowerCase()}__${(player.teamCode || (player as any).team || '').trim().toUpperCase()}`;
 
-      if (!key || key === '__') continue;
-      if (seenKeys.has(key)) continue;
+      if (idKey && seenIds.has(idKey)) continue;
+      if (nameKey && nameKey !== '__' && seenKeys.has(nameKey)) continue;
 
-      seenKeys.add(key);
+      if (idKey) seenIds.add(idKey);
+      if (nameKey && nameKey !== '__') seenKeys.add(nameKey);
       deduped.push(player);
     }
 
     return deduped.sort((a, b) => (b.score || 0) - (a.score || 0));
-  }, [allPlayers, activeMatchObj, searchQuery]);
+  }, [allPlayers, selectedGameFilter, activeMatchObj, searchQuery]);
 
   const selectedPlayerNormKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -225,16 +242,17 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           {activeMatches.map((match) => {
             const away = normalizeCode(match.awayTeamCode || match.away_team || '');
             const home = normalizeCode(match.homeTeamCode || match.home_team || '');
-            const isSelected = selectedGameFilter === match.id || selectedGameFilter === `${away}@${home}`;
+            const pairKey = `${away}@${home}`;
+            const isSelected = selectedGameFilter === pairKey || selectedGameFilter === match.id;
 
             const isLive = match.status === 'live';
             const isFinal = match.status === 'final' || String((match as any).status?.type?.state || '').toLowerCase() === 'post';
 
             return (
               <button
-                key={match.id}
+                key={pairKey || match.id}
                 type="button"
-                onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : match.id)}
+                onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
                 className={`touch-manipulation px-2 py-1 font-pixel text-[9px] sm:text-[10px] border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 flex items-center gap-1 ${
                   isSelected
                     ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_2px_0_0_#051a30] font-bold ring-2 ring-[#38bdf8]'
@@ -283,7 +301,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
-              {filteredPlayers.map((player) => {
+              {filteredPlayers.map((player, index) => {
                 const isCurrentSlot = player.id === currentSlotPlayerId;
                 const playerNorm = `${(player.displayName || player.shortName || '').trim().toLowerCase()}_${(player.teamCode || '').trim().toUpperCase()}`;
                 const isSelectedElsewhere = (selectedPlayerIds.includes(player.id) || selectedPlayerNormKeys.has(playerNorm)) && !isCurrentSlot;
@@ -299,7 +317,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
                 return (
                   <div
-                    key={player.id}
+                    key={player.id || `${player.displayName}_${index}`}
                     onClick={() => onInspectPlayer?.(player)}
                     className={`touch-manipulation bg-[#fae5b8] hover:bg-[#fff9ea] border-2 rounded-xs p-2.5 sm:p-3 flex flex-col items-center justify-between cursor-pointer transition-all shadow-[0_3px_0_0_#d4a86a] hover:shadow-[0_4px_0_0_#0a2d52] active:translate-y-0.5 relative select-none ${
                       isCurrentSlot

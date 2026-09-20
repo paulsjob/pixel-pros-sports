@@ -101,7 +101,7 @@ export function getCurrentNFLWeek(): number {
   } catch {
     // ignore
   }
-  return 2; // Default to active NFL Week 2
+  return 3; // Default to active NFL Week 3
 }
 
 export function setCurrentNFLWeek(weekNumber: number) {
@@ -261,20 +261,16 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
 
       parsedMatches.push(matchObj);
 
-      // Supabase record
+      // Supabase record strictly matching schema: id, sport, home_team, away_team, home_score, away_score, quarter_time, status, updated_at
       supabaseMatchRecords.push({
         id: evId,
-        sport_id: sport,
+        sport: sport,
         home_team: homeCode,
         away_team: awayCode,
-        home_competitor_name: homeName,
-        away_competitor_name: awayName,
         home_score: homeScore,
         away_score: awayScore,
         quarter_time: detail,
-        period_label: detail,
         status,
-        scheduled_at: ev.date || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
 
@@ -656,23 +652,20 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
         parsedMatches.map((m) => `${(m.awayTeamCode || m.away_team || '').trim().toUpperCase()}@${(m.homeTeamCode || m.home_team || '').trim().toUpperCase()}`)
       );
       for (const defMatch of DEFAULT_NFL_MATCHES) {
+        if (defMatch.week && defMatch.week !== currentWeekNumber) continue;
         const pair = `${(defMatch.awayTeamCode || defMatch.away_team || '').trim().toUpperCase()}@${(defMatch.homeTeamCode || defMatch.home_team || '').trim().toUpperCase()}`;
         if (!existingMatchPairs.has(pair)) {
           parsedMatches.push({ ...defMatch, week: currentWeekNumber, weekLabel: `Week ${currentWeekNumber}` });
+          existingMatchPairs.add(pair);
           supabaseMatchRecords.push({
             id: defMatch.id,
-            sport_id: 'nfl',
             sport: 'nfl',
             home_team: defMatch.homeTeamCode,
             away_team: defMatch.awayTeamCode,
-            home_team_code: defMatch.homeTeamCode,
-            away_team_code: defMatch.awayTeamCode,
             home_score: defMatch.homeScore || 0,
             away_score: defMatch.awayScore || 0,
             status: defMatch.status,
             quarter_time: defMatch.quarter_time || 'SCHEDULED',
-            scheduled_at: defMatch.gameDate,
-            week: currentWeekNumber,
             updated_at: new Date().toISOString(),
           });
         }

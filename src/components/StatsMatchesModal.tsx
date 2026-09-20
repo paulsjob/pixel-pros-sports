@@ -90,9 +90,9 @@ export const StatsMatchesModal: React.FC<StatsMatchesModalProps> = ({
             Click to trigger a touchdown for any player and watch their whole-number fantasy points update in real-time!
           </p>
           <div className="flex flex-wrap gap-2">
-            {roster.slice(0, 4).map((player) => (
+            {roster.map((player, idx) => (
               <button
-                key={player.id}
+                key={player.id || `${player.displayName}_${idx}`}
                 onClick={() => onSimulatePlay(player, 'Touchdown', 6)}
                 className="touch-manipulation px-2.5 sm:px-3 py-1.5 bg-[#12579b] hover:bg-[#186abb] text-[#fae5b8] font-pixel text-[10px] border-2 border-[#0a2d52] cursor-pointer shadow-[0_2px_0_0_#051a30] active:translate-y-0.5 active:shadow-none transition-all"
               >
@@ -119,8 +119,8 @@ export const StatsMatchesModal: React.FC<StatsMatchesModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#ebd2a4]">
-                {roster.map((player) => (
-                  <tr key={player.id} className="hover:bg-[#fae9c8]">
+                {roster.map((player, idx) => (
+                  <tr key={player.id || `${player.displayName}_${idx}`} className="hover:bg-[#fae9c8]">
                     <td className="p-2 font-pixel text-[10px] text-[#5c3509]">
                       {player.shortName} (#{player.uniformNumber})
                     </td>

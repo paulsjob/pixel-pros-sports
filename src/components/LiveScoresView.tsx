@@ -95,8 +95,14 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
 
   // Automatically sort competitors descending by SCORE limit 20
   const safeCompetitors = Array.isArray(competitors) ? [...competitors] : [];
-  const sortedCompetitors = safeCompetitors
-    .slice()
+  const seenCompetitorIds = new Set<string>();
+  const dedupedCompetitors = safeCompetitors.filter((c) => {
+    if (!c || !c.id) return false;
+    if (seenCompetitorIds.has(c.id)) return false;
+    seenCompetitorIds.add(c.id);
+    return true;
+  });
+  const sortedCompetitors = dedupedCompetitors
     .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))
     .slice(0, 20);
   const currentNFLWeek = getCurrentNFLWeek();
@@ -287,7 +293,7 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
 
                   return (
                     <tr
-                      key={player.id}
+                      key={player.id || `${player.displayName}_${index}`}
                       onClick={() => onSelectPlayer && onSelectPlayer(player)}
                       className="hover:bg-[#fae9c8] cursor-pointer transition-colors"
                     >

@@ -597,9 +597,11 @@ export async function fetchLiveMatches(sport: SportId = 'nfl'): Promise<Match[]>
       );
       const fullWeekList = [...baseList];
       for (const defMatch of DEFAULT_NFL_MATCHES) {
+        if (defMatch.week && defMatch.week !== currentNFLWeek) continue;
         const pair = `${(defMatch.awayTeamCode || defMatch.away_team || '').trim().toUpperCase()}@${(defMatch.homeTeamCode || defMatch.home_team || '').trim().toUpperCase()}`;
         if (!existingMatchPairs.has(pair)) {
           fullWeekList.push({ ...defMatch, week: currentNFLWeek, weekLabel: `Week ${currentNFLWeek}` });
+          existingMatchPairs.add(pair);
         }
       }
       return sortLiveFirst(fullWeekList);
