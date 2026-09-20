@@ -101,7 +101,7 @@ export function getCurrentNFLWeek(): number {
   } catch {
     // ignore
   }
-  return 3; // Default to active NFL Week 3
+  return 2; // Default to active NFL Week 2
 }
 
 export function setCurrentNFLWeek(weekNumber: number) {
@@ -145,15 +145,16 @@ function calculateNBAPoints(pts: number, threes: number, reb: number, ast: numbe
  * NOTE: Strictly enforces CURRENT WEEK ONLY for NFL — no past weeks, no future weeks.
  */
 export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResult> {
-  const currentWeekNumber = getCurrentNFLWeek();
+  // Query ESPN scoreboard directly without hardcoding a stale week; ESPN authoritatively holds
+  // the current active week until the final game of that week (e.g. Monday Night Football) completes!
   const url = sport === 'nba'
     ? ESPN_NBA_SCOREBOARD
-    : `${ESPN_NFL_SCOREBOARD}?seasontype=2&week=${currentWeekNumber}`;
+    : ESPN_NFL_SCOREBOARD;
   const sportLabel = sport.toUpperCase();
 
   const proxyUrl = sport === 'nba'
     ? '/api/espn/scoreboard?sport=nba'
-    : `/api/espn/scoreboard?sport=nfl&seasontype=2&week=${currentWeekNumber}`;
+    : '/api/espn/scoreboard?sport=nfl';
 
   try {
     let resp: Response;

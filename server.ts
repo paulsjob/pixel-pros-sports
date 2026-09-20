@@ -560,15 +560,15 @@ app.get('/api/espn/summary', async (req: Request, res: Response) => {
 
 app.post('/api/espn/sync', async (req: Request, res: Response) => {
   try {
-    await syncESPNToSupabase();
-    res.json({ success: true, message: 'ESPN Week 3 matches synced to Supabase successfully' });
+    const result = await syncESPNToSupabase();
+    res.json({ success: true, message: `ESPN active week matches synced to Supabase successfully`, result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // -------------------------------------------------------------
-// Background Poller: Writes real ESPN Week 3 games to Supabase
+// Background Poller: Writes real ESPN current active week games to Supabase
 // -------------------------------------------------------------
 async function syncESPNToSupabase() {
   try {
@@ -579,10 +579,14 @@ async function syncESPNToSupabase() {
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=3');
+    // Fetch ESPN scoreboard without hardcoding a week; ESPN authoritatively holds the current active week
+    // until the last game (Monday Night Football) completes!
+    const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
     if (!res.ok) return;
     const data = await res.json();
     if (!Array.isArray(data.events)) return;
+
+    const activeWeek = data.week?.number || 2;
 
     const records = data.events
       .map((ev: any) => {
@@ -606,7 +610,7 @@ async function syncESPNToSupabase() {
     if (records.length > 0) {
       const { error } = await sb.from('matches').upsert(records);
       if (!error) {
-        console.log(`[ESPN Sync] Successfully synced ${records.length} Week 3 matches to Supabase matches table.`);
+        console.log(`[ESPN Sync] Successfully synced ${records.length} Week ${activeWeek} matches to Supabase matches table.`);
       }
     }
   } catch (err: any) {
