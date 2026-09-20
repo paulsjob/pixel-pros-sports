@@ -277,6 +277,13 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
       });
 
       // For each game, attempt to fetch full boxscore summary to extract actual in-game player statistics
+      // CRITICAL STATUS CHECK: Only extract player stats if the game is in-progress (live) or completed (final).
+      // When status === 'upcoming' (pre-game), no plays have occurred. ESPN's API returns season-long leaders
+      // or preview stats for upcoming matchups; parsing them erroneously awards players fantasy points before kickoff!
+      if (status === 'upcoming') {
+        continue;
+      }
+
       let fetchedBoxscore = false;
       if (sport === 'nfl') {
         try {
@@ -548,10 +555,28 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     }
     const finalCompetitorsMap = new Map<string, Competitor>();
 
-    // 1. Seed base competitors
+    // 1. Seed base competitors with clean 0 scores for today's slate
     for (const base of baseCompetitors) {
       const normName = (base.displayName || '').trim().toLowerCase();
-      finalCompetitorsMap.set(normName, { ...base });
+      finalCompetitorsMap.set(normName, {
+        ...base,
+        score: 0,
+        stats: {
+          ...base.stats,
+          pass_yds: 0,
+          passingYards: 0,
+          rush_yds: 0,
+          rushingYards: 0,
+          rec_yds: 0,
+          receivingYards: 0,
+          tds: 0,
+          touchdowns: 0,
+          fgs: 0,
+          stops: 0,
+          total_yards: 0,
+          primaryMetricValue: 0,
+        },
+      });
     }
 
     // 2. Overlay live athlete data (updates ONLY stats and points, teamCode and uniformNumber are immutable!)
@@ -561,7 +586,7 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
       if (finalCompetitorsMap.has(normName)) {
         const existing = finalCompetitorsMap.get(normName)!;
         // IMMUTABLE TEAM & UNIFORM: Do NOT allow live stats engine to swap player's team or jersey!
-        const finalScore = Math.max(live.score, existing.score || 0);
+        const finalScore = live.score;
 
         finalCompetitorsMap.set(normName, {
           ...existing,

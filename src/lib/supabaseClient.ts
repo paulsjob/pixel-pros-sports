@@ -521,19 +521,16 @@ export async function fetchLiveMatches(sport: SportId = 'nfl'): Promise<Match[]>
       const rawStatus = String(row.status || '').toLowerCase();
       const qTime = String(row.quarter_time || row.period_label || '').trim();
 
-      const isFinal = rawStatus === 'final' || qTime.toLowerCase().includes('final');
+      const isUpcoming = rawStatus === 'upcoming' || rawStatus === 'scheduled' || rawStatus === 'pre';
+      const isFinal = !isUpcoming && (rawStatus === 'final' || rawStatus === 'post' || qTime.toLowerCase().includes('final'));
       const isLive =
-        rawStatus === 'live' ||
-        (!isFinal &&
-          (qTime.includes('th') ||
-            qTime.includes('1st') ||
-            qTime.includes('2nd') ||
-            qTime.includes('3rd') ||
-            qTime.includes('4th') ||
-            qTime.includes('Q') ||
-            qTime.includes('Half') ||
-            qTime.includes('OT')));
-      const isScheduled = !isFinal && !isLive;
+        !isUpcoming &&
+        !isFinal &&
+        (rawStatus === 'live' ||
+          rawStatus === 'in' ||
+          /\b(q[1-4]|ot|half|halftime|overtime)\b/i.test(qTime) ||
+          /\b(1st|2nd|3rd|4th)\s*(q|quarter|qtr)\b/i.test(qTime));
+      const isScheduled = isUpcoming || (!isFinal && !isLive);
 
       const awayScore = Number(row.away_score || 0);
       const homeScore = Number(row.home_score || 0);

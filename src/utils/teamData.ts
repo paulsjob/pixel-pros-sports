@@ -170,20 +170,15 @@ export function formatRealtimeGameSituationCompact(match: {
   const rawTime = (match.quarter_time || match.quarterTime || match.periodLabel || '').trim();
   const status = (match.status || '').toLowerCase();
 
-  const isFinal =
-    status === 'final' ||
-    rawTime.toLowerCase().includes('final');
+  const isUpcoming = status === 'upcoming' || status === 'scheduled' || status === 'pre';
+  const isFinal = !isUpcoming && (status === 'final' || rawTime.toLowerCase().includes('final'));
 
   const isLive =
+    !isUpcoming &&
     !isFinal &&
     (status === 'live' ||
-      rawTime.includes('Q') ||
-      rawTime.includes('Half') ||
-      rawTime.includes('OT') ||
-      rawTime.includes('1st') ||
-      rawTime.includes('2nd') ||
-      rawTime.includes('3rd') ||
-      rawTime.includes('4th'));
+      /\b(q[1-4]|ot|half|halftime|overtime)\b/i.test(rawTime) ||
+      /\b(1st|2nd|3rd|4th)\s*(q|quarter|qtr)\b/i.test(rawTime));
 
   let statusLine = 'LIVE';
   let scoreLine = `${away} ${aScore}-${hScore}`;
@@ -1021,19 +1016,19 @@ export function getPlayerGameState(match: Match | null | undefined): PlayerGameS
   const rawState = ((match as any).status?.type?.state || '').toLowerCase();
   const qTime = (match.quarterTime || match.quarter_time || match.periodLabel || '').toLowerCase();
 
-  if (rawStatus === 'final' || rawState === 'post' || qTime.includes('final')) {
+  if (rawStatus === 'upcoming' || rawStatus === 'scheduled' || rawState === 'pre') {
+    return 'pre';
+  }
+
+  if (rawStatus === 'final' || rawState === 'post' || /\bfinal\b/i.test(qTime)) {
     return 'post';
   }
+
   if (
     rawStatus === 'live' ||
     rawState === 'in' ||
-    qTime.includes('1st') ||
-    qTime.includes('2nd') ||
-    qTime.includes('3rd') ||
-    qTime.includes('4th') ||
-    qTime.includes('ot') ||
-    qTime.includes('half') ||
-    qTime.includes('q')
+    /\b(q[1-4]|ot|half|halftime|overtime)\b/i.test(qTime) ||
+    /\b(1st|2nd|3rd|4th)\s*(q|quarter|qtr)\b/i.test(qTime)
   ) {
     return 'in';
   }

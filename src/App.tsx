@@ -33,7 +33,7 @@ import { PixelHelmetIcon } from './components/PixelBadges';
 import { SportSwitcher } from './components/SportSwitcher';
 import { CommissionerModal } from './components/CommissionerModal';
 import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
-import { DEFAULT_NFL_MATCHES } from './utils/teamData';
+import { DEFAULT_NFL_MATCHES, getPlayerScoringDisplay } from './utils/teamData';
 import { DEFAULT_NBA_MATCHES } from './utils/nbaTeamData';
 import { Users, Trophy, HelpCircle, Share2, ShieldAlert, Plus } from 'lucide-react';
 
@@ -800,8 +800,25 @@ export default function App() {
     };
   }, [roomCode, currentSport]);
 
+  const getPlayerLivePoints = useCallback(
+    (p: Competitor | null | undefined): number => {
+      if (!p) return 0;
+      const playerTeam = (p.teamCode || '').trim().toUpperCase();
+      const currentNFLWeek = getCurrentNFLWeek();
+      const m = (matches || []).find((match) => {
+        if (currentSport === 'nfl' && match.week && match.week !== currentNFLWeek) return false;
+        const h = (match.homeTeamCode || match.home_team || '').trim().toUpperCase();
+        const a = (match.awayTeamCode || match.away_team || '').trim().toUpperCase();
+        return h === playerTeam || a === playerTeam;
+      });
+      const info = getPlayerScoringDisplay(p, m, currentSport);
+      return info.gameState === 'pre' ? 0 : info.activeScore;
+    },
+    [matches, currentSport]
+  );
+
   const filledStars = [squadSlots.star1, squadSlots.star2, squadSlots.star3].filter(Boolean) as Competitor[];
-  const userTotalPoints = filledStars.reduce((sum, p) => sum + (p?.score || 0), 0);
+  const userTotalPoints = filledStars.reduce((sum, p) => sum + getPlayerLivePoints(p), 0);
 
   const selectedPlayerIdsArray = [
     squadSlots.star1?.id || '',
@@ -830,7 +847,7 @@ export default function App() {
         userName: r.user_name.toUpperCase(),
         isLocked: squadLocked,
         starCount: stars.length,
-        totalScore: stars.reduce((sum, p) => sum + (p.score || 0), 0),
+        totalScore: stars.reduce((sum, p) => sum + getPlayerLivePoints(p), 0),
       };
     });
 

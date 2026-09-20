@@ -345,7 +345,7 @@ export async function runPureDynamicDepthChartSync(
 
     // 4. Broadcast window events so UI updates seamlessly
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('pixel_pros_scores_updated', { detail: { sport: 'nfl' } }));
+      window.dispatchEvent(new CustomEvent('pixel_pros_scores_updated', { detail: { sport: 'nfl', competitors: dynamicCompetitors } }));
       window.dispatchEvent(new CustomEvent('pixel_pros_live_matches_updated', { detail: { sport: 'nfl' } }));
     }
 
