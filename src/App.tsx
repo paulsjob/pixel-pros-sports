@@ -85,13 +85,31 @@ export default function App() {
   const [isAddSquadDrawerOpen, setIsAddSquadDrawerOpen] = useState(false);
   const userExplicitlyJoinedRoomRef = useRef<string | null>(null);
 
-  const [roster, setRoster] = useState<Competitor[]>([]);
+  const [roster, setRoster] = useState<Competitor[]>(() => {
+    try {
+      const sport = (localStorage.getItem('pixel_pros_sport') as SportId) || 'nfl';
+      const cached = localStorage.getItem(`pixel_pros_synced_competitors_${sport}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const rosterRef = useRef<Competitor[]>([]);
   rosterRef.current = roster;
 
-  const [matches, setMatches] = useState<Match[]>(() =>
-    currentSport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES
-  );
+  const [matches, setMatches] = useState<Match[]>(() => {
+    try {
+      const sport = (localStorage.getItem('pixel_pros_sport') as SportId) || 'nfl';
+      const cached = localStorage.getItem(`pixel_pros_synced_matches_${sport}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return currentSport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES;
+  });
   const [roomRosters, setRoomRosters] = useState<UserRoster[]>([]);
 
   const [squadSlots, setSquadSlots] = useState<SquadSlots>({
@@ -682,7 +700,13 @@ export default function App() {
         if (updated && (updated.id || updated.short_name)) {
           setRoster((prev) =>
             (prev || []).map((p) =>
-              p.id === updated.id ? { ...p, score: Math.round(Number(updated.score ?? p.score) || 0) } : p
+              p.id === updated.id
+                ? {
+                    ...p,
+                    score: Math.round(Number(updated.score ?? p.score) || 0),
+                    stats: updated.stats || p.stats,
+                  }
+                : p
             )
           );
         }
@@ -740,7 +764,14 @@ export default function App() {
     };
     const handleScoresUpdate = (e: any) => {
       if (e.detail?.competitors && (!e.detail?.sport || e.detail?.sport === currentSport)) {
-        setRoster(deduplicateCompetitors(e.detail.competitors));
+        const fresh = deduplicateCompetitors(e.detail.competitors);
+        setRoster(fresh);
+        setSquadSlots((prev) => {
+          const s1 = prev.star1 ? fresh.find((p) => p.id === prev.star1!.id) || prev.star1 : null;
+          const s2 = prev.star2 ? fresh.find((p) => p.id === prev.star2!.id) || prev.star2 : null;
+          const s3 = prev.star3 ? fresh.find((p) => p.id === prev.star3!.id) || prev.star3 : null;
+          return { star1: s1, star2: s2, star3: s3 };
+        });
       }
     };
 
@@ -766,7 +797,7 @@ export default function App() {
           const remoteS2Id = remoteSquad.star_2_id || '';
           const remoteS3Id = remoteSquad.star_3_id || '';
 
-          // Re-sync squadSlots ONLY if the remote record changed to avoid overriding local unsaved slot selections
+          // Re-sync squadSlots: update IDs if remote changed, and always refresh player stats/scores
           setSquadSlots((prev) => {
             const curS1 = prev.star1?.id || '';
             const curS2 = prev.star2?.id || '';
@@ -778,6 +809,12 @@ export default function App() {
                 star2: currentRoster.find((p) => p.id === remoteS2Id) || null,
                 star3: currentRoster.find((p) => p.id === remoteS3Id) || null,
               };
+            }
+            const freshS1 = prev.star1 ? currentRoster.find((p) => p.id === prev.star1!.id) || prev.star1 : null;
+            const freshS2 = prev.star2 ? currentRoster.find((p) => p.id === prev.star2!.id) || prev.star2 : null;
+            const freshS3 = prev.star3 ? currentRoster.find((p) => p.id === prev.star3!.id) || prev.star3 : null;
+            if (freshS1 !== prev.star1 || freshS2 !== prev.star2 || freshS3 !== prev.star3) {
+              return { star1: freshS1, star2: freshS2, star3: freshS3 };
             }
             return prev;
           });
@@ -799,6 +836,29 @@ export default function App() {
       unsubscribeRoom();
     };
   }, [roomCode, currentSport]);
+
+  // Keep squadSlots strictly in sync with updated live scores and stats from roster
+  useEffect(() => {
+    if (!roster || roster.length === 0) return;
+    setSquadSlots((prev) => {
+      const curS1 = prev.star1;
+      const curS2 = prev.star2;
+      const curS3 = prev.star3;
+
+      const nextS1 = curS1 ? roster.find((p) => p.id === curS1.id) || curS1 : null;
+      const nextS2 = curS2 ? roster.find((p) => p.id === curS2.id) || curS2 : null;
+      const nextS3 = curS3 ? roster.find((p) => p.id === curS3.id) || curS3 : null;
+
+      const s1Diff = (curS1?.score !== nextS1?.score) || (JSON.stringify(curS1?.stats) !== JSON.stringify(nextS1?.stats));
+      const s2Diff = (curS2?.score !== nextS2?.score) || (JSON.stringify(curS2?.stats) !== JSON.stringify(nextS2?.stats));
+      const s3Diff = (curS3?.score !== nextS3?.score) || (JSON.stringify(curS3?.stats) !== JSON.stringify(nextS3?.stats));
+
+      if (s1Diff || s2Diff || s3Diff) {
+        return { star1: nextS1, star2: nextS2, star3: nextS3 };
+      }
+      return prev;
+    });
+  }, [roster]);
 
   const getPlayerLivePoints = useCallback(
     (p: Competitor | null | undefined): number => {

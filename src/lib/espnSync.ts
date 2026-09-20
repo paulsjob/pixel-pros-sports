@@ -385,8 +385,8 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
         }
       }
 
-      // If boxscore was not fetched or for additional stars, extract player leaders from game competition
-      const leadersList = comp.leaders || [];
+      // If boxscore was not fetched, extract player leaders from game competition
+      const leadersList = !fetchedBoxscore ? (comp.leaders || []) : [];
       for (const cat of leadersList) {
         const catName = String(cat.name || '').toLowerCase();
         const athletes = cat.leaders || [];
@@ -597,27 +597,27 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
             ...existing.stats,
             ...(sport === 'nfl'
               ? {
-                  pass_yds: live.pass_yds || existing.stats?.pass_yds || 0,
-                  passingYards: live.pass_yds || existing.stats?.passingYards || 0,
-                  rush_yds: live.rush_yds || existing.stats?.rush_yds || 0,
-                  rushingYards: live.rush_yds || existing.stats?.rushingYards || 0,
-                  rec_yds: live.rec_yds || existing.stats?.rec_yds || 0,
-                  receivingYards: live.rec_yds || existing.stats?.receivingYards || 0,
-                  tds: live.tds || existing.stats?.tds || 0,
-                  touchdowns: live.tds || existing.stats?.touchdowns || 0,
-                  fgs: live.fgs || existing.stats?.fgs || 0,
-                  stops: live.stops || existing.stats?.stops || 0,
-                  total_yards: live.total_yards || existing.stats?.total_yards || 0,
-                  primaryMetricValue: live.tds || existing.stats?.primaryMetricValue || 0,
+                  pass_yds: live.pass_yds ?? 0,
+                  passingYards: live.pass_yds ?? 0,
+                  rush_yds: live.rush_yds ?? 0,
+                  rushingYards: live.rush_yds ?? 0,
+                  rec_yds: live.rec_yds ?? 0,
+                  receivingYards: live.rec_yds ?? 0,
+                  tds: live.tds ?? 0,
+                  touchdowns: live.tds ?? 0,
+                  fgs: live.fgs ?? 0,
+                  stops: live.stops ?? 0,
+                  total_yards: live.total_yards ?? 0,
+                  primaryMetricValue: live.tds ?? 0,
                 }
               : {
-                  pts: live.pts || existing.stats?.pts || 0,
-                  points: live.pts || existing.stats?.points || 0,
-                  three_pm: live.threes || existing.stats?.three_pm || 0,
-                  reb: live.reb || existing.stats?.reb || 0,
-                  ast: live.ast || existing.stats?.ast || 0,
-                  big_stops: live.stops || existing.stats?.big_stops || 0,
-                  primaryMetricValue: live.threes || existing.stats?.primaryMetricValue || 0,
+                  pts: live.pts ?? 0,
+                  points: live.pts ?? 0,
+                  three_pm: live.threes ?? 0,
+                  reb: live.reb ?? 0,
+                  ast: live.ast ?? 0,
+                  big_stops: live.stops ?? 0,
+                  primaryMetricValue: live.threes ?? 0,
                 }),
           },
         });
@@ -674,18 +674,15 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     const parsedCompetitors: Competitor[] = Array.from(finalCompetitorsMap.values());
 
     // Build Supabase records strictly matching table schema:
-    // id, athlete_id, name, jersey, team, sport, position, score, stats, updated_at
+    // id, name, team, sport, position, score, stats, updated_at
     for (const comp of parsedCompetitors) {
       supabaseCompetitorRecords.push({
         id: comp.id,
-        athlete_id: comp.athleteId || comp.id.replace(/^nfl_|^nba_/, ''),
         name: comp.displayName,
-        jersey: String(comp.uniformNumber || ''),
         team: comp.teamCode,
         sport: sport,
         position: comp.position || 'STAR',
         score: comp.score,
-        current_score: comp.score,
         stats: comp.stats,
         updated_at: new Date().toISOString(),
       });
@@ -752,15 +749,16 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
             await supabase
               .from('matches')
               .delete()
-              .eq('sport_id', sport)
+              .eq('sport', sport)
               .not('id', 'in', `(${currentWeekIds.map((id) => `"${id}"`).join(',')})`);
           }
         }
         if (supabaseCompetitorRecords.length > 0) {
-          try {
-            await supabase.from('competitors').upsert(supabaseCompetitorRecords, { onConflict: 'athlete_id,game_id' } as any);
-          } catch {
-            await supabase.from('competitors').upsert(supabaseCompetitorRecords, { onConflict: 'id' });
+          const { error: compErr } = await supabase
+            .from('competitors')
+            .upsert(supabaseCompetitorRecords, { onConflict: 'id' });
+          if (compErr) {
+            console.warn('[ESPN Sync] Competitors upsert error:', compErr.message);
           }
         }
         supabaseSuccess = true;

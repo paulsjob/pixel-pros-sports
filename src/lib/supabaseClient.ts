@@ -438,7 +438,6 @@ export async function reseedMasterNFLManifest(): Promise<{ success: boolean; cou
     if (isSupabaseConfigured) {
       const records = allStarters.map((comp) => ({
         id: comp.id,
-        athlete_id: comp.athleteId || comp.id,
         name: comp.displayName,
         team: comp.teamCode,
         sport: 'nfl',
@@ -455,18 +454,13 @@ export async function reseedMasterNFLManifest(): Promise<{ success: boolean; cou
 
       const matchRecords = allMatches.map((m) => ({
         id: m.id,
-        sport_id: 'nfl',
         sport: 'nfl',
         home_team: m.homeTeamCode,
         away_team: m.awayTeamCode,
-        home_team_code: m.homeTeamCode,
-        away_team_code: m.awayTeamCode,
         home_score: m.homeScore || 0,
         away_score: m.awayScore || 0,
         status: m.status,
         quarter_time: m.quarter_time || 'SCHEDULED',
-        scheduled_at: m.gameDate,
-        week: m.week || 2,
         updated_at: new Date().toISOString(),
       }));
       await supabase.from('matches').upsert(matchRecords, { onConflict: 'id' });

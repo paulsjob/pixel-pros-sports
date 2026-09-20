@@ -13,15 +13,15 @@ export interface DynamicDepthChartResult {
 
 export interface DynamicAthleteRecord {
   id: string;
-  athlete_id: string;
   name: string;
-  jersey: string;
   position: 'QB' | 'RB' | 'WR' | 'TE';
   team: string;
-  game_id: string;
   sport: 'nfl';
-  current_score: number;
   score: number;
+  athlete_id?: string;
+  jersey?: string;
+  game_id?: string;
+  current_score?: number;
   stats?: Record<string, any>;
   updated_at: string;
 }
@@ -213,17 +213,13 @@ export async function runPureDynamicDepthChartSync(
           .toUpperCase()
           .replace(/[^A-Z]/g, '');
 
-        // 1. Supabase database record strictly following spec
+        // 1. Supabase database record strictly following spec (id, name, team, sport, position, score, stats, updated_at)
         dbUpsertRecords.push({
           id: `nfl_${athleteId}`,
-          athlete_id: athleteId,
           name: name,
-          jersey: String(rawJersey || uniformNumber),
           position: positionAbbr,
           team: teamAbbr,
-          game_id: gameId,
           sport: 'nfl',
-          current_score: 0,
           score: 0,
           stats: {
             pass_yds: 0,
@@ -316,20 +312,12 @@ export async function runPureDynamicDepthChartSync(
     // 2. Dynamic Database Upsert to Supabase
     if (isSupabaseConfigured && dbUpsertRecords.length > 0) {
       try {
-        // Attempt onConflict: 'athlete_id,game_id' as requested
-        const { error: err1 } = await supabase
+        const { error: err } = await supabase
           .from('competitors')
-          .upsert(dbUpsertRecords, { onConflict: 'athlete_id,game_id' } as any);
+          .upsert(dbUpsertRecords, { onConflict: 'id' });
 
-        if (err1) {
-          // Fallback to onConflict: 'id' for databases with id primary key
-          console.warn('[DepthChart Sync] onConflict(athlete_id,game_id) returned:', err1.message, '- retrying with id');
-          const { error: err2 } = await supabase
-            .from('competitors')
-            .upsert(dbUpsertRecords, { onConflict: 'id' });
-          if (err2) {
-            console.warn('[DepthChart Sync] Supabase upsert error:', err2.message);
-          }
+        if (err) {
+          console.warn('[DepthChart Sync] Supabase upsert error:', err.message);
         }
       } catch (dbErr) {
         console.warn('[DepthChart Sync] Error writing competitors to Supabase:', dbErr);
