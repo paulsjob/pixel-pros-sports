@@ -235,16 +235,16 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
     </div>
   </div>
 
-      {/* Add Squad Drawer (Fixed bottom, keyboard-safe) */}
+      {/* Add Squad Drawer (Responsive: bottom sheet on mobile, centered modal dialog on desktop) */}
       {isAdding && (
-        <>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
           {/* Backdrop overlay */}
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-2xs z-40"
+            className="fixed inset-0"
             onClick={handleCancelAdd}
           />
           
-          <div className="fixed inset-x-0 bottom-0 z-50 p-3.5 bg-[#0d1527] border-t-2 border-[#1e293b] shadow-[0_-8px_20px_rgba(0,0,0,0.8)] animate-in slide-in-from-bottom duration-200 box-border">
+          <div className="relative z-10 w-full sm:max-w-md p-4 sm:p-5 bg-[#0d1527] border-t-2 sm:border-2 border-[#38bdf8]/70 shadow-[0_-8px_20px_rgba(0,0,0,0.8)] sm:shadow-[0_12px_40px_rgba(0,0,0,0.9)] rounded-t-lg sm:rounded-md animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 box-border">
             <div className="max-w-md mx-auto w-full">
               <form onSubmit={handleCommitNewSquad}>
                 <div className="flex items-center justify-between mb-2">
@@ -312,7 +312,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Delete Squad Confirmation Modal */}

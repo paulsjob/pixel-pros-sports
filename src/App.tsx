@@ -132,6 +132,15 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('admin') === 'true' || window.location.pathname.startsWith('/admin')) {
+        setIsCommissionerOpen(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (isRoomModalOpen) {
       setTempRoomCode(roomCode);
       setIsLoadingRooms(true);
@@ -1022,25 +1031,6 @@ export default function App() {
             </nav>
 
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              {/* Room badge is prioritized first on right - NEVER cut off */}
-              <button
-                type="button"
-                id="header-room-edit-button"
-                onClick={() => {
-                  setTempRoomCode(roomCode);
-                  setIsRoomModalOpen(true);
-                }}
-                className="touch-manipulation flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/70 rounded-xs font-pixel text-[9px] sm:text-[10px] md:text-xs text-[#fae5b8] shadow-xs cursor-pointer active:scale-95 transition-all shrink-0"
-                title="View and Switch Database Rooms"
-              >
-                <span className="text-xs select-none">{currentSport === 'nba' ? '🏀' : '🛋️'}</span>
-                <span className="hidden md:inline text-[#38bdf8]">ROOM:</span>
-                <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
-                <span className="px-1 py-0.5 bg-[#f59e0b] text-[#0f172a] font-bold text-[8px] rounded-2xs uppercase shadow-xs">
-                  EDIT
-                </span>
-              </button>
-
               <button
                 type="button"
                 onClick={handleShareRoom}

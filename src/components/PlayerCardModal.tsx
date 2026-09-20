@@ -296,63 +296,63 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
             </span>
           </div>
 
-          <div className="space-y-1.5 text-xs font-retro text-[#5c3509]">
+          <div className="space-y-1.5 text-xs font-retro text-[#5c3509] pr-1">
             {sport === 'nba' ? (
               <>
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🎯</span><span>{threePm} 3-POINTERS</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#b45309] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{nbaThreePts} PTS</span>
+                  <span className="text-[#b45309] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaThreePts} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🤝</span><span>{ast} ASSISTS</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{nbaAstPts} PTS</span>
+                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaAstPts} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🏀</span><span>{reb} REBOUNDS</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{nbaRebPts} PTS</span>
+                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaRebPts} PTS</span>
                 </div>
 
                 {bigStops > 0 && (
-                  <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>🛡️</span><span>{bigStops} BIG STOPS</span>
                     </span>
                     <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                       ....................................................................
                     </span>
-                    <span className="text-[#15803d] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{nbaStopPts} PTS</span>
+                    <span className="text-[#15803d] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaStopPts} PTS</span>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>⚡</span><span>{pts} REAL PTS (1/3)</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{nbaGamePts} PTS</span>
+                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{nbaGamePts} PTS</span>
                 </div>
 
                 {nbaAdjustment !== 0 && (
-                  <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>{nbaAdjustment > 0 ? '🌟' : '⚠️'}</span>
                       <span>{nbaAdjustment > 0 ? 'BONUS / ADJUSTMENT' : 'DEDUCTIONS'}</span>
@@ -360,7 +360,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
                     <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                       ....................................................................
                     </span>
-                    <span className={`font-bold shrink-0 ml-1.5 whitespace-nowrap ${nbaAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
+                    <span className={`font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap ${nbaAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
                       {nbaAdjustment > 0 ? `+${nbaAdjustment}` : `${nbaAdjustment}`} PTS
                     </span>
                   </div>
@@ -368,50 +368,50 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               </>
             ) : (
               <>
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🏈</span><span>{tds} TOUCHDOWNS (6/td)</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#b45309] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{tdPoints} PTS</span>
+                  <span className="text-[#b45309] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{tdPoints} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>⚡</span><span>{passYds} PASSING YDS (25/pt)</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{passPoints} PTS</span>
+                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{passPoints} PTS</span>
                 </div>
 
-                <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                   <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                     <span>🏃</span><span>{rushYds} RUSHING YDS (10/pt)</span>
                   </span>
                   <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                     ....................................................................
                   </span>
-                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{rushPoints} PTS</span>
+                  <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{rushPoints} PTS</span>
                 </div>
 
                 {recYds > 0 && (
-                  <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>🙌</span><span>{recYds} RECEIVING YDS (10/pt)</span>
                     </span>
                     <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                       ....................................................................
                     </span>
-                    <span className="text-[#12579b] font-bold shrink-0 ml-1.5 whitespace-nowrap">+{recPoints} PTS</span>
+                    <span className="text-[#12579b] font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap">+{recPoints} PTS</span>
                   </div>
                 )}
 
                 {nflAdjustment !== 0 && (
-                  <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
+                  <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs whitespace-nowrap overflow-hidden">
                     <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
                       <span>{nflAdjustment > 0 ? '🌟' : '⚠️'}</span>
                       <span>{nflAdjustment > 0 ? '2-PT CONV / BONUS' : 'TURNOVER / SACK DEDUCTIONS'}</span>
@@ -419,7 +419,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
                     <span className="mx-1.5 text-[#c99a57] font-normal flex-1 overflow-hidden whitespace-nowrap select-none opacity-70">
                       ....................................................................
                     </span>
-                    <span className={`font-bold shrink-0 ml-1.5 whitespace-nowrap ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
+                    <span className={`font-bold shrink-0 ml-1.5 pr-1 whitespace-nowrap ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
                       {nflAdjustment > 0 ? `+${nflAdjustment}` : `${nflAdjustment}`} PTS
                     </span>
                   </div>
@@ -427,7 +427,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               </>
             )}
 
-            <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs sm:text-sm font-bold shadow-xs mt-1.5">
+            <div className="flex items-center justify-between pl-2.5 pr-3 sm:pr-3.5 py-1.5 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs sm:text-sm font-bold shadow-xs mt-1.5">
               <span className="tracking-wider">
                 {scoringInfo.gameState === 'pre' ? 'LAST GAME TOTAL:' : 'TOTAL SCORE:'}
               </span>

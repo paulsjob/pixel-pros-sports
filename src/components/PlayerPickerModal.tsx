@@ -26,6 +26,21 @@ const SLOT_TITLES: Record<ActiveSlot, string> = {
   star3: 'STAR 3',
 };
 
+const POSITION_ORDER: Record<string, number> = {
+  QB: 1,
+  RB: 2,
+  WR: 3,
+  TE: 4,
+  K: 5,
+  PG: 1,
+  SG: 2,
+  SF: 3,
+  PF: 4,
+  C: 5,
+  G: 1,
+  F: 3,
+};
+
 const TEAM_ALIAS_MAP: Record<string, string> = {
   KAN: 'KC',
   KANSASCITY: 'KC',
@@ -182,7 +197,34 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       deduped.push(player);
     }
 
-    return deduped.sort((a, b) => (b.score || 0) - (a.score || 0));
+    return deduped.sort((a, b) => {
+      const aTeam = normalizeCode(a.teamCode || (a as any).team || '');
+      const bTeam = normalizeCode(b.teamCode || (b as any).team || '');
+      const awayTeam = activeMatchObj
+        ? normalizeCode(activeMatchObj.awayTeamCode || activeMatchObj.away_team || '')
+        : selectedGameFilter.includes('@')
+        ? normalizeCode(selectedGameFilter.split('@')[0])
+        : '';
+
+      // 1. Group by Team (Away team first, then Home team)
+      if (awayTeam && aTeam !== bTeam) {
+        if (aTeam === awayTeam) return -1;
+        if (bTeam === awayTeam) return 1;
+        return aTeam.localeCompare(bTeam);
+      }
+
+      // 2. Group by Position (QB -> RB -> WR -> TE)
+      const posA = POSITION_ORDER[a.position] || 99;
+      const posB = POSITION_ORDER[b.position] || 99;
+      if (posA !== posB) {
+        return posA - posB;
+      }
+
+      // 3. Sort by Points / Last Points descending within same position
+      const scoreA = (a as any).current_score ?? (a as any).last_game_score ?? a.score ?? 0;
+      const scoreB = (b as any).current_score ?? (b as any).last_game_score ?? b.score ?? 0;
+      return scoreB - scoreA;
+    });
   }, [allPlayers, selectedGameFilter, activeMatchObj, searchQuery]);
 
   const selectedPlayerNormKeys = useMemo(() => {
@@ -222,7 +264,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           </button>
         </div>
 
-        <div className="shrink-0 flex flex-wrap items-center gap-1 sm:gap-1.5 p-1.5 bg-[#ecd7ab]/75 rounded-xs border-2 border-[#c99a57] max-h-24 sm:max-h-28 overflow-y-auto custom-scrollbar touch-pan-y shadow-inner">
+        <div className="shrink-0 flex flex-nowrap items-center gap-1 sm:gap-1.5 p-1.5 bg-[#ecd7ab]/75 rounded-xs border-2 border-[#c99a57] overflow-x-auto overflow-y-hidden no-scrollbar touch-pan-x shadow-inner">
           <div className="px-2 py-1 bg-[#271604] text-[#fae5b8] font-pixel text-[9px] sm:text-[10px] rounded-xs border border-[#5c3509] shrink-0 font-bold whitespace-nowrap shadow-xs">
             {sport === 'nfl' ? `WEEK ${currentNFLWeek} (${activeMatches.length} GAMES)` : `TONIGHT (${activeMatches.length} GAMES)`}
           </div>
@@ -319,7 +361,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                   <div
                     key={player.id || `${player.displayName}_${index}`}
                     onClick={() => onInspectPlayer?.(player)}
-                    className={`touch-manipulation bg-[#fae5b8] hover:bg-[#fff9ea] border-2 rounded-xs p-2.5 sm:p-3 flex flex-col items-center justify-between cursor-pointer transition-all shadow-[0_3px_0_0_#d4a86a] hover:shadow-[0_4px_0_0_#0a2d52] active:translate-y-0.5 relative select-none ${
+                    className={`touch-manipulation bg-[#fae5b8] hover:bg-[#fff9ea] border-2 rounded-xs p-2.5 sm:p-3 flex flex-col items-center justify-between min-h-[290px] h-auto cursor-pointer transition-all shadow-[0_3px_0_0_#d4a86a] hover:shadow-[0_4px_0_0_#0a2d52] active:translate-y-0.5 relative select-none ${
                       isCurrentSlot
                         ? 'border-[#12579b] ring-2 ring-[#12579b]/40 bg-[#f8efdc]'
                         : isSelectedElsewhere
@@ -402,7 +444,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                         onSelectPlayer(player, activeSlot);
                         onClose();
                       }}
-                      className="touch-manipulation w-full py-1.5 px-2 bg-[#15803d] hover:bg-[#16a34a] text-white border-2 border-[#052e16] font-pixel text-[10px] sm:text-xs rounded-xs cursor-pointer shadow-[0_2px_0_0_#022c11] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-1.5 font-bold"
+                      className="touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 bg-[#15803d] hover:bg-[#16a34a] text-white border-2 border-[#052e16] font-pixel text-[10px] sm:text-xs rounded-xs cursor-pointer shadow-[0_2px_0_0_#022c11] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-1.5 font-bold"
                     >
                       <span>⭐</span>
                       <span>{isCurrentSlot ? 'SELECTED' : isSelectedElsewhere ? 'SWAP' : 'PICK'}</span>
