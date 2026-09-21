@@ -115,8 +115,8 @@ export const NFL_ROSTER_MANIFEST: Record<string, ManifestAthlete[]> = {
   ],
   CLE: [
     { athleteId: '3122840', displayName: 'Deshaun Watson', shortName: 'DWATSON', uniformNumber: 4, teamCode: 'CLE', position: 'QB', skinTone: '#8d5524' },
-    { athleteId: '2970042', displayName: 'Jameis Winston', shortName: 'JWINSTON', uniformNumber: 5, teamCode: 'CLE', position: 'QB', skinTone: '#8d5524' },
     { athleteId: '4361741', displayName: 'Dorian Thompson-Robinson', shortName: 'DTHOMPSON', uniformNumber: 17, teamCode: 'CLE', position: 'QB', skinTone: '#8d5524' },
+    { athleteId: '4241479', displayName: 'Tyler Huntley', shortName: 'THUNTLEY', uniformNumber: 2, teamCode: 'CLE', position: 'QB', skinTone: '#8d5524' },
     { athleteId: '3128720', displayName: 'Nick Chubb', shortName: 'NCHUBB', uniformNumber: 24, teamCode: 'CLE', position: 'RB', skinTone: '#8d5524' },
     { athleteId: '4361529', displayName: 'Jerome Ford', shortName: 'JFORD', uniformNumber: 34, teamCode: 'CLE', position: 'RB', skinTone: '#8d5524' },
     { athleteId: '4426514', displayName: 'Pierre Strong Jr.', shortName: 'PSTRONGJR', uniformNumber: 20, teamCode: 'CLE', position: 'RB', skinTone: '#8d5524' },
@@ -199,6 +199,7 @@ export const NFL_ROSTER_MANIFEST: Record<string, ManifestAthlete[]> = {
   ],
   IND: [
     { athleteId: '4431448', displayName: 'Anthony Richardson', shortName: 'ARICHARDSON', uniformNumber: 5, teamCode: 'IND', position: 'QB', skinTone: '#8d5524' },
+    { athleteId: '3917792', displayName: 'Daniel Jones', shortName: 'DJONES', uniformNumber: 8, teamCode: 'IND', position: 'QB', skinTone: '#f8d9b6' },
     { athleteId: '11252', displayName: 'Joe Flacco', shortName: 'JFLACCO', uniformNumber: 15, teamCode: 'IND', position: 'QB', skinTone: '#f8d9b6' },
     { athleteId: '4241466', displayName: 'Sam Ehlinger', shortName: 'SEHLINGER', uniformNumber: 4, teamCode: 'IND', position: 'QB', skinTone: '#f8d9b6' },
     { athleteId: '4242335', displayName: 'Jonathan Taylor', shortName: 'JTAYLOR', uniformNumber: 28, teamCode: 'IND', position: 'RB', skinTone: '#8d5524' },
@@ -339,8 +340,9 @@ export const NFL_ROSTER_MANIFEST: Record<string, ManifestAthlete[]> = {
   ],
   NYG: [
     { athleteId: '4431456', displayName: 'Jaxson Dart', shortName: 'JDART', uniformNumber: 6, teamCode: 'NYG', position: 'QB', skinTone: '#f8d9b6' },
-    { athleteId: '3917792', displayName: 'Daniel Jones', shortName: 'DJONES', uniformNumber: 8, teamCode: 'NYG', position: 'QB', skinTone: '#f8d9b6' },
+    { athleteId: '2970042', displayName: 'Jameis Winston', shortName: 'JWINSTON', uniformNumber: 19, teamCode: 'NYG', position: 'QB', skinTone: '#8d5524' },
     { athleteId: '3924327', displayName: 'Drew Lock', shortName: 'DLOCK', uniformNumber: 2, teamCode: 'NYG', position: 'QB', skinTone: '#f8d9b6' },
+    { athleteId: '4361518', displayName: 'Tommy DeVito', shortName: 'TDEVITO', uniformNumber: 15, teamCode: 'NYG', position: 'QB', skinTone: '#f8d9b6' },
     { athleteId: '4035693', displayName: 'Devin Singletary', shortName: 'DSINGLETARY', uniformNumber: 26, teamCode: 'NYG', position: 'RB', skinTone: '#8d5524' },
     { athleteId: '4426550', displayName: 'Tyrone Tracy Jr.', shortName: 'TTRACYJR', uniformNumber: 29, teamCode: 'NYG', position: 'RB', skinTone: '#8d5524' },
     { athleteId: '4361516', displayName: 'Eric Gray', shortName: 'EGRAY', uniformNumber: 20, teamCode: 'NYG', position: 'RB', skinTone: '#8d5524' },

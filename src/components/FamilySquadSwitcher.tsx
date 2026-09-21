@@ -59,43 +59,79 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
   // Household gamification: find highest score in room
   const maxScore = Math.max(0, ...squadList.map((s) => s.totalScore ?? 0));
 
-  const carouselRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+  const mobileCarouselRef = useRef<HTMLDivElement>(null);
+  const desktopCarouselRef = useRef<HTMLDivElement>(null);
+  const [mobileCanLeft, setMobileCanLeft] = useState(false);
+  const [mobileCanRight, setMobileCanRight] = useState(false);
+  const [desktopCanLeft, setDesktopCanLeft] = useState(false);
+  const [desktopCanRight, setDesktopCanRight] = useState(false);
 
   const checkScroll = () => {
-    const el = carouselRef.current;
-    if (!el) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    setCanScrollLeft(scrollLeft > 6);
-    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 6);
+    if (mobileCarouselRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = mobileCarouselRef.current;
+      setMobileCanLeft(scrollLeft > 6);
+      setMobileCanRight(scrollLeft < scrollWidth - clientWidth - 6);
+    }
+    if (desktopCarouselRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = desktopCarouselRef.current;
+      setDesktopCanLeft(scrollLeft > 6);
+      setDesktopCanRight(scrollLeft < scrollWidth - clientWidth - 6);
+    }
   };
 
   useEffect(() => {
-    const el = carouselRef.current;
-    if (!el) return;
     checkScroll();
-    el.addEventListener('scroll', checkScroll, { passive: true });
+    const mEl = mobileCarouselRef.current;
+    const dEl = desktopCarouselRef.current;
+    if (mEl) mEl.addEventListener('scroll', checkScroll, { passive: true });
+    if (dEl) dEl.addEventListener('scroll', checkScroll, { passive: true });
     window.addEventListener('resize', checkScroll);
     return () => {
-      el.removeEventListener('scroll', checkScroll);
+      if (mEl) mEl.removeEventListener('scroll', checkScroll);
+      if (dEl) dEl.removeEventListener('scroll', checkScroll);
       window.removeEventListener('resize', checkScroll);
     };
   }, [squadList.length]);
 
   // Whenever the active squad changes or list updates, auto-scroll the active squad into full view
   useEffect(() => {
-    const el = carouselRef.current;
-    if (!el) return;
     const timer = setTimeout(() => {
-      const activeEl = el.querySelector<HTMLElement>('[data-active="true"]');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      }
+      [mobileCarouselRef.current, desktopCarouselRef.current].forEach((el) => {
+        if (!el) return;
+        const activeEl = el.querySelector<HTMLElement>('[data-active="true"]');
+        if (activeEl) {
+          activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
       checkScroll();
-    }, 50);
+    }, 60);
     return () => clearTimeout(timer);
   }, [normalizedActive, squadList.length]);
+
+  const scrollToSquad = (direction: 'left' | 'right', el: HTMLDivElement | null) => {
+    if (!el) return;
+    const items = Array.from(el.querySelectorAll<HTMLElement>('[data-squad-item="true"]'));
+    if (items.length === 0) return;
+
+    const currentScroll = el.scrollLeft;
+
+    if (direction === 'right') {
+      const nextItem = items.find((item) => item.offsetLeft > currentScroll + 15);
+      if (nextItem) {
+        nextItem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } else {
+        el.scrollBy({ left: 160, behavior: 'smooth' });
+      }
+    } else {
+      const prevItems = items.filter((item) => item.offsetLeft < currentScroll - 15);
+      const prevItem = prevItems[prevItems.length - 1];
+      if (prevItem) {
+        prevItem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } else {
+        el.scrollTo({ left: 0, behavior: 'smooth' });
+      }
+    }
+  };
 
   const handleStartAdd = () => {
     if (onOpenAddDrawer) onOpenAddDrawer();
@@ -138,176 +174,278 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
 
   return (
     <>
-      <div className="hidden sm:block w-full bg-[#080d1a] border-b-2 border-[#1a264a] box-border">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full py-1 sm:py-1.5 box-border">
-        <div className="flex items-center justify-between gap-2 flex-nowrap py-0.5 w-full">
-          
-          {/* Left: Interactive Room Code Button & SQUADS Label */}
-          <div className="flex items-center gap-2 shrink-0 select-none">
+      {/* Mobile Portrait Dedicated 2-Row Layout (< 640px) */}
+      <div className="sm:hidden w-full bg-[#080d1a] border-b-2 border-[#1a264a] px-2.5 py-1.5 box-border">
+        {/* Sub-row 1: Room button & +SQUAD button */}
+        <div className="flex items-center justify-between gap-2 w-full mb-1.5">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              id="squad-switcher-room-button"
               onClick={onOpenRoomModal}
-              className="touch-manipulation flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 bg-[#15233d] hover:bg-[#1f345b] border border-[#38bdf8]/60 hover:border-[#38bdf8] text-[#fae5b8] rounded-xs font-pixel text-[9px] sm:text-[10px] font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs transition-all"
-              title="Click to view and switch rooms"
+              className="touch-manipulation flex items-center gap-1 px-2 py-1 bg-[#15233d] active:bg-[#1f345b] border border-[#38bdf8]/60 text-[#fae5b8] rounded-xs font-pixel text-[10px] font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs"
+              title="Click to switch room"
             >
               <span className="text-xs">🛋️</span>
               <span className="text-[#38bdf8] font-bold">ROOM:</span>
               <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
               <span className="text-[9px] text-[#93c5fd]">✏️</span>
             </button>
+            <span className="font-pixel text-[10px] text-[#38bdf8] font-bold tracking-wide">
+              SQUADS ({squadList.length})
+            </span>
+          </div>
 
-            <div className="hidden xs:flex items-center gap-1 shrink-0 select-none">
-              <span className="font-pixel text-[10px] sm:text-xs text-[#38bdf8] whitespace-nowrap font-bold">
+          <button
+            type="button"
+            onClick={handleStartAdd}
+            className="touch-manipulation flex items-center gap-1 px-3 py-1 font-pixel text-[10px] rounded-xs border-2 border-[#16a34a] bg-[#14532d] active:bg-[#16a34a] text-[#86efac] font-bold whitespace-nowrap active:scale-95 shadow-xs"
+            title="Add family squad to this room"
+          >
+            <Plus size={12} strokeWidth={3} />
+            <span>+SQUAD</span>
+          </button>
+        </div>
+
+        {/* Sub-row 2: Full-width carousel with prominent, easy-to-tap left/right arrow buttons */}
+        <div className="flex items-center gap-1 w-full">
+          <button
+            type="button"
+            onClick={() => scrollToSquad('left', mobileCarouselRef.current)}
+            className={`touch-manipulation shrink-0 w-9 h-9 flex items-center justify-center bg-[#15233d] active:bg-[#20365c] text-[#38bdf8] border-2 border-[#38bdf8]/70 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs select-none ${
+              !mobileCanLeft ? 'opacity-40' : 'opacity-100'
+            }`}
+            title="Previous squads"
+            aria-label="Previous squads"
+          >
+            <ChevronLeft size={20} strokeWidth={3} />
+          </button>
+
+          <div
+            ref={mobileCarouselRef}
+            className="snap-x snap-mandatory flex-1 min-w-0 flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x px-1 py-1 scroll-smooth"
+          >
+            {squadList.map((squad) => {
+              const isActive = squad.userName === normalizedActive;
+              const isLeader = maxScore > 0 && (squad.totalScore ?? 0) === maxScore;
+              const scoreVal = squad.totalScore ?? 0;
+
+              return (
+                <button
+                  key={squad.userName}
+                  type="button"
+                  data-squad-item="true"
+                  data-active={isActive ? 'true' : undefined}
+                  onClick={(e) => {
+                    onSelectSquad(squad.userName);
+                    e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                  }}
+                  className={`snap-start touch-manipulation shrink-0 flex items-center gap-1.5 px-3 py-1.5 font-pixel text-xs rounded-xs border-2 transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 ${
+                    isActive
+                      ? 'bg-[#155e9e] text-[#fae5b8] border-[#38bdf8] shadow-[0_2px_0_0_#051a30] font-bold ring-1 ring-[#38bdf8]/50'
+                      : 'bg-[#1a2238] text-[#94a3b8] active:text-[#fae5b8] border-[#273552] active:border-[#38bdf8]/60 active:bg-[#232e4b]'
+                  }`}
+                >
+                  {isLeader ? (
+                    <span className="text-xs select-none">👑</span>
+                  ) : isActive ? (
+                    <span className="text-[#fde047]">★</span>
+                  ) : null}
+                  <span className="font-bold">{squad.userName}</span>
+                  {squad.isLocked && <span className="text-[10px]" title="Locked">🔒</span>}
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-2xs shrink-0 ${
+                      isActive
+                        ? 'bg-[#0a2d52] text-[#fde047]'
+                        : isLeader
+                        ? 'bg-[#451a03] text-[#fde047]'
+                        : 'bg-[#0f172a] text-[#94a3b8]'
+                    }`}
+                  >
+                    {scoreVal}p
+                  </span>
+                  {isActive && !squad.isLocked && onDeleteSquad && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSquadToDrop(squad.userName);
+                      }}
+                      className="ml-1 w-4 h-4 flex items-center justify-center text-[#fae5b8]/70 hover:text-white hover:bg-red-600 rounded-2xs cursor-pointer active:scale-90"
+                      title={`Drop squad ${squad.userName}`}
+                    >
+                      <X size={11} strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => scrollToSquad('right', mobileCarouselRef.current)}
+            className={`touch-manipulation shrink-0 w-9 h-9 flex items-center justify-center bg-[#15233d] active:bg-[#20365c] text-[#38bdf8] border-2 border-[#38bdf8]/70 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs select-none ${
+              !mobileCanRight ? 'opacity-40' : 'opacity-100'
+            }`}
+            title="Next squads"
+            aria-label="Next squads"
+          >
+            <ChevronRight size={20} strokeWidth={3} />
+          </button>
+        </div>
+      </div>
+
+      {/* Tablet & Desktop Single-Row Header (>= 640px) */}
+      <div className="hidden sm:block w-full bg-[#080d1a] border-b-2 border-[#1a264a] box-border">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full py-1.5 box-border">
+          <div className="flex items-center justify-between gap-2.5 flex-nowrap w-full">
+            
+            {/* Left: Interactive Room Code Button & SQUADS Label */}
+            <div className="flex items-center gap-2 shrink-0 select-none">
+              <button
+                type="button"
+                id="squad-switcher-room-button"
+                onClick={onOpenRoomModal}
+                className="touch-manipulation flex items-center gap-1.5 px-2.5 py-1 bg-[#15233d] hover:bg-[#1f345b] border border-[#38bdf8]/60 hover:border-[#38bdf8] text-[#fae5b8] rounded-xs font-pixel text-[10px] sm:text-xs font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs transition-all"
+                title="Click to view and switch rooms"
+              >
+                <span className="text-xs">🛋️</span>
+                <span className="text-[#38bdf8] font-bold">ROOM:</span>
+                <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
+                <span className="text-[9px] text-[#93c5fd]">✏️</span>
+              </button>
+
+              <span className="font-pixel text-xs text-[#38bdf8] whitespace-nowrap font-bold">
                 SQUADS:
               </span>
             </div>
-          </div>
 
-          {/* Center: Scrollable Squad Pills List with Visual Chevrons */}
-          <div className="relative flex-1 min-w-0 flex items-center gap-1">
-            {/* Left Scroll Chevron */}
-            {canScrollLeft && (
+            {/* Center: Scrollable Squad Pills List with Visual Chevrons */}
+            <div className="relative flex-1 min-w-0 flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  carouselRef.current?.scrollBy({ left: -220, behavior: 'smooth' });
-                }}
-                className="touch-manipulation shrink-0 w-6 h-7 flex items-center justify-center bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8]/60 rounded-xs font-pixel text-xs font-bold active:scale-95 cursor-pointer shadow-xs z-10 select-none transition-all"
+                onClick={() => scrollToSquad('left', desktopCarouselRef.current)}
+                className={`touch-manipulation shrink-0 w-7 h-8 flex items-center justify-center bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8]/60 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs z-10 select-none transition-all ${
+                  !desktopCanLeft ? 'opacity-40' : 'opacity-100'
+                }`}
                 title="Scroll squads left"
                 aria-label="Scroll squads left"
               >
-                <ChevronLeft size={15} strokeWidth={3} />
+                <ChevronLeft size={16} strokeWidth={3} />
               </button>
-            )}
 
-            {/* Main Scroll Area */}
-            <div
-              ref={carouselRef}
-              onWheel={(e) => {
-                if (e.deltaY && carouselRef.current) {
-                  carouselRef.current.scrollLeft += e.deltaY;
-                }
-              }}
-              onClick={() => {
-                if (squadList.length === 0) {
-                  handleStartAdd();
-                }
-              }}
-              className={`flex-1 min-w-0 flex items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar touch-pan-x px-1 py-0.5 scroll-smooth ${
-                squadList.length === 0 ? 'cursor-pointer' : ''
-              }`}
-            >
-              {squadList.map((squad) => {
-                const isActive = squad.userName === normalizedActive;
-                const isLeader = maxScore > 0 && (squad.totalScore ?? 0) === maxScore;
-                const scoreVal = squad.totalScore ?? 0;
+              <div
+                ref={desktopCarouselRef}
+                className="snap-x snap-mandatory flex-1 min-w-0 flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x px-1 py-1 scroll-smooth"
+              >
+                {squadList.map((squad) => {
+                  const isActive = squad.userName === normalizedActive;
+                  const isLeader = maxScore > 0 && (squad.totalScore ?? 0) === maxScore;
+                  const scoreVal = squad.totalScore ?? 0;
 
-                return (
-                  <button
-                    key={squad.userName}
-                    type="button"
-                    data-active={isActive ? 'true' : undefined}
-                    onClick={() => onSelectSquad(squad.userName)}
-                    className={`touch-manipulation shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1 font-pixel text-[10px] sm:text-xs rounded-xs border-2 transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 ${
-                      isActive
-                        ? 'bg-[#155e9e] text-[#fae5b8] border-[#38bdf8] shadow-[0_2px_0_0_#051a30] font-bold ring-1 ring-[#38bdf8]/50'
-                        : 'bg-[#1a2238] text-[#94a3b8] hover:text-[#fae5b8] border-[#273552] hover:border-[#38bdf8]/60 hover:bg-[#232e4b]'
-                    }`}
-                    title={
-                      isLeader
-                        ? `👑 Household Leader! ${squad.userName} (${scoreVal} pts)`
-                        : isActive
-                        ? `Currently editing ${squad.userName}'s squad`
-                        : `Switch to ${squad.userName}'s squad`
-                    }
-                  >
-                    {/* 👑 Crown for Household Leader, or ★ for Active Squad */}
-                    {isLeader ? (
-                      <span className="text-xs select-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">👑</span>
-                    ) : isActive ? (
-                      <span className="text-[#fde047]">★</span>
-                    ) : null}
-
-                    <span>{squad.userName}</span>
-
-                    {/* 🔒 Lock Icon if Picks are Locked */}
-                    {squad.isLocked && (
-                      <span className="text-[10px]" title="Picks Locked">
-                        🔒
-                      </span>
-                    )}
-
-                    {/* Points Pill (e.g. 84p) */}
-                    <span
-                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded-2xs shrink-0 ${
+                  return (
+                    <button
+                      key={squad.userName}
+                      type="button"
+                      data-squad-item="true"
+                      data-active={isActive ? 'true' : undefined}
+                      onClick={(e) => {
+                        onSelectSquad(squad.userName);
+                        e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                      }}
+                      className={`snap-start touch-manipulation shrink-0 flex items-center gap-1.5 px-3 py-1 font-pixel text-xs rounded-xs border-2 transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 ${
                         isActive
-                          ? 'bg-[#0a2d52] text-[#fde047]'
-                          : isLeader
-                          ? 'bg-[#451a03] text-[#fde047]'
-                          : 'bg-[#0f172a] text-[#94a3b8]'
+                          ? 'bg-[#155e9e] text-[#fae5b8] border-[#38bdf8] shadow-[0_2px_0_0_#051a30] font-bold ring-1 ring-[#38bdf8]/50'
+                          : 'bg-[#1a2238] text-[#94a3b8] hover:text-[#fae5b8] border-[#273552] hover:border-[#38bdf8]/60 hover:bg-[#232e4b]'
                       }`}
+                      title={
+                        isLeader
+                          ? `👑 Household Leader! ${squad.userName} (${scoreVal} pts)`
+                          : isActive
+                          ? `Currently editing ${squad.userName}'s squad`
+                          : `Switch to ${squad.userName}'s squad`
+                      }
                     >
-                      {scoreVal}p
-                    </span>
+                      {isLeader ? (
+                        <span className="text-xs select-none">👑</span>
+                      ) : isActive ? (
+                        <span className="text-[#fde047]">★</span>
+                      ) : null}
 
-                    {/* [×] Drop Squad button when squad is active and NOT locked */}
-                    {isActive && !squad.isLocked && onDeleteSquad && (
+                      <span className="font-bold">{squad.userName}</span>
+
+                      {squad.isLocked && (
+                        <span className="text-[10px]" title="Picks Locked">
+                          🔒
+                        </span>
+                      )}
+
                       <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSquadToDrop(squad.userName);
-                        }}
-                        className="ml-0.5 w-3.5 h-3.5 flex items-center justify-center text-[#fae5b8]/70 hover:text-white hover:bg-red-600 rounded-2xs cursor-pointer active:scale-90 transition-colors"
-                        title={`Drop squad ${squad.userName} from room`}
+                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded-2xs shrink-0 ${
+                          isActive
+                            ? 'bg-[#0a2d52] text-[#fde047]'
+                            : isLeader
+                            ? 'bg-[#451a03] text-[#fde047]'
+                            : 'bg-[#0f172a] text-[#94a3b8]'
+                        }`}
                       >
-                        <X size={10} strokeWidth={3} />
+                        {scoreVal}p
                       </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
 
-            {/* Right Scroll Chevron */}
-            {canScrollRight && (
+                      {isActive && !squad.isLocked && onDeleteSquad && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSquadToDrop(squad.userName);
+                          }}
+                          className="ml-0.5 w-3.5 h-3.5 flex items-center justify-center text-[#fae5b8]/70 hover:text-white hover:bg-red-600 rounded-2xs cursor-pointer active:scale-90 transition-colors"
+                          title={`Drop squad ${squad.userName} from room`}
+                        >
+                          <X size={10} strokeWidth={3} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
               <button
                 type="button"
-                onClick={() => {
-                  carouselRef.current?.scrollBy({ left: 220, behavior: 'smooth' });
-                }}
-                className="touch-manipulation shrink-0 w-6 h-7 flex items-center justify-center bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8]/80 rounded-xs font-pixel text-xs font-bold active:scale-95 cursor-pointer shadow-xs z-10 select-none transition-all"
-                title="More squads to the right - click to view"
+                onClick={() => scrollToSquad('right', desktopCarouselRef.current)}
+                className={`touch-manipulation shrink-0 w-7 h-8 flex items-center justify-center bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8]/60 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs z-10 select-none transition-all ${
+                  !desktopCanRight ? 'opacity-40' : 'opacity-100'
+                }`}
+                title="Scroll squads right"
                 aria-label="Scroll squads right"
               >
-                <ChevronRight size={15} strokeWidth={3} />
+                <ChevronRight size={16} strokeWidth={3} />
               </button>
-            )}
-          </div>
+            </div>
 
-          {/* Right Side: Pinned [+SQUAD] button & ● LIVE SYNC status dot */}
-          <div className="flex items-center gap-2 shrink-0 select-none pl-1">
-            <button
-              type="button"
-              id="squad-switcher-add-btn"
-              onClick={handleStartAdd}
-              className="touch-manipulation shrink-0 flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 font-pixel text-[10px] sm:text-xs rounded-xs border-2 border-[#16a34a] bg-[#14532d] hover:bg-[#16a34a] text-[#86efac] hover:text-white transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 shadow-xs font-bold"
-              title="Add family squad to this room"
-            >
-              <Plus size={12} strokeWidth={3} />
-              <span>+SQUAD</span>
-            </button>
+            {/* Right Side: Pinned [+SQUAD] button & ● LIVE SYNC status dot */}
+            <div className="flex items-center gap-2 shrink-0 select-none pl-1">
+              <button
+                type="button"
+                id="squad-switcher-add-btn"
+                onClick={handleStartAdd}
+                className="touch-manipulation shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1 font-pixel text-xs rounded-xs border-2 border-[#16a34a] bg-[#14532d] hover:bg-[#16a34a] text-[#86efac] hover:text-white transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 shadow-xs font-bold"
+                title="Add family squad to this room"
+              >
+                <Plus size={12} strokeWidth={3} />
+                <span>+SQUAD</span>
+              </button>
 
-            <div className="flex items-center gap-1.5 font-pixel text-[9px] sm:text-[10px] text-[#22c55e] whitespace-nowrap select-none">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse"></span>
-              <span className="hidden xs:inline sm:inline tracking-wider">LIVE SYNC</span>
+              <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#22c55e] whitespace-nowrap select-none">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse"></span>
+                <span className="hidden xs:inline sm:inline tracking-wider font-bold">LIVE SYNC</span>
+              </div>
             </div>
           </div>
+        </div>
       </div>
-    </div>
-  </div>
 
       {/* Add Squad Drawer (Responsive: bottom sheet on mobile, centered modal dialog on desktop) */}
       {isAdding && (

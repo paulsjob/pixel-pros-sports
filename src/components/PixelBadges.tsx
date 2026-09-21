@@ -48,27 +48,10 @@ export const PixelDiamondCrystal: React.FC<{ size?: number; className?: string }
   </svg>
 );
 
-export const PixelHelmetIcon: React.FC<{ size?: number; color?: string; className?: string }> = ({ size = 26, color = '#155e9e', className = '' }) => (
-  <svg
-    viewBox="0 0 20 20"
-    width={size}
-    height={size}
-    style={{ shapeRendering: 'crispEdges' }}
-    className={`inline-block ${className}`}
-  >
-    {/* Helmet dome */}
-    <rect x="5" y="3" width="9" height="9" fill={color} />
-    <rect x="3" y="5" width="13" height="7" fill={color} />
-    {/* White stripe */}
-    <rect x="8" y="2" width="2" height="10" fill="#ffffff" />
-    {/* Earhole */}
-    <rect x="4" y="9" width="2" height="2" fill="#082b4a" />
-    {/* Facemask */}
-    <rect x="10" y="10" width="7" height="2" fill="#ffffff" />
-    <rect x="11" y="12" width="6" height="2" fill="#cbd5e1" />
-    <rect x="12" y="10" width="1" height="4" fill="#64748b" />
-    <rect x="15" y="10" width="1" height="4" fill="#64748b" />
-  </svg>
+import { PixelHelmet } from './PixelHelmet';
+
+export const PixelHelmetIcon: React.FC<{ size?: number; color?: string; className?: string; teamCode?: string }> = ({ size = 26, className = '', teamCode = 'KC' }) => (
+  <PixelHelmet teamCode={teamCode} size={size} className={className} />
 );
 
 export const PixelShieldIcon: React.FC<{ size?: number; color?: string; className?: string }> = ({ size = 32, color = '#12579b', className = '' }) => (

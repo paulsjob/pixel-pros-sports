@@ -29,7 +29,7 @@ import { SimpleRulesView } from './components/SimpleRulesView';
 import { PlayerCardModal } from './components/PlayerCardModal';
 import { PlayerPickerModal } from './components/PlayerPickerModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { PixelHelmetIcon } from './components/PixelBadges';
+import { PixelHelmet } from './components/PixelHelmet';
 import { SportSwitcher } from './components/SportSwitcher';
 import { CommissionerModal } from './components/CommissionerModal';
 import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
@@ -942,9 +942,13 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setCurrentTab('squad')}
-                className="touch-manipulation flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-left shrink-0"
+                className="touch-manipulation flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-left shrink-0"
               >
-                <PixelHelmetIcon size={18} color={currentSport === 'nba' ? '#ea580c' : '#155e9e'} />
+                {currentSport === 'nfl' ? (
+                  <PixelHelmet teamCode="KC" size={20} className="shrink-0" />
+                ) : (
+                  <span className="text-base select-none">🏀</span>
+                )}
                 <span className="font-pixel text-[11px] text-[#fae5b8] tracking-wider font-bold">PROS</span>
               </button>
 
@@ -1020,61 +1024,20 @@ export default function App() {
                 <span>LEADERBOARD</span>
               </button>
             </div>
-
-            {/* Row 3: Dedicated Full-Width Squad Carousel Bar - plenty of room, never cut off! */}
-            {/* Row 3: Dedicated Full-Width Squad Carousel Bar with Pinned +SQUAD Button */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#070c18] w-full box-border">
-              <span className="font-pixel text-[9px] text-[#38bdf8] uppercase tracking-wider shrink-0 select-none font-bold">
-                SQUADS:
-              </span>
-
-              <button
-                type="button"
-                id="mobile-add-squad-btn"
-                onClick={() => setIsAddSquadDrawerOpen(true)}
-                className="touch-manipulation shrink-0 flex items-center gap-1 px-2 py-0.5 font-pixel text-[9px] rounded-xs border-2 border-[#16a34a] bg-[#14532d] hover:bg-[#16a34a] text-[#86efac] hover:text-white font-bold whitespace-nowrap active:scale-95 shadow-xs"
-                title="Add Squad"
-              >
-                <Plus size={10} strokeWidth={3} />
-                <span>+SQUAD</span>
-              </button>
-
-              <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x pr-2">
-                {squadPillsData.map((squad) => {
-                  const isActive = squad.userName === (userName || '').toUpperCase();
-                  const isLeader = maxSquadScore > 0 && (squad.totalScore ?? 0) === maxSquadScore;
-                  return (
-                    <button
-                      key={squad.userName}
-                      type="button"
-                      onClick={() => handleSelectSquad(squad.userName)}
-                      className={`touch-manipulation shrink-0 flex items-center gap-1.5 px-2 py-0.5 font-pixel text-[9px] rounded-xs border-2 whitespace-nowrap active:scale-95 transition-all ${
-                        isActive
-                          ? 'bg-[#155e9e] text-[#fae5b8] border-[#38bdf8] font-bold shadow-xs'
-                          : 'bg-[#1a2238] text-[#94a3b8] border-[#273552] hover:text-[#fae5b8]'
-                      }`}
-                    >
-                      {isLeader ? '👑' : isActive ? <span className="text-[#fde047]">★</span> : null}
-                      <span className="whitespace-nowrap">{squad.userName}</span>
-                      {squad.isLocked && <span className="text-[8px]">🔒</span>}
-                      <span className="text-[8px] bg-[#0a2d52] text-[#fde047] px-1 rounded-2xs font-bold">
-                        {squad.totalScore ?? 0}p
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
 
           {/* Desktop & Landscape Header (> 600px) */}
           <div className="hidden sm:flex max-w-5xl mx-auto px-2 sm:px-3 md:px-4 w-full py-1 sm:py-1.5 items-center justify-between gap-1 sm:gap-2 box-border">
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 onClick={() => setCurrentTab('squad')}
-                className="touch-manipulation flex items-center gap-1 sm:gap-1.5 cursor-pointer group bg-transparent border-0 p-0 text-left shrink-0"
+                className="touch-manipulation flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-transparent border-0 p-0 text-left shrink-0"
               >
-                <PixelHelmetIcon size={18} color={currentSport === 'nba' ? '#ea580c' : '#155e9e'} />
+                {currentSport === 'nfl' ? (
+                  <PixelHelmet teamCode="KC" size={22} className="shrink-0" />
+                ) : (
+                  <span className="text-base select-none">🏀</span>
+                )}
                 <span className="font-pixel text-[10px] sm:text-xs md:text-sm text-[#fae5b8] tracking-wider group-hover:text-white transition-colors whitespace-nowrap">
                   <span className="hidden md:inline">PIXEL </span>PROS
                 </span>

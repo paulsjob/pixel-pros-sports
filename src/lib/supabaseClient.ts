@@ -279,6 +279,22 @@ export function deduplicateCompetitors(competitors: Competitor[]): Competitor[] 
 
   for (const c of competitors) {
     if (!c) continue;
+
+    // Roster Accuracy Enforcement: Daniel Jones is on the Indianapolis Colts (IND)
+    if (
+      (c.athleteId === '3917792' || (c.displayName || '').toLowerCase() === 'daniel jones') &&
+      c.teamCode !== 'IND'
+    ) {
+      c.teamCode = 'IND';
+      c.teamName = 'Indianapolis Colts';
+      if (c.avatar) {
+        const indColors = getTeamColors('IND');
+        c.avatar.jerseyColor = indColors.jersey;
+        c.avatar.helmetColor = indColors.helmet;
+        c.avatar.pantsColor = indColors.pants;
+      }
+    }
+
     const normKey = `${(c.displayName || c.shortName || '').trim().toLowerCase()}__${(c.teamCode || '').trim().toUpperCase()}`;
     if (!normKey || normKey === '__') continue;
 
@@ -304,6 +320,13 @@ function getLocalSyncedCompetitors(sport: SportId): Competitor[] | null {
         }
         for (const p of parsed) {
           if (!p) continue;
+          // Discard stale cached records where Daniel Jones was still on NYG
+          if (
+            (p.athleteId === '3917792' || (p.displayName || '').toLowerCase() === 'daniel jones') &&
+            p.teamCode !== 'IND'
+          ) {
+            continue;
+          }
           const key = `${(p.displayName || p.shortName || '').trim().toLowerCase()}_${(p.teamCode || '').trim().toUpperCase()}`;
           if (map.has(key)) {
             const existing = map.get(key)!;

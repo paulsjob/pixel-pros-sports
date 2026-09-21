@@ -14,6 +14,7 @@ import {
   NBA_SLOT_DEFS,
   normalizeTeamCode,
   getPlayerVisualAvatar,
+  getTeamColors,
 } from '../utils/teamData';
 import { DEFAULT_NBA_MATCHES } from '../utils/nbaTeamData';
 
@@ -270,6 +271,30 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   const filteredPlayers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let list = Array.isArray(allPlayers) ? [...allPlayers] : [];
+
+    // Ensure roster accuracy for high-profile moves (Daniel Jones is strictly on the Colts - IND)
+    list = list.map((p) => {
+      if (
+        (p.athleteId === '3917792' || (p.displayName || '').toLowerCase() === 'daniel jones') &&
+        normalizeCode(p.teamCode || (p as any).team || '') !== 'IND'
+      ) {
+        const indColors = getTeamColors('IND');
+        return {
+          ...p,
+          teamCode: 'IND',
+          teamName: 'Indianapolis Colts',
+          avatar: p.avatar
+            ? {
+                ...p.avatar,
+                jerseyColor: indColors.jersey,
+                helmetColor: indColors.helmet,
+                pantsColor: indColors.pants,
+              }
+            : p.avatar,
+        };
+      }
+      return p;
+    });
 
     // Ensure all starter manifest athletes for NFL (3 QBs, 3 RBs, 6 WR/TE per team) are fully available in the pool
     if (sport === 'nfl') {

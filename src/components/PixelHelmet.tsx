@@ -35,29 +35,48 @@ export const normalizeTeamCode = (code?: string): string => {
     HOUSTON: 'HOU',
     INDIANAPOLIS: 'IND',
     JACKSONVILLE: 'JAX',
+    JAC: 'JAX',
     KANSAS_CITY: 'KC',
     KANSASCITY: 'KC',
     LAS_VEGAS: 'LV',
     LASVEGAS: 'LV',
+    LAS: 'LV',
+    OAK: 'LV',
+    OAKLAND: 'LV',
     LOS_ANGELES_CHARGERS: 'LAC',
+    CHARGERS: 'LAC',
     LOS_ANGELES_RAMS: 'LAR',
+    RAMS: 'LAR',
+    LA: 'LAR',
+    LAR: 'LAR',
+    LAC: 'LAC',
     MIAMI: 'MIA',
     MINNESOTA: 'MIN',
     NEW_ENGLAND: 'NE',
     NEWENGLAND: 'NE',
+    PATRIOTS: 'NE',
     NEW_ORLEANS: 'NO',
     NEWORLEANS: 'NO',
+    SAINTS: 'NO',
     NEW_YORK_GIANTS: 'NYG',
+    GIANTS: 'NYG',
     NEW_YORK_JETS: 'NYJ',
+    JETS: 'NYJ',
     PHILADELPHIA: 'PHI',
+    EAGLES: 'PHI',
     PITTSBURGH: 'PIT',
+    STEELERS: 'PIT',
     SAN_FRANCISCO: 'SF',
     SANFRANCISCO: 'SF',
     SEATTLE: 'SEA',
+    SEAHAWKS: 'SEA',
     TAMPA_BAY: 'TB',
     TAMPABAY: 'TB',
+    BUCCANEERS: 'TB',
     TENNESSEE: 'TEN',
+    TITANS: 'TEN',
     WASHINGTON: 'WSH',
+    COMMANDERS: 'WSH',
     WSH: 'WSH',
     WAS: 'WSH',
   };
@@ -77,25 +96,15 @@ export const PixelHelmet: React.FC<PixelHelmetProps> = ({
 
   if (!normalized) return null;
 
-  if (hasError) {
-    // Fallback badge if image fails to load
-    return (
-      <span
-        style={{ width: pixelSize, height: pixelSize }}
-        className={`inline-flex items-center justify-center font-pixel text-[9px] font-bold bg-[#12579b] text-[#fae5b8] rounded-xs border border-[#38bdf8]/50 ${className}`}
-      >
-        {normalized.slice(0, 3)}
-      </span>
-    );
-  }
-
   return (
     <img
-      src={`/helmets/${normalized}.png`}
+      src={hasError ? '/helmets/KC.png' : `/helmets/${normalized}.png`}
       alt={alt || `${normalized} Helmet`}
       width={pixelSize}
       height={pixelSize}
-      onError={() => setHasError(true)}
+      onError={() => {
+        if (!hasError) setHasError(true);
+      }}
       style={{
         width: `${pixelSize}px`,
         height: `${pixelSize}px`,

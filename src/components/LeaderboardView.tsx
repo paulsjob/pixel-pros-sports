@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Competitor, Match, SportId, UserProfile, UserRoster } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
-import { PixelHelmetIcon, PixelShieldIcon } from './PixelBadges';
+import { PixelShieldIcon } from './PixelBadges';
+import { PixelHelmet } from './PixelHelmet';
 import { Users, Sparkles } from 'lucide-react';
 import { splitPlayerFirstLastName, formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
 import { getDeviceId } from '../lib/deviceIdentity';
@@ -256,12 +257,17 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       #{displayRank}
                     </span>
 
-                    {/* Pixel Helmet Icon */}
+                    {/* Real PNG Helmet / Icon */}
                     <div className="shrink-0">
-                      <PixelHelmetIcon
-                        size={22}
-                        color={isUser ? '#38bdf8' : '#155e9e'}
-                      />
+                      {sport === 'nfl' ? (
+                        <PixelHelmet
+                          teamCode={entry.stars.find((s) => s?.teamCode)?.teamCode || 'KC'}
+                          size={24}
+                          className="shrink-0"
+                        />
+                      ) : (
+                        <span className="text-xl select-none">🏀</span>
+                      )}
                     </div>
 
                     {/* Name + 3 Mini Star Badges */}

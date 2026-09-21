@@ -236,10 +236,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <div className="font-pixel text-xs text-[#451a03] font-bold uppercase truncate">
                             {player.displayName}
                           </div>
-                          <div className="font-retro text-[11px] text-[#5c3509] font-bold truncate mt-0.5 flex items-center gap-1">
-                            {sport === 'nfl' && player.teamCode && (
-                              <PixelHelmet teamCode={player.teamCode} size={18} />
-                            )}
+                          <div className="font-retro text-[11px] text-[#5c3509] font-bold truncate mt-0.5">
                             <span>#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'}</span>
                           </div>
 
@@ -320,11 +317,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             {lastName}
                           </div>
 
-                          <div className="mt-0.5 font-retro text-xs sm:text-[13px] text-[#5c3509] font-bold flex items-center justify-center gap-1.5">
-                            {sport === 'nfl' && player.teamCode && (
-                              <PixelHelmet teamCode={player.teamCode} size={20} />
-                            )}
-                            <span>(#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'})</span>
+                          <div className="mt-0.5 font-retro text-xs sm:text-[13px] text-[#5c3509] font-bold flex items-center justify-center">
+                            <span>#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'}</span>
                           </div>
 
                           {/* Desktop Game Situation & Matchup Line */}
