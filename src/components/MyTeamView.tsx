@@ -1,9 +1,10 @@
 import React from 'react';
 import { Competitor, ActiveSlot, SquadSlots, Match, SportId } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
+import { PixelHelmet } from './PixelHelmet';
 import { Sparkles, X } from 'lucide-react';
 import { splitPlayerFirstLastName } from '../utils/formatters';
-import { formatRealtimeGameSituationCompact, getPlayerScoringDisplay } from '../utils/teamData';
+import { formatRealtimeGameSituationCompact, getPlayerScoringDisplay, NFL_SLOT_DEFS, NBA_SLOT_DEFS, isPositionAllowedForSlot } from '../utils/teamData';
 import { getCurrentNFLWeek } from '../lib/espnSync';
 
 interface MyTeamViewProps {
@@ -24,12 +25,6 @@ interface MyTeamViewProps {
   onRequestCreateSquad?: () => void;
 }
 
-const SLOT_CONFIG: { key: ActiveSlot; label: string }[] = [
-  { key: 'star1', label: 'STAR 1' },
-  { key: 'star2', label: 'STAR 2' },
-  { key: 'star3', label: 'STAR 3' },
-];
-
 export const MyTeamView: React.FC<MyTeamViewProps> = ({
   slots,
   userName,
@@ -46,6 +41,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onInspectPlayer,
   onRequestCreateSquad,
 }) => {
+  const slotDefs = sport === 'nba' ? NBA_SLOT_DEFS : NFL_SLOT_DEFS;
   const isEmptySquadState = !userName || !userName.trim();
 
   // Count how many stars are set
@@ -53,8 +49,16 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   const filledCount = filledSlots.length;
   const distinctStarIds = new Set(filledSlots.map((s) => s.id));
   const hasThreeDistinct = filledSlots.length === 3 && distinctStarIds.size === 3;
-  // Strict guard condition: A squad with < 3 distinct stars CAN NEVER BE LOCKED
-  const effectiveIsLocked = !isEmptySquadState && hasThreeDistinct && Boolean(isLocked);
+
+  // Strict Roster Position Enforcement: In NFL, squad must be 1 QB, 1 RB, 1 WR/TE
+  const areAllPositionsValid = slotDefs.every(({ key }) => {
+    const p = slots[key];
+    return p ? isPositionAllowedForSlot(key, p.position, sport) : false;
+  });
+  const isRosterValid = hasThreeDistinct && areAllPositionsValid;
+
+  // Strict guard condition: A squad with < 3 distinct stars or invalid positions CAN NEVER BE LOCKED
+  const effectiveIsLocked = !isEmptySquadState && isRosterValid && Boolean(isLocked);
 
   return (
     <div className="w-full box-border">
@@ -84,8 +88,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         {/* 3 Prominent Star Podiums with generous breathing room & Empty State Overlay */}
         <div className="relative">
           <div className={`grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3 md:gap-6 w-full transition-opacity duration-200 ${isEmptySquadState ? 'opacity-25 pointer-events-none select-none' : ''}`}>
-            {SLOT_CONFIG.map(({ key, label }) => {
+            {slotDefs.map(({ key, label, positionReq, positionFullName }) => {
               const player = slots[key];
+              const isPositionValid = player ? isPositionAllowedForSlot(key, player.position, sport) : true;
               const { firstName, lastName } = player
                 ? splitPlayerFirstLastName(player.displayName)
                 : { firstName: '', lastName: '' };
@@ -175,9 +180,19 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 >
                   {/* Star Slot Badge Header (Shown on desktop always, on mobile only when player selected) */}
                   <div className={`w-full ${player ? 'flex' : 'hidden md:flex'} items-center justify-between mb-1 md:mb-2`}>
-                    <span className="px-2 py-0.5 md:px-2.5 md:py-1 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] md:text-xs border border-[#0a2d52] rounded-xs shadow-xs font-bold tracking-wider whitespace-nowrap">
-                      {label}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="px-2 py-0.5 md:px-2.5 md:py-1 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] md:text-xs border border-[#0a2d52] rounded-xs shadow-xs font-bold tracking-wider whitespace-nowrap">
+                        {label}
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-[#451a03] text-[#fde047] font-pixel text-[8px] md:text-[9px] border border-[#271604] rounded-2xs font-bold whitespace-nowrap">
+                        {positionReq}
+                      </span>
+                      {player && !isPositionValid && (
+                        <span className="px-1 py-0.5 bg-[#b91c1c] text-white font-pixel text-[7px] md:text-[8px] rounded-2xs font-bold uppercase animate-pulse">
+                          WRONG POS
+                        </span>
+                      )}
+                    </div>
 
                     {/* [X] Reset button */}
                     {player && !effectiveIsLocked && (
@@ -187,10 +202,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           e.stopPropagation();
                           onClearSlot(key);
                         }}
-                        className="touch-manipulation w-5 h-5 md:w-6 md:h-6 bg-[#b91c1c] hover:bg-[#dc2626] text-[#fae5b8] border border-[#1a2238] flex items-center justify-center font-pixel text-[10px] md:text-xs rounded-2xs active:translate-y-0.5 shrink-0 shadow-xs cursor-pointer"
+                        className="touch-manipulation w-6 h-6 md:w-7 md:h-7 bg-[#b91c1c] hover:bg-[#dc2626] text-[#fae5b8] border border-[#1a2238] flex items-center justify-center font-pixel text-[11px] md:text-xs rounded-2xs active:translate-y-0.5 shrink-0 shadow-xs cursor-pointer"
                         title={`Clear ${label}`}
                       >
-                        <X size={12} className="md:w-3.5 md:h-3.5" />
+                        <X size={13} className="md:w-4 md:h-4" />
                       </button>
                     )}
 
@@ -221,8 +236,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <div className="font-pixel text-xs text-[#451a03] font-bold uppercase truncate">
                             {player.displayName}
                           </div>
-                          <div className="font-retro text-[11px] text-[#5c3509] font-bold truncate mt-0.5">
-                            #{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'}
+                          <div className="font-retro text-[11px] text-[#5c3509] font-bold truncate mt-0.5 flex items-center gap-1">
+                            {sport === 'nfl' && player.teamCode && (
+                              <PixelHelmet teamCode={player.teamCode} size={18} />
+                            )}
+                            <span>#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'}</span>
                           </div>
 
                           {/* Context / Game State line */}
@@ -302,8 +320,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             {lastName}
                           </div>
 
-                          <div className="mt-0.5 font-retro text-xs sm:text-[13px] text-[#5c3509] font-bold">
-                            (#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'})
+                          <div className="mt-0.5 font-retro text-xs sm:text-[13px] text-[#5c3509] font-bold flex items-center justify-center gap-1.5">
+                            {sport === 'nfl' && player.teamCode && (
+                              <PixelHelmet teamCode={player.teamCode} size={20} />
+                            )}
+                            <span>(#{player.uniformNumber} · {player.teamCode} · {player.position || 'STAR'})</span>
                           </div>
 
                           {/* Desktop Game Situation & Matchup Line */}
@@ -380,10 +401,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     </>
                   ) : (
                     <>
-                      {/* Mobile Empty Slot - Compact ~65px height on a single centered line */}
-                      <div className="md:hidden flex items-center justify-center h-full w-full border-2 border-dashed border-[#b45309] rounded-xs group-hover:border-[#12579b] group-hover:bg-[#f6ebd4] transition-all px-2 animate-pulse">
-                        <span className="font-pixel text-[11px] text-[#b45309] group-hover:text-[#12579b] font-bold whitespace-nowrap text-center">
-                          [ + TAP TO PICK {label} ]
+                      {/* Mobile Empty Slot - Comfortable ~68px touch target with clear slot & position */}
+                      <div className="md:hidden flex items-center justify-center h-full w-full min-h-[64px] border-2 border-dashed border-[#b45309] rounded-xs group-hover:border-[#12579b] group-hover:bg-[#f6ebd4] transition-all px-2 animate-pulse">
+                        <span className="font-pixel text-[11px] sm:text-xs text-[#b45309] group-hover:text-[#12579b] font-bold whitespace-nowrap text-center">
+                          + TAP TO PICK {label} ({positionReq})
                         </span>
                       </div>
 
@@ -393,10 +414,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           <span className="font-pixel text-xl font-bold">+</span>
                         </div>
                         <span className="font-pixel text-xs sm:text-sm text-[#b45309] group-hover:text-[#12579b] text-center px-1 font-bold">
-                          + TAP TO PICK STAR
+                          + TAP TO PICK {positionReq}
                         </span>
-                        <span className="font-retro text-[11px] text-[#784610] mt-1">
-                          ASSIGN {label}
+                        <span className="font-retro text-[11px] text-[#784610] mt-1 font-bold">
+                          {positionFullName}
                         </span>
                       </div>
                     </>
@@ -489,7 +510,30 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                 </button>
               )}
             </div>
-          ) : hasThreeDistinct ? (
+          ) : hasThreeDistinct && !areAllPositionsValid ? (
+            <div className="w-full px-3 sm:px-5 py-2 sm:py-3 bg-[#450a0a] text-[#fef2f2] border-3 border-[#991b1b] shadow-[0_4px_0_0_#2b0606] rounded-xs flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-4 box-border">
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <span className="font-pixel text-[10px] sm:text-xs text-[#fca5a5] font-bold tracking-wider">
+                  ⚠️ ROSTER MUST BE: 1 QB, 1 RB, 1 WR/TE
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const invalidSlot = slotDefs.find(({ key }) => {
+                    const p = slots[key];
+                    return p && !isPositionAllowedForSlot(key, p.position, sport);
+                  });
+                  if (invalidSlot) {
+                    onSelectSlot(invalidSlot.key);
+                  }
+                }}
+                className="touch-manipulation px-3 sm:px-4 py-1.5 bg-[#dc2626] hover:bg-[#ef4444] text-white font-pixel text-[10px] sm:text-xs border-2 border-[#7f1d1d] shadow-[0_2px_0_0_#450a0a] rounded-xs cursor-pointer active:translate-y-0.5 whitespace-nowrap font-bold"
+              >
+                SWAP WRONG POSITION
+              </button>
+            </div>
+          ) : isRosterValid ? (
             <div className="w-full px-3 sm:px-5 py-2 sm:py-3 bg-[#0f172a] text-[#fae5b8] border-3 border-[#1e293b] shadow-[0_4px_0_0_#020617] rounded-xs flex items-center justify-between gap-2 sm:gap-4 box-border">
               <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
                 <span className="px-2 sm:px-2.5 py-1 bg-[#1e293b] border border-[#334155] rounded-2xs font-pixel text-[9px] sm:text-xs text-[#38bdf8] font-bold tracking-wider whitespace-nowrap">
@@ -511,7 +555,11 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               className="w-full py-2 sm:py-3 px-3 sm:px-4 bg-[#ebd2a4] text-[#784610] border-3 border-[#c99a57] rounded-xs font-pixel text-[10px] sm:text-xs flex items-center justify-center gap-2 opacity-80 cursor-not-allowed font-bold select-none box-border"
             >
               <span>🔒</span>
-              <span>PICK 3 DISTINCT STARS TO LOCK ({distinctStarIds.size}/3)</span>
+              <span>
+                {sport === 'nfl'
+                  ? `PICK 1 QB, 1 RB, 1 WR/TE TO LOCK (${distinctStarIds.size}/3)`
+                  : `PICK 3 DISTINCT STARS TO LOCK (${distinctStarIds.size}/3)`}
+              </span>
             </button>
           )}
         </div>

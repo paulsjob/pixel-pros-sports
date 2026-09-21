@@ -14,6 +14,8 @@ export interface AvatarConfig {
   stripeColor: string;
   skinTone: string;
   number: number;
+  pantsColor?: string;
+  numberColor?: string;
 }
 
 export interface Competitor {

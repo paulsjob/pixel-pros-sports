@@ -1,5 +1,6 @@
 import { Competitor, SportId } from '../types';
 import { getTeamColors, getTeamFullName, normalizeTeamCode } from '../utils/teamData';
+import { NFL_ROSTER_MANIFEST } from '../data/nflRosterManifest';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 export interface DynamicDepthChartResult {
@@ -273,48 +274,182 @@ export async function runPureDynamicDepthChartSync(
         });
       };
 
-      // 1. Quarterback (QB): Rank 1, fallback to 2 if Out/IR
+      // Track counts added per team
+      let qbCount = 0;
+      let rbCount = 0;
+      let wrCount = 0;
+      let teCount = 0;
+
+      // 1. Quarterbacks (QB): Select top 3 active QBs
       const qbAthletes = positions.qb?.athletes || [];
-      const activeQBs = pickActiveAthletes(qbAthletes, 1);
-      activeQBs.forEach((a) => addAthlete(a, 'QB'));
+      const activeQBs = pickActiveAthletes(qbAthletes, 3);
+      activeQBs.forEach((a) => {
+        addAthlete(a, 'QB');
+        qbCount++;
+      });
 
-      // 2. Running Backs (RB): Rank 1 & 2 active
+      // 2. Running Backs (RB): Select top 3 active RBs
       const rbAthletes = positions.rb?.athletes || [];
-      const activeRBs = pickActiveAthletes(rbAthletes, 2);
-      activeRBs.forEach((a) => addAthlete(a, 'RB'));
+      const activeRBs = pickActiveAthletes(rbAthletes, 3);
+      activeRBs.forEach((a) => {
+        addAthlete(a, 'RB');
+        rbCount++;
+      });
 
-      // 3. Wide Receivers (WR): Rank 1, 2, 3 active (inspect wr1, wr2, wr3)
+      // 3. Wide Receivers (WR): Select top 4 active WRs (inspect wr1, wr2, wr3, wr4 or pool)
       const wrCandidates: any[] = [];
-      ['wr1', 'wr2', 'wr3'].forEach((slot) => {
+      ['wr1', 'wr2', 'wr3', 'wr4'].forEach((slot) => {
         const slotAthletes = positions[slot]?.athletes || [];
         const chosen = pickActiveAthletes(slotAthletes, 1);
-        if (chosen[0]) wrCandidates.push(chosen[0]);
+        if (chosen[0] && !wrCandidates.some((w) => w.id === chosen[0].id)) {
+          wrCandidates.push(chosen[0]);
+        }
       });
-      // Fallback from general WR pool if less than 3
-      if (wrCandidates.length < 3) {
-        const remaining = pickActiveAthletes(positions.wr1?.athletes || [], 3 - wrCandidates.length);
+      // Fallback from general WR pool if less than 4
+      if (wrCandidates.length < 4) {
+        const remaining = pickActiveAthletes(positions.wr1?.athletes || positions.wr?.athletes || [], 4 - wrCandidates.length);
         for (const rem of remaining) {
           if (!wrCandidates.some((w) => w.id === rem.id)) {
             wrCandidates.push(rem);
           }
         }
       }
-      wrCandidates.slice(0, 3).forEach((a) => addAthlete(a, 'WR'));
+      wrCandidates.slice(0, 4).forEach((a) => {
+        addAthlete(a, 'WR');
+        wrCount++;
+      });
 
-      // 4. Tight End (TE): Rank 1 active
+      // 4. Tight Ends (TE): Select top 2 active TEs
       const teAthletes = positions.te?.athletes || [];
-      const activeTEs = pickActiveAthletes(teAthletes, 1);
-      activeTEs.forEach((a) => addAthlete(a, 'TE'));
+      const activeTEs = pickActiveAthletes(teAthletes, 2);
+      activeTEs.forEach((a) => {
+        addAthlete(a, 'TE');
+        teCount++;
+      });
+
+      // 5. Manifest Supplementation: Guarantee every team reaches 3 QBs, 3 RBs, and 6 WR/TE (4 WR + 2 TE)
+      const manifestTeam = NFL_ROSTER_MANIFEST[teamAbbr] || [];
+      if (qbCount < 3) {
+        manifestTeam.filter((m) => m.position === 'QB').slice(qbCount, 3).forEach((m) => {
+          addAthlete({ id: m.athleteId, displayName: m.displayName, shortName: m.shortName, jersey: m.uniformNumber }, 'QB');
+        });
+      }
+      if (rbCount < 3) {
+        manifestTeam.filter((m) => m.position === 'RB').slice(rbCount, 3).forEach((m) => {
+          addAthlete({ id: m.athleteId, displayName: m.displayName, shortName: m.shortName, jersey: m.uniformNumber }, 'RB');
+        });
+      }
+      if (wrCount < 4) {
+        manifestTeam.filter((m) => m.position === 'WR').slice(wrCount, 4).forEach((m) => {
+          addAthlete({ id: m.athleteId, displayName: m.displayName, shortName: m.shortName, jersey: m.uniformNumber }, 'WR');
+        });
+      }
+      if (teCount < 2) {
+        manifestTeam.filter((m) => m.position === 'TE').slice(teCount, 2).forEach((m) => {
+          addAthlete({ id: m.athleteId, displayName: m.displayName, shortName: m.shortName, jersey: m.uniformNumber }, 'TE');
+        });
+      }
     }
 
-    onProgress?.(`Resolved ${dynamicCompetitors.length} dynamic starters. Upserting to database...`);
+    // Ensure any teams in teamList that had failed depth chart responses are populated from manifest
+    for (const { teamAbbr } of teamList) {
+      const alreadyHasPlayers = dynamicCompetitors.some((c) => c.teamCode === teamAbbr);
+      if (!alreadyHasPlayers && NFL_ROSTER_MANIFEST[teamAbbr]) {
+        const teamFullName = getTeamFullName(teamAbbr);
+        const teamColors = getTeamColors(teamAbbr);
+        for (const ath of NFL_ROSTER_MANIFEST[teamAbbr]) {
+          dynamicCompetitors.push({
+            id: `nfl_${ath.athleteId}`,
+            athleteId: ath.athleteId,
+            sportId: 'nfl',
+            displayName: ath.displayName,
+            shortName: ath.shortName,
+            uniformNumber: ath.uniformNumber,
+            teamName: teamFullName,
+            teamCode: teamAbbr,
+            positionGeneric: ath.position === 'QB' ? 'PLAYMAKER' : 'OFFENSE',
+            position: ath.position,
+            rating: 90,
+            score: 0,
+            stats: {
+              pass_yds: 0,
+              rush_yds: 0,
+              rec_yds: 0,
+              tds: 0,
+              fgs: 0,
+              stops: 0,
+              touchdowns: 0,
+              total_yards: 0,
+              primaryMetricLabel: 'Touchdowns',
+              primaryMetricValue: 0,
+            },
+            badges: ['gold_star'],
+            avatar: {
+              helmetColor: teamColors.helmet,
+              jerseyColor: teamColors.jersey,
+              stripeColor: teamColors.stripe,
+              skinTone: ath.skinTone || '#e0ac69',
+              number: ath.uniformNumber,
+            },
+          });
+        }
+      }
+    }
+
+    onProgress?.(`Resolved ${dynamicCompetitors.length} dynamic starters. Preserving live scores...`);
+
+    // Merge existing scores/stats from localStorage so depth chart never wipes live scores to 0
+    try {
+      const cachedRaw = localStorage.getItem('pixel_pros_synced_competitors_nfl');
+      if (cachedRaw) {
+        const cachedList = JSON.parse(cachedRaw);
+        if (Array.isArray(cachedList)) {
+          const scoreMap = new Map<string, any>();
+          cachedList.forEach((c: any) => {
+            if (c && c.id) scoreMap.set(c.id, c);
+            if (c && c.athleteId) scoreMap.set(c.athleteId, c);
+          });
+          dynamicCompetitors.forEach((dc) => {
+            const existing = scoreMap.get(dc.id) || scoreMap.get(dc.athleteId);
+            if (existing) {
+              if (existing.score !== undefined && existing.score > 0) {
+                dc.score = existing.score;
+              }
+              if (existing.stats && (existing.stats.pass_yds > 0 || existing.stats.rush_yds > 0 || existing.stats.rec_yds > 0 || existing.stats.tds > 0)) {
+                dc.stats = existing.stats;
+              }
+              if (existing.last_game_score) dc.last_game_score = existing.last_game_score;
+              if (existing.last_game_stats) dc.last_game_stats = existing.last_game_stats;
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[DepthChart Sync] Failed to preserve existing scores cache:', e);
+    }
 
     // 2. Dynamic Database Upsert to Supabase
     if (isSupabaseConfigured && dbUpsertRecords.length > 0) {
       try {
+        // Overlay preserved scores into dbUpsertRecords so database scores are never wiped to 0
+        const compScoreMap = new Map(dynamicCompetitors.map((dc) => [dc.id, dc]));
+        const safeRecords = dbUpsertRecords.map((rec) => {
+          const matched = compScoreMap.get(rec.id);
+          if (matched && matched.score > 0) {
+            return {
+              ...rec,
+              score: matched.score,
+              stats: matched.stats,
+              last_game_score: matched.last_game_score,
+              last_game_stats: matched.last_game_stats,
+            };
+          }
+          return rec;
+        });
+
         const { error: err } = await supabase
           .from('competitors')
-          .upsert(dbUpsertRecords, { onConflict: 'id' });
+          .upsert(safeRecords, { onConflict: 'id' });
 
         if (err) {
           console.warn('[DepthChart Sync] Supabase upsert error:', err.message);
@@ -331,9 +466,8 @@ export async function runPureDynamicDepthChartSync(
       console.warn('[DepthChart Sync] LocalStorage write error:', lsErr);
     }
 
-    // 4. Broadcast window events so UI updates seamlessly
+    // 4. Broadcast window events (only match schedule; score updates happen in espnSync with live stats)
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('pixel_pros_scores_updated', { detail: { sport: 'nfl', competitors: dynamicCompetitors } }));
       window.dispatchEvent(new CustomEvent('pixel_pros_live_matches_updated', { detail: { sport: 'nfl' } }));
     }
 

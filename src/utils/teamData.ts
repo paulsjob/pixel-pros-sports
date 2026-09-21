@@ -3,7 +3,7 @@
  * Strictly authentic colors, full names, and game situation formatters.
  */
 
-import { Competitor, Match, SportId } from '../types';
+import { Competitor, Match, SportId, ActiveSlot } from '../types';
 import { NFL_ROSTER_MANIFEST, validateTeamRoster } from '../data/nflRosterManifest';
 
 export interface TeamMeta {
@@ -12,72 +12,153 @@ export interface TeamMeta {
   helmetColor: string;
   jerseyColor: string;
   stripeColor: string;
+  awayJerseyColor?: string;
+  pantsColor?: string;
 }
 
 export const NFL_TEAMS: Record<string, TeamMeta> = {
-  ARI: { code: 'ARI', name: 'Arizona Cardinals', helmetColor: '#97233f', jerseyColor: '#97233f', stripeColor: '#ffffff' },
-  ATL: { code: 'ATL', name: 'Atlanta Falcons', helmetColor: '#a71930', jerseyColor: '#000000', stripeColor: '#ffffff' },
-  BAL: { code: 'BAL', name: 'Baltimore Ravens', helmetColor: '#241773', jerseyColor: '#241773', stripeColor: '#ffffff' },
-  BUF: { code: 'BUF', name: 'Buffalo Bills', helmetColor: '#00338d', jerseyColor: '#00338d', stripeColor: '#c60c30' },
-  CAR: { code: 'CAR', name: 'Carolina Panthers', helmetColor: '#0085ca', jerseyColor: '#0085ca', stripeColor: '#ffffff' },
-  CHI: { code: 'CHI', name: 'Chicago Bears', helmetColor: '#0b162a', jerseyColor: '#0b162a', stripeColor: '#c83803' },
-  CIN: { code: 'CIN', name: 'Cincinnati Bengals', helmetColor: '#fb4f14', jerseyColor: '#000000', stripeColor: '#ffffff' },
-  CLE: { code: 'CLE', name: 'Cleveland Browns', helmetColor: '#ff3c00', jerseyColor: '#311d00', stripeColor: '#ffffff' },
-  DAL: { code: 'DAL', name: 'Dallas Cowboys', helmetColor: '#041e42', jerseyColor: '#003594', stripeColor: '#ffffff' },
-  DEN: { code: 'DEN', name: 'Denver Broncos', helmetColor: '#002244', jerseyColor: '#fb4f14', stripeColor: '#ffffff' },
-  DET: { code: 'DET', name: 'Detroit Lions', helmetColor: '#0076b6', jerseyColor: '#0076b6', stripeColor: '#b0b7bc' },
-  GB:  { code: 'GB',  name: 'Green Bay Packers', helmetColor: '#ffb612', jerseyColor: '#203731', stripeColor: '#ffffff' },
-  HOU: { code: 'HOU', name: 'Houston Texans', helmetColor: '#03202f', jerseyColor: '#03202f', stripeColor: '#a71930' },
-  IND: { code: 'IND', name: 'Indianapolis Colts', helmetColor: '#002c5f', jerseyColor: '#002c5f', stripeColor: '#ffffff' },
-  JAX: { code: 'JAX', name: 'Jacksonville Jaguars', helmetColor: '#006778', jerseyColor: '#006778', stripeColor: '#d7a22a' },
-  KC:  { code: 'KC',  name: 'Kansas City Chiefs', helmetColor: '#e31837', jerseyColor: '#e31837', stripeColor: '#ffb81c' },
-  LAC: { code: 'LAC', name: 'Los Angeles Chargers', helmetColor: '#0080c6', jerseyColor: '#0080c6', stripeColor: '#ffc20e' },
-  LAR: { code: 'LAR', name: 'Los Angeles Rams', helmetColor: '#003594', jerseyColor: '#003594', stripeColor: '#ffa300' },
-  LV:  { code: 'LV',  name: 'Las Vegas Raiders', helmetColor: '#a5acaf', jerseyColor: '#000000', stripeColor: '#ffffff' },
-  MIA: { code: 'MIA', name: 'Miami Dolphins', helmetColor: '#008e97', jerseyColor: '#008e97', stripeColor: '#fc4c02' },
-  MIN: { code: 'MIN', name: 'Minnesota Vikings', helmetColor: '#4f2683', jerseyColor: '#4f2683', stripeColor: '#ffc62f' },
-  NE:  { code: 'NE',  name: 'New England Patriots', helmetColor: '#002244', jerseyColor: '#002244', stripeColor: '#c60c30' },
-  NO:  { code: 'NO',  name: 'New Orleans Saints', helmetColor: '#d3bc8d', jerseyColor: '#101820', stripeColor: '#d3bc8d' },
-  NYG: { code: 'NYG', name: 'New York Giants', helmetColor: '#0b2265', jerseyColor: '#0b2265', stripeColor: '#a71930' },
-  NYJ: { code: 'NYJ', name: 'New York Jets', helmetColor: '#125740', jerseyColor: '#125740', stripeColor: '#ffffff' },
-  PHI: { code: 'PHI', name: 'Philadelphia Eagles', helmetColor: '#004c54', jerseyColor: '#004c54', stripeColor: '#a5acaf' },
-  PIT: { code: 'PIT', name: 'Pittsburgh Steelers', helmetColor: '#101820', jerseyColor: '#101820', stripeColor: '#ffb612' },
-  SEA: { code: 'SEA', name: 'Seattle Seahawks', helmetColor: '#002244', jerseyColor: '#002244', stripeColor: '#69be28' },
-  SF:  { code: 'SF',  name: 'San Francisco 49ers', helmetColor: '#aa0000', jerseyColor: '#aa0000', stripeColor: '#b3995d' },
-  TB:  { code: 'TB',  name: 'Tampa Bay Buccaneers', helmetColor: '#d50a0a', jerseyColor: '#d50a0a', stripeColor: '#34302b' },
-  TEN: { code: 'TEN', name: 'Tennessee Titans', helmetColor: '#0c2340', jerseyColor: '#4b92db', stripeColor: '#c8102e' },
-  WSH: { code: 'WSH', name: 'Washington Commanders', helmetColor: '#5a1414', jerseyColor: '#5a1414', stripeColor: '#ffb612' },
+  ARI: { code: 'ARI', name: 'Arizona Cardinals', helmetColor: '#ffffff', jerseyColor: '#97233f', stripeColor: '#000000', awayJerseyColor: '#ffffff', pantsColor: '#97233f' },
+  ATL: { code: 'ATL', name: 'Atlanta Falcons', helmetColor: '#000000', jerseyColor: '#000000', stripeColor: '#a71930', awayJerseyColor: '#ffffff', pantsColor: '#000000' },
+  BAL: { code: 'BAL', name: 'Baltimore Ravens', helmetColor: '#1a0933', jerseyColor: '#241773', stripeColor: '#d0a85c', awayJerseyColor: '#ffffff', pantsColor: '#000000' },
+  BUF: { code: 'BUF', name: 'Buffalo Bills', helmetColor: '#ffffff', jerseyColor: '#00338d', stripeColor: '#c60c30', awayJerseyColor: '#ffffff', pantsColor: '#00338d' },
+  CAR: { code: 'CAR', name: 'Carolina Panthers', helmetColor: '#a5acaf', jerseyColor: '#0085ca', stripeColor: '#000000', awayJerseyColor: '#ffffff', pantsColor: '#a5acaf' },
+  CHI: { code: 'CHI', name: 'Chicago Bears', helmetColor: '#0b162a', jerseyColor: '#0b162a', stripeColor: '#c83803', awayJerseyColor: '#ffffff', pantsColor: '#ffffff' },
+  CIN: { code: 'CIN', name: 'Cincinnati Bengals', helmetColor: '#fb4f14', jerseyColor: '#000000', stripeColor: '#fb4f14', awayJerseyColor: '#ffffff', pantsColor: '#000000' },
+  CLE: { code: 'CLE', name: 'Cleveland Browns', helmetColor: '#ff3c00', jerseyColor: '#311d00', stripeColor: '#ff3c00', awayJerseyColor: '#ffffff', pantsColor: '#311d00' },
+  DAL: { code: 'DAL', name: 'Dallas Cowboys', helmetColor: '#b0b7bc', jerseyColor: '#002244', stripeColor: '#ffffff', awayJerseyColor: '#ffffff', pantsColor: '#b0b7bc' },
+  DEN: { code: 'DEN', name: 'Denver Broncos', helmetColor: '#002244', jerseyColor: '#fb4f14', stripeColor: '#ffffff', awayJerseyColor: '#ffffff', pantsColor: '#002244' },
+  DET: { code: 'DET', name: 'Detroit Lions', helmetColor: '#b0b7bc', jerseyColor: '#0076b6', stripeColor: '#ffffff', awayJerseyColor: '#ffffff', pantsColor: '#b0b7bc' },
+  GB:  { code: 'GB',  name: 'Green Bay Packers', helmetColor: '#ffb612', jerseyColor: '#203731', stripeColor: '#ffffff', awayJerseyColor: '#ffffff', pantsColor: '#ffb612' },
+  HOU: { code: 'HOU', name: 'Houston Texans', helmetColor: '#03202f', jerseyColor: '#03202f', stripeColor: '#a71930', awayJerseyColor: '#ffffff', pantsColor: '#03202f' },
+  IND: { code: 'IND', name: 'Indianapolis Colts', helmetColor: '#ffffff', jerseyColor: '#002c5f', stripeColor: '#ffffff', awayJerseyColor: '#ffffff', pantsColor: '#ffffff' },
+  JAX: { code: 'JAX', name: 'Jacksonville Jaguars', helmetColor: '#006778', jerseyColor: '#006778', stripeColor: '#d7a22a', awayJerseyColor: '#ffffff', pantsColor: '#000000' },
+  KC:  { code: 'KC',  name: 'Kansas City Chiefs', helmetColor: '#e31837', jerseyColor: '#e31837', stripeColor: '#ffb81c', awayJerseyColor: '#ffffff', pantsColor: '#ffffff' },
+  LAC: { code: 'LAC', name: 'Los Angeles Chargers', helmetColor: '#ffffff', jerseyColor: '#0080c6', stripeColor: '#ffc20e', awayJerseyColor: '#ffffff', pantsColor: '#ffc20e' },
+  LAR: { code: 'LAR', name: 'Los Angeles Rams', helmetColor: '#003594', jerseyColor: '#003594', stripeColor: '#ffa300', awayJerseyColor: '#ffffff', pantsColor: '#ffa300' },
+  LV:  { code: 'LV',  name: 'Las Vegas Raiders', helmetColor: '#a5acaf', jerseyColor: '#000000', stripeColor: '#a5acaf', awayJerseyColor: '#ffffff', pantsColor: '#a5acaf' },
+  MIA: { code: 'MIA', name: 'Miami Dolphins', helmetColor: '#ffffff', jerseyColor: '#008e97', stripeColor: '#fc4c02', awayJerseyColor: '#ffffff', pantsColor: '#ffffff' },
+  MIN: { code: 'MIN', name: 'Minnesota Vikings', helmetColor: '#4f2683', jerseyColor: '#4f2683', stripeColor: '#ffc62f', awayJerseyColor: '#ffffff', pantsColor: '#4f2683' },
+  NE:  { code: 'NE',  name: 'New England Patriots', helmetColor: '#b0b7bc', jerseyColor: '#001a35', stripeColor: '#c60c30', awayJerseyColor: '#ffffff', pantsColor: '#001a35' },
+  NO:  { code: 'NO',  name: 'New Orleans Saints', helmetColor: '#d3bc8d', jerseyColor: '#101820', stripeColor: '#d3bc8d', awayJerseyColor: '#ffffff', pantsColor: '#101820' },
+  NYG: { code: 'NYG', name: 'New York Giants', helmetColor: '#0b2265', jerseyColor: '#0b2265', stripeColor: '#a71930', awayJerseyColor: '#ffffff', pantsColor: '#e2e8f0' },
+  NYJ: { code: 'NYJ', name: 'New York Jets', helmetColor: '#125740', jerseyColor: '#125740', stripeColor: '#ffffff', awayJerseyColor: '#ffffff', pantsColor: '#125740' },
+  PHI: { code: 'PHI', name: 'Philadelphia Eagles', helmetColor: '#004c54', jerseyColor: '#004c54', stripeColor: '#a5acaf', awayJerseyColor: '#ffffff', pantsColor: '#004c54' },
+  PIT: { code: 'PIT', name: 'Pittsburgh Steelers', helmetColor: '#101820', jerseyColor: '#101820', stripeColor: '#ffb612', awayJerseyColor: '#ffffff', pantsColor: '#ffb612' },
+  SEA: { code: 'SEA', name: 'Seattle Seahawks', helmetColor: '#002244', jerseyColor: '#002244', stripeColor: '#69be28', awayJerseyColor: '#ffffff', pantsColor: '#002244' },
+  SF:  { code: 'SF',  name: 'San Francisco 49ers', helmetColor: '#b3995d', jerseyColor: '#aa0000', stripeColor: '#b3995d', awayJerseyColor: '#ffffff', pantsColor: '#b3995d' },
+  TB:  { code: 'TB',  name: 'Tampa Bay Buccaneers', helmetColor: '#34302b', jerseyColor: '#d50a0a', stripeColor: '#ff7900', awayJerseyColor: '#ffffff', pantsColor: '#34302b' },
+  TEN: { code: 'TEN', name: 'Tennessee Titans', helmetColor: '#0c2340', jerseyColor: '#4b92db', stripeColor: '#c8102e', awayJerseyColor: '#ffffff', pantsColor: '#0c2340' },
+  WSH: { code: 'WSH', name: 'Washington Commanders', helmetColor: '#5a1414', jerseyColor: '#5a1414', stripeColor: '#ffb612', awayJerseyColor: '#ffffff', pantsColor: '#ffb612' },
 };
 
 export function normalizeTeamCode(code?: string): string {
   if (!code) return 'NFL';
-  const c = code.trim().toUpperCase();
+  const c = code.trim().toUpperCase().replace(/\s+/g, '');
   const aliasMap: Record<string, string> = {
-    WSH: 'WAS',
+    LA: 'LAR',
+    RAMS: 'LAR',
+    LOSANGELESRAMS: 'LAR',
+    WAS: 'WSH',
+    COMMANDERS: 'WSH',
+    WASHINGTON: 'WSH',
     JAC: 'JAX',
-    LAR: 'LA',
+    JAGUARS: 'JAX',
+    JACKSONVILLE: 'JAX',
+    KAN: 'KC',
+    CHIEFS: 'KC',
+    KANSASCITY: 'KC',
+    GNB: 'GB',
+    PACKERS: 'GB',
+    GREENBAY: 'GB',
+    NWE: 'NE',
+    PATRIOTS: 'NE',
+    NEWENGLAND: 'NE',
+    NOR: 'NO',
+    SAINTS: 'NO',
+    NEWORLEANS: 'NO',
+    SFO: 'SF',
+    '49ERS': 'SF',
+    SANFRANCISCO: 'SF',
+    TAM: 'TB',
+    BUCCANEERS: 'TB',
+    TAMPABAY: 'TB',
+    LVR: 'LV',
+    RAIDERS: 'LV',
+    LASVEGAS: 'LV',
   };
   return aliasMap[c] || c;
 }
 
 export function getTeamFullName(teamCode?: string): string {
   if (!teamCode) return 'NFL';
-  const clean = teamCode.trim().toUpperCase();
+  const clean = normalizeTeamCode(teamCode);
   return NFL_TEAMS[clean]?.name || clean;
 }
 
-export function getTeamColors(teamCode?: string): { helmet: string; jersey: string; stripe: string } {
-  if (!teamCode) return { helmet: '#12579b', jersey: '#12579b', stripe: '#ffffff' };
-  const clean = teamCode.trim().toUpperCase();
+/**
+ * Returns distinct colors for a team's uniform.
+ * By default, both teams wear their authentic, vibrant primary colored team jerseys.
+ * (User preference: "don't go crazy with the colors. like, Blue and Yellow for the Rams is different from Blue and Red for the Giants. so that would be fine. I don't like the Giants' white jerseys here!").
+ * Also avoids white-on-white uniforms by guaranteeing non-white pants and contrasting numbers.
+ */
+export function getTeamColors(
+  teamCode?: string,
+  isAway = false,
+  opponentTeamCode?: string
+): { helmet: string; jersey: string; stripe: string; pants: string; numberColor: string } {
+  if (!teamCode) {
+    return { helmet: '#12579b', jersey: '#12579b', stripe: '#ffffff', pants: '#12579b', numberColor: '#ffffff' };
+  }
+  const clean = normalizeTeamCode(teamCode);
   const found = NFL_TEAMS[clean];
-  if (found) {
+  if (!found) {
+    return { helmet: '#12579b', jersey: '#12579b', stripe: '#ffffff', pants: '#12579b', numberColor: '#ffffff' };
+  }
+
+  // Authentic team colors by default!
+  // Teams only switch if their primary jersey colors are identical (e.g., both wearing the exact same shade of black or identical red).
+  let useAwayUniform = false;
+  if (opponentTeamCode) {
+    const oppClean = normalizeTeamCode(opponentTeamCode);
+    const oppFound = NFL_TEAMS[oppClean];
+    if (oppFound) {
+      const myJersey = found.jerseyColor.toLowerCase();
+      const oppJersey = oppFound.jerseyColor.toLowerCase();
+      const bothIdentical = myJersey === oppJersey;
+      if (bothIdentical && isAway) {
+        useAwayUniform = true;
+      }
+    }
+  }
+
+  const defaultPants = found.pantsColor || found.jerseyColor;
+
+  if (useAwayUniform && found.awayJerseyColor) {
+    // Away uniform: white jersey, but CRITICAL: NEVER white-on-white pants!
+    // The pants take the team's primary color or helmet color to ensure strong contrast.
+    const nonWhitePants =
+      defaultPants.toLowerCase() !== '#ffffff'
+        ? defaultPants
+        : found.jerseyColor.toLowerCase() !== '#ffffff'
+        ? found.jerseyColor
+        : found.helmetColor;
+
     return {
       helmet: found.helmetColor,
-      jersey: found.jerseyColor,
-      stripe: found.stripeColor,
+      jersey: found.awayJerseyColor,
+      stripe: found.jerseyColor,
+      pants: nonWhitePants,
+      numberColor: found.jerseyColor,
     };
   }
-  return { helmet: '#12579b', jersey: '#12579b', stripe: '#ffffff' };
+
+  return {
+    helmet: found.helmetColor,
+    jersey: found.jerseyColor,
+    stripe: found.stripeColor,
+    pants: defaultPants,
+    numberColor: '#ffffff',
+  };
 }
 
 // Known superstar uniform numbers
@@ -296,6 +377,8 @@ export function buildManifestCompetitors(): Competitor[] {
           helmetColor: colors.helmet,
           jerseyColor: colors.jersey,
           stripeColor: colors.stripe,
+          pantsColor: colors.pants,
+          numberColor: colors.numberColor,
           skinTone: ath.skinTone || '#e0ac69',
           number: ath.uniformNumber,
         },
@@ -669,12 +752,12 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     away_team: 'DET',
     homeScore: 0,
     awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: '1st Quarter',
-    quarterTime: '1st Quarter',
-    periodLabel: '🔴 LIVE (1st Qtr)',
-    status: 'live',
+    home_score: 21,
+    away_score: 24,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-18T00:15Z',
@@ -688,14 +771,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'CAR',
     home_team: 'ATL',
     away_team: 'CAR',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 27,
+    awayScore: 20,
+    home_score: 27,
+    away_score: 20,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -709,14 +792,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'MIN',
     home_team: 'CHI',
     away_team: 'MIN',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 19,
+    awayScore: 24,
+    home_score: 19,
+    away_score: 24,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -730,14 +813,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'PHI',
     home_team: 'TEN',
     away_team: 'PHI',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 14,
+    awayScore: 28,
+    home_score: 14,
+    away_score: 28,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -751,14 +834,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'PIT',
     home_team: 'NE',
     away_team: 'PIT',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 17,
+    awayScore: 20,
+    home_score: 17,
+    away_score: 20,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -772,14 +855,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'GB',
     home_team: 'NYJ',
     away_team: 'GB',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 21,
+    awayScore: 27,
+    home_score: 21,
+    away_score: 27,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -793,14 +876,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'CLE',
     home_team: 'TB',
     away_team: 'CLE',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 23,
+    awayScore: 16,
+    home_score: 23,
+    away_score: 16,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -814,14 +897,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'NO',
     home_team: 'BAL',
     away_team: 'NO',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 31,
+    awayScore: 17,
+    home_score: 31,
+    away_score: 17,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -835,14 +918,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'CIN',
     home_team: 'HOU',
     away_team: 'CIN',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 1:00 PM',
-    quarterTime: 'Sun 1:00 PM',
-    periodLabel: 'Sun 1:00 PM',
-    status: 'upcoming',
+    homeScore: 24,
+    awayScore: 21,
+    home_score: 24,
+    away_score: 21,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T17:00Z',
@@ -856,14 +939,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'JAX',
     home_team: 'DEN',
     away_team: 'JAX',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 4:05 PM',
-    quarterTime: 'Sun 4:05 PM',
-    periodLabel: 'Sun 4:05 PM',
-    status: 'upcoming',
+    homeScore: 17,
+    awayScore: 13,
+    home_score: 17,
+    away_score: 13,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T20:05Z',
@@ -898,14 +981,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'WSH',
     home_team: 'DAL',
     away_team: 'WSH',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 4:25 PM',
-    quarterTime: 'Sun 4:25 PM',
-    periodLabel: 'Sun 4:25 PM',
-    status: 'upcoming',
+    homeScore: 24,
+    awayScore: 20,
+    home_score: 24,
+    away_score: 20,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T20:25Z',
@@ -919,14 +1002,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'SEA',
     home_team: 'ARI',
     away_team: 'SEA',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 4:25 PM',
-    quarterTime: 'Sun 4:25 PM',
-    periodLabel: 'Sun 4:25 PM',
-    status: 'upcoming',
+    homeScore: 21,
+    awayScore: 23,
+    home_score: 21,
+    away_score: 23,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T20:25Z',
@@ -940,14 +1023,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'MIA',
     home_team: 'SF',
     away_team: 'MIA',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 4:25 PM',
-    quarterTime: 'Sun 4:25 PM',
-    periodLabel: 'Sun 4:25 PM',
-    status: 'upcoming',
+    homeScore: 27,
+    awayScore: 20,
+    home_score: 27,
+    away_score: 20,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'FINAL',
+    status: 'final',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-20T20:25Z',
@@ -961,14 +1044,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'IND',
     home_team: 'KC',
     away_team: 'IND',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Sun 8:20 PM',
-    quarterTime: 'Sun 8:20 PM',
-    periodLabel: 'Sun 8:20 PM',
-    status: 'upcoming',
+    homeScore: 27,
+    awayScore: 24,
+    home_score: 27,
+    away_score: 24,
+    quarter_time: '4th 2:15',
+    quarterTime: '4th 2:15',
+    periodLabel: '🔴 LIVE (4th Qtr)',
+    status: 'live',
     week: 2,
     weekLabel: 'Week 2',
     gameDate: '2026-09-21T00:20Z',
@@ -1035,6 +1118,147 @@ export function getPlayerGameState(match: Match | null | undefined): PlayerGameS
   return 'pre';
 }
 
+/**
+ * Standard Finger-Math Kid-Friendly Whole-Number NFL Score Calculation:
+ * - Touchdown: 6 pts
+ * - Passing yards: 1 pt per 25 yards (Math.floor(pass_yds / 25))
+ * - Rushing yards: 1 pt per 10 yards (Math.floor(rush_yds / 10))
+ * - Receiving yards: 1 pt per 10 yards (Math.floor(rec_yds / 10))
+ * - Field goal: 3 pts
+ * - Big stop / Def: 2 pts
+ */
+export function calculateNFLPlayerScore(stats: any): number {
+  if (!stats) return 0;
+  const tds = Number(stats.tds ?? stats.touchdowns ?? 0);
+  const passYds = Number(stats.pass_yds ?? stats.passing_yards ?? stats.passingYards ?? 0);
+  const rushYds = Number(stats.rush_yds ?? stats.rushing_yards ?? stats.rushingYards ?? 0);
+  const recYds = Number(stats.rec_yds ?? stats.receiving_yards ?? stats.receivingYards ?? 0);
+  const fgs = Number(stats.fgs ?? 0);
+  const stops = Number(stats.stops ?? stats.big_stops ?? 0);
+
+  const tdPts = tds * 6;
+  const passPts = Math.floor(passYds / 25);
+  const rushPts = Math.floor(rushYds / 10);
+  const recPts = Math.floor(recYds / 10);
+  const fgPts = fgs * 3;
+  const stopPts = stops * 2;
+
+  return tdPts + passPts + rushPts + recPts + fgPts + stopPts;
+}
+
+/**
+ * Kid-friendly whole number Finger-Math points calculation for NBA
+ */
+export function calculateNBAPlayerScore(stats: any): number {
+  if (!stats) return 0;
+  const pts = Number(stats.pts ?? stats.points ?? 0);
+  const threes = Number(stats.three_pm ?? stats.threes ?? 0);
+  const reb = Number(stats.reb ?? stats.rebounds ?? 0);
+  const ast = Number(stats.ast ?? stats.assists ?? 0);
+  const stops = Number(stats.big_stops ?? stats.stops ?? 0);
+
+  const pointsPts = Math.floor(pts / 3);
+  const threesPts = threes * 2;
+  const rebPts = reb * 1;
+  const astPts = ast * 1;
+  const stopPts = stops * 3;
+
+  return pointsPts + threesPts + rebPts + astPts + stopPts;
+}
+
+export interface SlotDefinition {
+  key: ActiveSlot;
+  label: string;
+  positionReq: string;
+  positionFullName: string;
+  allowedPositions: string[];
+}
+
+export const NFL_SLOT_DEFS: SlotDefinition[] = [
+  { key: 'star1', label: 'STAR 1', positionReq: 'QB', positionFullName: 'QUARTERBACK', allowedPositions: ['QB'] },
+  { key: 'star2', label: 'STAR 2', positionReq: 'RB', positionFullName: 'RUNNING BACK', allowedPositions: ['RB'] },
+  { key: 'star3', label: 'STAR 3', positionReq: 'WR/TE', positionFullName: 'RECEIVER (WR/TE)', allowedPositions: ['WR', 'TE'] },
+];
+
+export const NBA_SLOT_DEFS: SlotDefinition[] = [
+  { key: 'star1', label: 'STAR 1', positionReq: 'GUARD', positionFullName: 'GUARD (PG/SG)', allowedPositions: ['G', 'PG', 'SG'] },
+  { key: 'star2', label: 'STAR 2', positionReq: 'FORWARD', positionFullName: 'FORWARD (SF/PF)', allowedPositions: ['F', 'SF', 'PF'] },
+  { key: 'star3', label: 'STAR 3', positionReq: 'CENTER', positionFullName: 'BIG MAN / FLEX (C/PF)', allowedPositions: ['C', 'PF', 'F'] },
+];
+
+export function isPositionAllowedForSlot(slot: ActiveSlot, position: string = '', sport: SportId = 'nfl'): boolean {
+  if (sport !== 'nfl') return true;
+  const pos = (position || '').toUpperCase().trim();
+  if (slot === 'star1') return pos === 'QB';
+  if (slot === 'star2') return pos === 'RB';
+  if (slot === 'star3') return pos === 'WR' || pos === 'TE';
+  return true;
+}
+
+/**
+ * Robust competitor finder that guarantees player objects are NEVER dropped to null
+ * across background syncing, ID prefixes, or network reloads.
+ */
+export function resolveCompetitorById(
+  id: string | null | undefined,
+  roster: Competitor[],
+  fallbackPlayer: Competitor | null = null,
+  sport: SportId = 'nfl'
+): Competitor | null {
+  if (!id) return null;
+  const cleanId = String(id).trim();
+  if (!cleanId) return null;
+
+  // 1. Direct ID match in roster
+  let match = (roster || []).find((p) => p && (p.id === cleanId || p.athleteId === cleanId || (p as any).athlete_id === cleanId));
+  if (match) return match;
+
+  // 2. Normalized prefix match (without 'nfl_' / 'nba_' or with)
+  const rawId = cleanId.replace(/^(nfl_|nba_)/, '');
+  match = (roster || []).find((p) => p && (
+    p.id === rawId ||
+    p.id === `${sport}_${rawId}` ||
+    p.athleteId === rawId ||
+    (p as any).athlete_id === rawId
+  ));
+  if (match) return match;
+
+  // 3. Normalized name match
+  const normClean = cleanId.toLowerCase().replace(/[^a-z]/g, '');
+  match = (roster || []).find((p) => {
+    if (!p) return false;
+    const pName = (p.displayName || p.shortName || '').toLowerCase().replace(/[^a-z]/g, '');
+    return pName.length > 3 && (normClean.includes(pName) || pName.includes(normClean));
+  });
+  if (match) return match;
+
+  // 4. Fallback to previous player if IDs match
+  if (fallbackPlayer) {
+    if (fallbackPlayer.id === cleanId || fallbackPlayer.athleteId === cleanId || (fallbackPlayer as any).athlete_id === cleanId) {
+      return fallbackPlayer;
+    }
+    const prevRaw = (fallbackPlayer.id || '').replace(/^(nfl_|nba_)/, '');
+    if (prevRaw === rawId) return fallbackPlayer;
+  }
+
+  // 5. Fallback to default competitor roster pool
+  const defaultPool = DEFAULT_NFL_COMPETITORS;
+  match = defaultPool.find((p) => p && (
+    p.id === cleanId ||
+    p.athleteId === cleanId ||
+    p.id === `${sport}_${rawId}` ||
+    p.athleteId === rawId
+  ));
+  if (match) return match;
+
+  // 6. If fallback player exists, preserve it to prevent dropping to null
+  if (fallbackPlayer && cleanId) {
+    return fallbackPlayer;
+  }
+
+  return null;
+}
+
 export function getPlayerScoringDisplay(
   player: Competitor,
   match: Match | null | undefined,
@@ -1060,6 +1284,12 @@ export function getPlayerScoringDisplay(
     ? `${tds} TD · ${totalYds} YDS`
     : '0 TD · 0 YDS';
 
+  // Calculate live score directly from player.stats to guarantee mathematical accuracy
+  const computedScore = sport === 'nfl'
+    ? calculateNFLPlayerScore(player.stats)
+    : calculateNBAPlayerScore(player.stats);
+  const reliableActiveScore = computedScore > 0 ? computedScore : (player.score || 0);
+
   const historicalScore = player.last_game_score ?? player.lastGameScore ?? player.score ?? 0;
   const historicalStats = player.last_game_stats ?? player.lastGameStats ?? fullStatsLine;
 
@@ -1068,23 +1298,25 @@ export function getPlayerScoringDisplay(
     : 'SCHEDULED';
 
   if (gameState === 'pre') {
+    // If the game hasn't started yet, but the player has confirmed points/stats (e.g. from an earlier game or manual test), preserve them
+    const hasActualPoints = reliableActiveScore > 0;
     return {
-      gameState: 'pre',
-      activeScore: 0,
-      activeStatsLine: sport === 'nba' ? '0 3PM · 0 REB · 0 AST' : '0 TD · 0 YDS',
+      gameState: hasActualPoints ? 'post' : 'pre',
+      activeScore: reliableActiveScore,
+      activeStatsLine: hasActualPoints ? fullStatsLine : (sport === 'nba' ? '0 3PM · 0 REB · 0 AST' : '0 TD · 0 YDS'),
       historicalScore,
       historicalStats,
-      hasHistoricalData: historicalScore > 0,
-      contextBadgeText: contextText,
+      hasHistoricalData: historicalScore > 0 || hasActualPoints,
+      contextBadgeText: hasActualPoints ? 'FINAL' : contextText,
       isLive: false,
-      isFinal: false,
+      isFinal: hasActualPoints,
     };
   }
 
   if (gameState === 'in') {
     return {
       gameState: 'in',
-      activeScore: player.score || 0,
+      activeScore: reliableActiveScore,
       activeStatsLine: fullStatsLine,
       historicalScore,
       historicalStats,
@@ -1098,7 +1330,7 @@ export function getPlayerScoringDisplay(
   // 'post' (Final)
   return {
     gameState: 'post',
-    activeScore: player.score || 0,
+    activeScore: reliableActiveScore,
     activeStatsLine: fullStatsLine,
     historicalScore,
     historicalStats,
@@ -1107,5 +1339,87 @@ export function getPlayerScoringDisplay(
     isLive: false,
     isFinal: true,
   };
+}
+
+/**
+ * Finds the corresponding match for a player using robust team normalization
+ */
+export function findMatchForPlayer(player: Competitor, matches: Match[]): Match | undefined {
+  if (!player) return undefined;
+  const pTeam = normalizeTeamCode(player.teamCode || (player as any).team || '');
+  if (!pTeam) return undefined;
+
+  return matches.find((m) => {
+    const away = normalizeTeamCode(m.awayTeamCode || m.away_team || '');
+    const home = normalizeTeamCode(m.homeTeamCode || m.home_team || '');
+    return away === pTeam || home === pTeam;
+  });
+}
+
+/**
+ * Computes visual avatar styling with automatic jersey clash detection.
+ * When teams with conflicting primary colors meet (e.g. BUF @ NE), the away team
+ * gets their official white away jersey with team helmet and accent stripes!
+ */
+export function getPlayerVisualAvatar(player: Competitor, match?: Match | null) {
+  const normTeam = normalizeTeamCode(player.teamCode || (player as any).team || '');
+  let isAway = false;
+  let opponentTeam = '';
+
+  if (match) {
+    const away = normalizeTeamCode(match.awayTeamCode || match.away_team || '');
+    const home = normalizeTeamCode(match.homeTeamCode || match.home_team || '');
+    if (normTeam === away) {
+      isAway = true;
+      opponentTeam = home;
+    } else if (normTeam === home) {
+      isAway = false;
+      opponentTeam = away;
+    }
+  }
+
+  const colors = getTeamColors(normTeam, isAway, opponentTeam);
+
+  return {
+    helmetColor: colors.helmet,
+    jerseyColor: colors.jersey,
+    stripeColor: colors.stripe,
+    pantsColor: colors.pants,
+    numberColor: colors.numberColor,
+    skinTone: player.avatar?.skinTone || '#d98c55',
+    number: player.uniformNumber || player.avatar?.number || 10,
+  };
+}
+
+/**
+ * Resolves a player from the player pool or fallback competitors by ID
+ */
+export function resolvePlayerInPool(
+  playerId?: string | null,
+  pool: Competitor[] = [],
+  _sport: SportId = 'nfl'
+): Competitor | undefined {
+  if (!playerId) return undefined;
+  const cleanId = String(playerId).trim();
+  if (!cleanId) return undefined;
+
+  // 1. Direct ID match in provided pool
+  const found = pool.find((p) => p && (String(p.id) === cleanId || p.athleteId === cleanId));
+  if (found) return found;
+
+  // 2. Check DEFAULT_NFL_COMPETITORS
+  const defaultFound = DEFAULT_NFL_COMPETITORS.find(
+    (p) => p && (String(p.id) === cleanId || p.athleteId === cleanId || `nfl_${p.athleteId}` === cleanId)
+  );
+  if (defaultFound) return defaultFound;
+
+  // 3. Fallback normalized name match if cleanId is descriptive
+  const lower = cleanId.toLowerCase();
+  const byName = pool.find(
+    (p) => p && (p.displayName?.toLowerCase().includes(lower) || p.shortName?.toLowerCase().includes(lower))
+  );
+  if (byName) return byName;
+
+  return undefined;
 }
 

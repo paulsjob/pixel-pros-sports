@@ -6,7 +6,7 @@ import { Users, Sparkles } from 'lucide-react';
 import { splitPlayerFirstLastName, formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
 import { getDeviceId } from '../lib/deviceIdentity';
 import { isGhostUser } from '../lib/supabaseClient';
-import { getPlayerScoringDisplay } from '../utils/teamData';
+import { getPlayerScoringDisplay, resolvePlayerInPool, findMatchForPlayer, getPlayerVisualAvatar } from '../utils/teamData';
 
 function formatPickedByName(rawName: string): string {
   const trimmed = (rawName || '').trim();
@@ -60,14 +60,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const activeNormalizedName = (userName || '').trim().toUpperCase();
 
   const getPlayerLivePoints = (p: Competitor) => {
-    const match = matches.find(m =>
-      m.home_team === p.teamCode ||
-      m.away_team === p.teamCode ||
-      m.homeTeamCode === p.teamCode ||
-      m.awayTeamCode === p.teamCode
-    );
+    if (!p) return 0;
+    const match = findMatchForPlayer(p, matches);
     const info = getPlayerScoringDisplay(p, match, sport);
-    return info.gameState === 'pre' ? 0 : info.activeScore;
+    // Lock in scoring: if player has a recorded score or computed stats, never wipe it to 0
+    return info.activeScore > 0 ? info.activeScore : (p.score || 0);
   };
 
   // Top 20 NFL Competitors ordered by score DESC with duplicate ID filtering
@@ -123,9 +120,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     const entryName = (entry.user_name || '').trim().toUpperCase();
     const isUser = entryName === activeNormalizedName;
 
-    const star1 = safeNflPlayers.find((p) => p.id === entry.star_1_id);
-    const star2 = safeNflPlayers.find((p) => p.id === entry.star_2_id);
-    const star3 = safeNflPlayers.find((p) => p.id === entry.star_3_id);
+    const star1 = resolvePlayerInPool(entry.star_1_id, safeNflPlayers, sport);
+    const star2 = resolvePlayerInPool(entry.star_2_id, safeNflPlayers, sport);
+    const star3 = resolvePlayerInPool(entry.star_3_id, safeNflPlayers, sport);
     const starPlayers = [star1, star2, star3].filter(Boolean) as Competitor[];
 
     // Calculate dynamic total: (Star 1 live pts) + (Star 2 live pts) + (Star 3 live pts)
@@ -384,14 +381,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
                     {/* Sprite */}
                     <div className="shrink-0">
-                      <PixelPlayerSprite
-                        avatar={player.avatar}
-                        number={player.uniformNumber}
-                        size="sm"
-                        withShadow={false}
-                        sport={sport}
-                        isOnFire={sport === 'nba' && (player.score || 0) >= 40}
-                      />
+                      {(() => {
+                        const playerMatch = findMatchForPlayer(player, matches);
+                        const visualAvatar = getPlayerVisualAvatar(player, playerMatch);
+                        const livePts = getPlayerLivePoints(player);
+                        return (
+                          <PixelPlayerSprite
+                            avatar={visualAvatar}
+                            number={visualAvatar.number}
+                            size="sm"
+                            withShadow={false}
+                            sport={sport}
+                            isOnFire={sport === 'nba' && livePts >= 40}
+                          />
+                        );
+                      })()}
                     </div>
 
                     {/* Stacked Name + (TEAM · POS) + Picked By Arcade Tag */}
@@ -424,7 +428,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   {/* Column 2: Total Points Right-Aligned */}
                   <div className="shrink-0 whitespace-nowrap ml-2">
                     <div className="px-2.5 py-1 bg-[#12579b] text-[#fae5b8] font-pixel text-xs sm:text-sm font-bold border border-[#0a2d52] shadow-xs rounded-xs text-right whitespace-nowrap">
-                      {player.score ? `${player.score.toLocaleString()} PTS` : '0 PTS'}
+                      {(() => {
+                        const pts = getPlayerLivePoints(player);
+                        return pts ? `${pts.toLocaleString()} PTS` : '0 PTS';
+                      })()}
                     </div>
                   </div>
                 </div>

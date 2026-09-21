@@ -144,6 +144,23 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
   const stripe = avatar.stripeColor || '#ffffff';
   const skin = avatar.skinTone || '#d98c55';
 
+  const isJerseyLight =
+    jersey.toLowerCase() === '#ffffff' ||
+    jersey.toLowerCase() === '#f8fafc' ||
+    jersey.toLowerCase() === '#f1f5f9' ||
+    jersey.toLowerCase() === '#fae5b8';
+
+  // Watch white on white: if jersey is white/light, pants MUST NEVER be white!
+  let pants = avatar.pantsColor || jersey;
+  if (isJerseyLight && (!avatar.pantsColor || avatar.pantsColor.toLowerCase() === '#ffffff')) {
+    pants = helmet.toLowerCase() !== '#ffffff' ? helmet : (stripe.toLowerCase() !== '#ffffff' ? stripe : '#1a2238');
+  }
+
+  // Number color: if jersey is white/light, number MUST be high-contrast dark or team color, never white!
+  const numberColor =
+    avatar.numberColor ||
+    (isJerseyLight ? (helmet.toLowerCase() !== '#ffffff' ? helmet : '#111827') : '#ffffff');
+
   // -------------------------------------------------------------
   // NBA BASKETBALL SPRITE (Tank top, bare shoulders, basketball)
   // -------------------------------------------------------------
@@ -235,7 +252,7 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
             x="19"
             y="29"
             textAnchor="middle"
-            fill="#ffffff"
+            fill={numberColor}
             fontFamily="'Press Start 2P', monospace"
             fontSize="7"
             fontWeight="bold"
@@ -246,8 +263,8 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
           </text>
 
           {/* 3. BASKETBALL SHORTS */}
-          <rect x="10" y="34" width="8" height="8" fill={jersey} />
-          <rect x="20" y="34" width="8" height="8" fill={jersey} />
+          <rect x="10" y="34" width="8" height="8" fill={pants} />
+          <rect x="20" y="34" width="8" height="8" fill={pants} />
           {/* Shorts Trim */}
           <rect x="9.5" y="40.5" width="8.5" height="1.5" fill={stripe} />
           <rect x="20" y="40.5" width="8.5" height="1.5" fill={stripe} />
@@ -347,16 +364,16 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
         <rect x="26" y="31" width="2" height="1" fill="#ffffff" opacity="0.9" />
 
         {/* Jersey Number: 88, 85, etc. */}
-        <g fill="#ffffff">
+        <g fill={numberColor}>
           {displayNum === 88 ? (
             // Double 8 pixel art
             <>
               {/* Left 8 */}
-              <rect x="12" y="25" width="5" height="8" fill="#ffffff" />
+              <rect x="12" y="25" width="5" height="8" fill={numberColor} />
               <rect x="13" y="26" width="3" height="2" fill={jersey} />
               <rect x="13" y="29" width="3" height="3" fill={jersey} />
               {/* Right 8 */}
-              <rect x="19" y="25" width="5" height="8" fill="#ffffff" />
+              <rect x="19" y="25" width="5" height="8" fill={numberColor} />
               <rect x="20" y="26" width="3" height="2" fill={jersey} />
               <rect x="20" y="29" width="3" height="3" fill={jersey} />
             </>
@@ -366,7 +383,7 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
               x="18"
               y="32"
               textAnchor="middle"
-              fill="#ffffff"
+              fill={numberColor}
               fontFamily="'Press Start 2P', monospace"
               fontSize="7"
               fontWeight="bold"
@@ -377,8 +394,8 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
         </g>
 
         {/* 4. LEGS & PANTS */}
-        <rect x="11" y="36" width="6" height="9" fill={jersey} />
-        <rect x="19" y="36" width="6" height="9" fill={jersey} />
+        <rect x="11" y="36" width="6" height="9" fill={pants} />
+        <rect x="19" y="36" width="6" height="9" fill={pants} />
         {/* Pants side stripe */}
         <rect x="11" y="37" width="1.5" height="7" fill={stripe} />
         <rect x="23.5" y="37" width="1.5" height="7" fill={stripe} />

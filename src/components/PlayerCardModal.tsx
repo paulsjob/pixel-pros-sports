@@ -1,6 +1,7 @@
 import React from 'react';
 import { Competitor, SportId, Match } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
+import { PixelHelmet } from './PixelHelmet';
 import { X, Activity } from 'lucide-react';
 import { getPlayerScoringDisplay } from '../utils/teamData';
 
@@ -60,13 +61,17 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
     statsToUse.touchdowns ??
     0
   );
+  const fgs = Number(statsToUse.fgs ?? 0);
+  const stops = Number(statsToUse.stops ?? statsToUse.big_stops ?? 0);
 
   // Separate passing vs rushing vs receiving points
   const tdPoints = tds * 6;
   const passPoints = Math.floor(passYds / 25);
   const rushPoints = Math.floor(rushYds / 10);
   const recPoints = Math.floor(recYds / 10);
-  const calculatedNflTotal = tdPoints + passPoints + rushPoints + recPoints;
+  const fgPoints = fgs * 3;
+  const stopPoints = stops * 2;
+  const calculatedNflTotal = tdPoints + passPoints + rushPoints + recPoints + fgPoints + stopPoints;
 
   // NBA Stats
   const threePm = Number(statsToUse.three_pm ?? statsToUse.threes ?? 0);
@@ -105,35 +110,40 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
         
         {/* Header */}
         <div className="modal-header flex justify-between items-start w-full mb-2 sm:mb-3 pb-2 sm:pb-2.5 border-b-2 border-[#e2ba7d] shrink-0">
-          <div className="text-left flex-1 min-w-0 pr-2">
-            <h2 className="font-pixel text-lg sm:text-2xl text-[#5c3509] tracking-wider uppercase leading-tight truncate">
-              {selectedPlayer.displayName}
-            </h2>
-            <div className="text-[11px] sm:text-xs font-retro text-[#784610] mt-1 flex items-center gap-1.5 sm:gap-2 flex-wrap">
-              <span className="px-1.5 sm:px-2 py-0.5 bg-[#fae9c8] border border-[#d4a86a] text-[#12579b] font-pixel text-[9px] sm:text-[10px] font-bold rounded-2xs shrink-0">
-                {selectedPlayer.teamCode}
-              </span>
-              <span className="font-bold truncate max-w-[120px] sm:max-w-none">{selectedPlayer.teamName}</span>
-              <span>•</span>
-              <span className="font-pixel text-[10px] sm:text-[11px] text-[#451a03] shrink-0">#{selectedPlayer.uniformNumber}</span>
-              <span>•</span>
-              <span className="px-1.5 py-0.5 bg-[#ebd2a4] border border-[#c99a57] font-pixel text-[9px] text-[#5c3509] rounded-2xs font-bold shrink-0">
-                {selectedPlayer.position || 'STAR'}
-              </span>
-              <span>•</span>
-              {scoringInfo.gameState === 'pre' ? (
-                <span className="px-1.5 py-0.5 bg-[#475569] text-[#fae5b8] font-pixel text-[9px] rounded-2xs font-bold shrink-0">
-                  PRE-GAME • {scoringInfo.contextBadgeText}
+          <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-2">
+            {sport === 'nfl' && selectedPlayer.teamCode && (
+              <PixelHelmet teamCode={selectedPlayer.teamCode} size={36} className="shrink-0" />
+            )}
+            <div className="text-left flex-1 min-w-0">
+              <h2 className="font-pixel text-lg sm:text-2xl text-[#5c3509] tracking-wider uppercase leading-tight truncate">
+                {selectedPlayer.displayName}
+              </h2>
+              <div className="text-[11px] sm:text-xs font-retro text-[#784610] mt-1 flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span className="px-1.5 sm:px-2 py-0.5 bg-[#fae9c8] border border-[#d4a86a] text-[#12579b] font-pixel text-[9px] sm:text-[10px] font-bold rounded-2xs shrink-0">
+                  {selectedPlayer.teamCode}
                 </span>
-              ) : scoringInfo.gameState === 'in' ? (
-                <span className="px-1.5 py-0.5 bg-[#b91c1c] text-[#fef08a] font-pixel text-[9px] rounded-2xs font-bold shrink-0 animate-pulse">
-                  🔴 LIVE • {scoringInfo.contextBadgeText}
+                <span className="font-bold truncate max-w-[120px] sm:max-w-none">{selectedPlayer.teamName}</span>
+                <span>•</span>
+                <span className="font-pixel text-[10px] sm:text-[11px] text-[#451a03] shrink-0">#{selectedPlayer.uniformNumber}</span>
+                <span>•</span>
+                <span className="px-1.5 py-0.5 bg-[#ebd2a4] border border-[#c99a57] font-pixel text-[9px] text-[#5c3509] rounded-2xs font-bold shrink-0">
+                  {selectedPlayer.position || 'STAR'}
                 </span>
-              ) : (
-                <span className="px-1.5 py-0.5 bg-[#12579b] text-[#93c5fd] font-pixel text-[9px] rounded-2xs font-bold shrink-0">
-                  FINAL • {scoringInfo.contextBadgeText}
-                </span>
-              )}
+                <span>•</span>
+                {scoringInfo.gameState === 'pre' ? (
+                  <span className="px-1.5 py-0.5 bg-[#475569] text-[#fae5b8] font-pixel text-[9px] rounded-2xs font-bold shrink-0">
+                    PRE-GAME • {scoringInfo.contextBadgeText}
+                  </span>
+                ) : scoringInfo.gameState === 'in' ? (
+                  <span className="px-1.5 py-0.5 bg-[#b91c1c] text-[#fef08a] font-pixel text-[9px] rounded-2xs font-bold shrink-0 animate-pulse">
+                    🔴 LIVE • {scoringInfo.contextBadgeText}
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 bg-[#12579b] text-[#93c5fd] font-pixel text-[9px] rounded-2xs font-bold shrink-0">
+                    FINAL • {scoringInfo.contextBadgeText}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

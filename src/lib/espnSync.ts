@@ -116,14 +116,23 @@ export function setCurrentNFLWeek(weekNumber: number) {
 
 /**
  * Kid-friendly whole number Finger-Math points calculation for NFL
- * (Touchdowns = 6, Field Goals = 3, Big Stops = 2, Scrimmage Yards = 1 pt per 10 yards)
+ * (Touchdowns = 6, Passing Yards = 1 pt per 25 yards, Scrimmage Yards = 1 pt per 10 yards, Field Goals = 3, Big Stops = 2)
  */
-function calculateNFLPoints(tds: number, fgs: number, stops: number, yards: number): number {
+function calculateNFLPoints(
+  tds: number = 0,
+  fgs: number = 0,
+  stops: number = 0,
+  pass_yds: number = 0,
+  rush_yds: number = 0,
+  rec_yds: number = 0
+): number {
   const tdPts = (tds || 0) * 6;
   const fgPts = (fgs || 0) * 3;
   const defPts = (stops || 0) * 2;
-  const ydPts = Math.floor((yards || 0) / 10);
-  return tdPts + fgPts + defPts + ydPts;
+  const passPts = Math.floor((pass_yds || 0) / 25);
+  const rushPts = Math.floor((rush_yds || 0) / 10);
+  const recPts = Math.floor((rec_yds || 0) / 10);
+  return tdPts + fgPts + defPts + passPts + rushPts + recPts;
 }
 
 /**
@@ -530,7 +539,14 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     for (const ath of liveAthletesMap.values()) {
       if (sport === 'nfl') {
         ath.total_yards = (ath.pass_yds || 0) + (ath.rush_yds || 0) + (ath.rec_yds || 0);
-        ath.score = calculateNFLPoints(ath.tds || 0, ath.fgs || 0, ath.stops || 0, ath.total_yards);
+        ath.score = calculateNFLPoints(
+          ath.tds || 0,
+          ath.fgs || 0,
+          ath.stops || 0,
+          ath.pass_yds || 0,
+          ath.rush_yds || 0,
+          ath.rec_yds || 0
+        );
       } else {
         ath.score = calculateNBAPoints(ath.pts || 0, ath.threes || 0, ath.reb || 0, ath.ast || 0, ath.stops || 0);
       }
