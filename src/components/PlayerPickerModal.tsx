@@ -72,7 +72,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   const [selectedGameFilter, setSelectedGameFilter] = useState<string>('ALL');
   const [positionFilter, setPositionFilter] = useState<'ELIGIBLE' | 'ALL'>('ELIGIBLE');
   const [hideEndedGames, setHideEndedGames] = useState(false);
-  const [showAllGamesGrid, setShowAllGamesGrid] = useState(false);
+  const [matchPage, setMatchPage] = useState(0);
   const currentNFLWeek = getCurrentNFLWeek();
 
   const slotDefs = sport === 'nba' ? NBA_SLOT_DEFS : NFL_SLOT_DEFS;
@@ -80,7 +80,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
   useEffect(() => {
     setPositionFilter('ELIGIBLE');
-    setShowAllGamesGrid(false);
+    setMatchPage(0);
   }, [activeSlot, isOpen]);
 
   const activeMatches = useMemo(() => {
@@ -162,6 +162,15 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
     return activeMatches.filter((m) => !checkMatchEnded(m));
   }, [activeMatches, hideEndedGames]);
 
+  const MATCHES_PER_PAGE = 6;
+  const totalMatchPages = Math.max(1, Math.ceil(displayMatches.length / MATCHES_PER_PAGE));
+  const currentMatchesSubset = useMemo(() => {
+    return displayMatches.slice(
+      matchPage * MATCHES_PER_PAGE,
+      (matchPage + 1) * MATCHES_PER_PAGE
+    );
+  }, [displayMatches, matchPage]);
+
   const matchGroups = useMemo(() => {
     const live: Array<{ match: Match; pairKey: string; label: string }> = [];
     const upcoming: Array<{ match: Match; pairKey: string; label: string }> = [];
@@ -208,19 +217,6 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       }
     }
   }, [hideEndedGames, selectedGameFilter, activeMatchObj]);
-
-  const carouselRef = useRef<HTMLDivElement>(null);
-
-  const scrollCarousel = (direction: 'left' | 'right') => {
-    if (carouselRef.current) {
-      // Jump by nearly the full visible container width (85%) so 1 click advances to the next entire set of games!
-      const jumpDistance = Math.max(carouselRef.current.clientWidth * 0.85, 320);
-      carouselRef.current.scrollBy({
-        left: direction === 'right' ? jumpDistance : -jumpDistance,
-        behavior: 'smooth',
-      });
-    }
-  };
 
   const currentMatchIndex = useMemo(() => {
     if (!selectedGameFilter || selectedGameFilter === 'ALL') return -1;
@@ -427,20 +423,18 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="relative w-[96vw] max-w-5xl bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_8px_0_0_#0a0f1d] p-3 sm:p-5 rounded-xs my-auto max-h-[92vh] flex flex-col box-border gap-2.5 sm:gap-3">
-        <div className="flex items-center justify-between pb-2 sm:pb-3 border-b-2 border-[#d4a86a] shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* Header: Star icon + PICK {position} + CLOSE in ONE clean horizontal row */}
+        <div className="flex items-center justify-between pb-2 border-b-2 border-[#d4a86a] shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="text-base sm:text-xl select-none">{sport === 'nba' ? '🏀' : '⭐'}</span>
-            <h2 className="font-pixel text-sm sm:text-base text-[#5c3509] tracking-wider uppercase font-bold">
-              PICK {currentSlotDef.label}: {currentSlotDef.positionReq}
+            <h2 className="font-pixel text-xs sm:text-sm md:text-base text-[#5c3509] tracking-wider uppercase font-bold truncate">
+              PICK {currentSlotDef.positionReq}
             </h2>
-            <span className="hidden sm:inline-block px-2 py-0.5 bg-[#ecd7ab] border border-[#c99a57] rounded-2xs font-pixel text-[9px] text-[#784610] font-bold">
-              SLOT REQ: {currentSlotDef.positionFullName}
-            </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="touch-manipulation px-2.5 py-1 bg-[#b91c1c] hover:bg-[#dc2626] text-[#fae5b8] border-2 border-[#1a2238] flex items-center justify-center gap-1 cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all font-pixel text-xs rounded-2xs"
+            className="touch-manipulation px-2.5 py-1 bg-[#b91c1c] hover:bg-[#dc2626] text-[#fae5b8] border-2 border-[#1a2238] flex items-center justify-center gap-1 cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all font-pixel text-xs rounded-2xs shrink-0 font-bold"
             title="Close Picker"
           >
             <span>✕</span>
@@ -448,226 +442,97 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           </button>
         </div>
 
-        {/* Universal Game Matchup Bar (Mobile + Desktop Friendly) */}
+        {/* 2-Row, 3-Pill Matchup Grid with Grayed Out Navigation Arrows */}
         <div className="flex flex-col gap-1.5 p-2 bg-[#ecd7ab]/90 rounded-xs border-2 border-[#c99a57] shadow-inner shrink-0">
-          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-            {/* Quick Game Selector Dropdown (Instant 1-tap jump to any game on mobile or desktop) */}
-            <div className="flex-1 min-w-[200px] relative">
-              <select
-                value={selectedGameFilter}
-                onChange={(e) => setSelectedGameFilter(e.target.value)}
-                className="w-full py-1.5 pl-2 pr-7 bg-[#fae5b8] border-2 border-[#1a2238] rounded-xs font-pixel text-[11px] sm:text-xs text-[#5c3509] font-bold focus:outline-hidden focus:border-[#12579b] cursor-pointer shadow-xs"
-              >
-                <option value="ALL">
-                  🏈 ALL {displayMatches.length} MATCHUPS {hideEndedGames ? '(ENDED HIDDEN)' : '(ENTIRE SLATE)'}
-                </option>
-                {matchGroups.live.length > 0 && (
-                  <optgroup label="🔴 LIVE IN PROGRESS">
-                    {matchGroups.live.map((g) => (
-                      <option key={g.pairKey} value={g.pairKey}>{g.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {matchGroups.upcoming.length > 0 && (
-                  <optgroup label="⏰ UPCOMING / SCHEDULED">
-                    {matchGroups.upcoming.map((g) => (
-                      <option key={g.pairKey} value={g.pairKey}>{g.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {matchGroups.final.length > 0 && (
-                  <optgroup label="🔒 COMPLETED / FINAL">
-                    {matchGroups.final.map((g) => (
-                      <option key={g.pairKey} value={g.pairKey}>{g.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </div>
-
-            {/* Toggle Multi-column Game Grid */}
+          <div className="flex items-center gap-1.5 w-full">
+            {/* Left Arrow: grayed out when no previous pages */}
             <button
               type="button"
-              onClick={() => setShowAllGamesGrid(!showAllGamesGrid)}
-              className={`touch-manipulation px-2.5 py-1.5 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all active:translate-y-0.5 font-bold ${
-                showAllGamesGrid
-                  ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-xs'
-                  : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#1a2238] shadow-xs'
+              disabled={matchPage === 0}
+              onClick={() => setMatchPage((p) => Math.max(0, p - 1))}
+              className={`touch-manipulation shrink-0 w-8 sm:w-9 h-14 sm:h-16 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+                matchPage > 0
+                  ? 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] cursor-pointer shadow-xs active:scale-95 font-bold'
+                  : 'bg-[#d8c29a] text-gray-500 border-2 border-gray-400/50 opacity-25 cursor-not-allowed pointer-events-none'
               }`}
+              title="Previous Matchups"
+              aria-label="Previous Matchups"
             >
-              📋 {showAllGamesGrid ? 'HIDE GRID' : `ALL ${displayMatches.length} GAMES`}
+              ◀
             </button>
 
-            {selectedGameFilter !== 'ALL' && (
-              <button
-                type="button"
-                onClick={() => setSelectedGameFilter('ALL')}
-                className="touch-manipulation px-2 py-1.5 bg-[#b91c1c] hover:bg-[#dc2626] text-white border-2 border-[#1a2238] rounded-xs font-pixel text-[10px] font-bold shrink-0 cursor-pointer shadow-xs active:translate-y-0.5"
-                title="Reset to All Matchups"
-              >
-                ✕ CLEAR
-              </button>
-            )}
-          </div>
-
-          {/* Expanded 1-Tap Matchup Grid (Opens smoothly on mobile & desktop) */}
-          {showAllGamesGrid && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-1.5 pt-2 border-t border-[#c99a57] max-h-44 overflow-y-auto pr-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedGameFilter('ALL');
-                  setShowAllGamesGrid(false);
-                }}
-                className={`touch-manipulation px-2 py-1.5 rounded-xs font-pixel text-[10px] font-bold border-2 text-center truncate cursor-pointer transition-all ${
-                  selectedGameFilter === 'ALL'
-                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-xs'
-                    : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                }`}
-              >
-                ★ ALL STARS
-              </button>
-              {displayMatches.map((m) => {
+            {/* 2-Row, 3-Column Matchup Pills */}
+            <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-1.5 min-w-0">
+              {currentMatchesSubset.map((m) => {
                 const away = normalizeCode(m.awayTeamCode || m.away_team || '');
                 const home = normalizeCode(m.homeTeamCode || m.home_team || '');
                 const pairKey = `${away}@${home}`;
-                const isSel = selectedGameFilter === pairKey;
+                const isSelected = selectedGameFilter === pairKey;
                 const isLive = m.status === 'live';
                 const isFinal = checkMatchEnded(m);
                 return (
                   <button
                     key={pairKey || m.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedGameFilter(pairKey);
-                      setShowAllGamesGrid(false);
-                    }}
-                    className={`touch-manipulation px-1.5 py-1.5 rounded-xs font-pixel text-[10px] font-bold border-2 text-center truncate cursor-pointer transition-all ${
-                      isSel
-                        ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8]'
+                    onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
+                    className={`touch-manipulation px-1 py-1.5 rounded-xs font-pixel text-[10px] sm:text-[11px] border-2 text-center truncate cursor-pointer transition-all flex items-center justify-center gap-1 font-bold ${
+                      isSelected
+                        ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
                         : isLive
                         ? 'bg-[#ffe8e8] text-[#900] border-[#c0392b]'
                         : isFinal
                         ? 'bg-[#d8c29a] text-[#5c3509]/80 border-[#b38947]'
                         : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
                     }`}
+                    title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
                   >
-                    {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse mr-1" />}
-                    {away}@{home}
+                    {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />}
+                    <span className="truncate">{away}@{home}</span>
                   </button>
                 );
               })}
             </div>
-          )}
 
-          {/* Universal Matchup Carousel Track (Mobile & Desktop Friendly) */}
-          <div className="flex items-center gap-1.5 pt-1.5 border-t border-[#c99a57]/60">
+            {/* Right Arrow: grayed out when on last page */}
             <button
               type="button"
-              onClick={() => setSelectedGameFilter('ALL')}
-              className={`touch-manipulation px-2.5 py-1 sm:px-3 sm:py-1.5 font-pixel text-[10px] sm:text-xs border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all font-bold shadow-xs active:translate-y-0.5 ${
-                selectedGameFilter === 'ALL'
-                  ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52]'
-                  : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
+              disabled={matchPage >= totalMatchPages - 1}
+              onClick={() => setMatchPage((p) => Math.min(totalMatchPages - 1, p + 1))}
+              className={`touch-manipulation shrink-0 w-8 sm:w-9 h-14 sm:h-16 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+                matchPage < totalMatchPages - 1
+                  ? 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] cursor-pointer shadow-xs active:scale-95 font-bold'
+                  : 'bg-[#d8c29a] text-gray-500 border-2 border-gray-400/50 opacity-25 cursor-not-allowed pointer-events-none'
               }`}
-            >
-              ★ ALL
-            </button>
-
-            <button
-              type="button"
-              onClick={() => scrollCarousel('left')}
-              className="touch-manipulation w-8 h-8 sm:w-9 sm:h-9 bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] rounded-xs font-pixel text-xs sm:text-sm shrink-0 cursor-pointer flex items-center justify-center font-bold shadow-xs active:translate-y-0.5"
-              title="Previous set of games"
-              aria-label="Previous set of games"
-            >
-              ◀
-            </button>
-
-            <div
-              ref={carouselRef}
-              className="flex-1 flex items-center gap-1 sm:gap-1.5 overflow-x-auto overflow-y-hidden no-scrollbar touch-pan-x scroll-smooth min-w-0 py-0.5"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {displayMatches.map((match) => {
-                const away = normalizeCode(match.awayTeamCode || match.away_team || '');
-                const home = normalizeCode(match.homeTeamCode || match.home_team || '');
-                const pairKey = `${away}@${home}`;
-                const isSelected = selectedGameFilter === pairKey || selectedGameFilter === match.id;
-                const isLive = match.status === 'live';
-                const isFinal = checkMatchEnded(match);
-
-                return (
-                  <button
-                    key={pairKey || match.id}
-                    type="button"
-                    onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
-                    className={`touch-manipulation px-2.5 py-1 sm:px-3 sm:py-1.5 font-pixel text-[10px] sm:text-[11px] border-2 rounded-xs shrink-0 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1 font-bold ${
-                      isSelected
-                        ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold ring-2 ring-[#38bdf8] shadow-xs'
-                        : isLive
-                        ? 'bg-[#ffe8e8] text-[#900] border-[#c0392b] font-bold'
-                        : isFinal
-                        ? 'bg-[#d8c29a] text-[#5c3509]/80 border-[#b38947]'
-                        : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                    }`}
-                  >
-                    {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />}
-                    <span>{away}@{home}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => scrollCarousel('right')}
-              className="touch-manipulation w-8 h-8 sm:w-9 sm:h-9 bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] rounded-xs font-pixel text-xs sm:text-sm shrink-0 cursor-pointer flex items-center justify-center font-bold shadow-xs active:translate-y-0.5"
-              title="Next set of games"
-              aria-label="Next set of games"
+              title="Next Matchups"
+              aria-label="Next Matchups"
             >
               ▶
             </button>
           </div>
 
-          {/* Position Constraint & Ended-Game Filter Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-[#c99a57]/50">
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className="font-pixel text-[9px] text-[#784610] font-bold uppercase mr-1">
-                POSITION:
-              </span>
+          {/* Sub-bar: Active Filter Indicator & Hide Ended Games */}
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#c99a57]/50 text-[10px] font-pixel">
+            {selectedGameFilter !== 'ALL' ? (
               <button
                 type="button"
-                onClick={() => setPositionFilter('ELIGIBLE')}
-                className={`touch-manipulation px-2 py-1 font-pixel text-[9px] sm:text-[10px] border-2 rounded-xs font-bold cursor-pointer transition-all active:translate-y-0.5 ${
-                  positionFilter === 'ELIGIBLE'
-                    ? 'bg-[#15803d] text-white border-[#052e16] shadow-xs'
-                    : 'bg-[#fae5b8] text-[#5c3509] border-[#c99a57]'
-                }`}
+                onClick={() => setSelectedGameFilter('ALL')}
+                className="touch-manipulation px-2 py-0.5 bg-[#12579b] text-[#fae5b8] border border-[#0a2d52] rounded-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-[#0c3764]"
               >
-                ★ ONLY {currentSlotDef.positionReq}
+                <span>FILTER: {selectedGameFilter}</span>
+                <span className="text-[#fca5a5]">✕ CLEAR</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setPositionFilter('ALL')}
-                className={`touch-manipulation px-2 py-1 font-pixel text-[9px] sm:text-[10px] border-2 rounded-xs font-bold cursor-pointer transition-all active:translate-y-0.5 ${
-                  positionFilter === 'ALL'
-                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-xs'
-                    : 'bg-[#fae5b8] text-[#5c3509] border-[#c99a57]'
-                }`}
-              >
-                ALL POSITIONS
-              </button>
-            </div>
+            ) : (
+              <span className="text-[#784610] text-[9px] font-bold">ALL GAMES</span>
+            )}
 
-            <label className="flex items-center gap-1.5 cursor-pointer font-pixel text-[9px] sm:text-[10px] text-[#5c3509] font-bold select-none bg-[#fae5b8] px-2 py-1 rounded-xs border border-[#c99a57]">
+            <label className="flex items-center gap-1.5 cursor-pointer font-pixel text-[9px] text-[#5c3509] font-bold select-none bg-[#fae5b8] px-2 py-0.5 rounded-xs border border-[#c99a57]">
               <input
                 type="checkbox"
                 checked={hideEndedGames}
                 onChange={(e) => setHideEndedGames(e.target.checked)}
                 className="cursor-pointer accent-[#12579b]"
               />
-              <span>🔒 HIDE ENDED GAMES</span>
+              <span>🔒 HIDE ENDED</span>
             </label>
           </div>
         </div>

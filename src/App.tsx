@@ -30,6 +30,7 @@ import { PlayerCardModal } from './components/PlayerCardModal';
 import { PlayerPickerModal } from './components/PlayerPickerModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PixelHelmet } from './components/PixelHelmet';
+import { PixelShieldIcon } from './components/PixelBadges';
 import { SportSwitcher } from './components/SportSwitcher';
 import { CommissionerModal } from './components/CommissionerModal';
 import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
@@ -938,14 +939,14 @@ export default function App() {
           <div className="sm:hidden w-full flex flex-col box-border">
             {/* Row 1: Left: Logo (PROS) | Center: Sport switcher [ 🏈 | 🏀 ] | Right: Pinned Room badge + Rules */}
             <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-[#1a264a]/80 bg-[#080d1a] gap-1.5">
-              {/* Left: Logo text shortened to "PROS" or helmet icon */}
+              {/* Left: Pixel Pros logo icon and PROS title */}
               <button
                 type="button"
                 onClick={() => setCurrentTab('squad')}
                 className="touch-manipulation flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-left shrink-0"
               >
                 {currentSport === 'nfl' ? (
-                  <PixelHelmet teamCode="KC" size={20} className="shrink-0" />
+                  <PixelShieldIcon size={20} color="#155e9e" className="shrink-0" />
                 ) : (
                   <span className="text-base select-none">🏀</span>
                 )}
@@ -957,7 +958,7 @@ export default function App() {
                 <SportSwitcher currentSport={currentSport} onSportChange={handleSportChange} />
               </div>
 
-              {/* Right: Pinned Room badge with edit pencil: [ 🛋️ ROOM_CODE ✏️ ] + [ ? ] rules button. NEVER cut off! */}
+              {/* Right: Pinned Room badge with edit pencil, compact Admin button & rules button. NEVER cut off! */}
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
@@ -966,11 +967,11 @@ export default function App() {
                     setTempRoomCode(roomCode);
                     setIsRoomModalOpen(true);
                   }}
-                  className="touch-manipulation flex items-center gap-1 px-1.5 py-0.5 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/70 rounded-xs font-pixel text-[10px] text-[#fae5b8] shadow-xs active:scale-95 transition-all shrink-0"
+                  className="touch-manipulation flex items-center gap-1 px-1.5 py-0.5 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/70 rounded-xs font-pixel text-[10px] text-[#fae5b8] shadow-xs active:scale-95 transition-all shrink-0 max-w-[105px]"
                   title="View and Switch Database Rooms"
                 >
                   <span className="text-xs select-none">{currentSport === 'nba' ? '🏀' : '🛋️'}</span>
-                  <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
+                  <span className="text-[#f59e0b] font-bold tracking-wider truncate">{roomCode}</span>
                   <span className="text-[9px] text-[#93c5fd]">✏️</span>
                 </button>
 
@@ -978,11 +979,11 @@ export default function App() {
                   type="button"
                   id="mobile-admin-console-btn"
                   onClick={() => setIsCommissionerOpen(true)}
-                  className="touch-manipulation px-1.5 h-6.5 flex items-center justify-center gap-1 bg-[#1a2238] hover:bg-[#283554] text-[#38bdf8] border border-[#3b82f6]/60 rounded-xs cursor-pointer shrink-0 active:scale-95"
+                  className="touch-manipulation w-6.5 h-6.5 flex items-center justify-center bg-[#1a2238] hover:bg-[#283554] text-[#38bdf8] border border-[#3b82f6]/60 rounded-xs cursor-pointer shrink-0 active:scale-95"
                   title="Master Admin Console (Rooms, Squads & ESPN Data Sync)"
+                  aria-label="Master Admin Console"
                 >
-                  <ShieldAlert size={12} />
-                  <span className="font-pixel text-[9px] font-bold">ADMIN</span>
+                  <ShieldAlert size={13} />
                 </button>
 
                 <button
@@ -990,6 +991,7 @@ export default function App() {
                   onClick={() => setIsRulesModalOpen(true)}
                   className="touch-manipulation w-6.5 h-6.5 flex items-center justify-center bg-[#1a2238] text-[#fde047] border border-[#273552] rounded-xs cursor-pointer shrink-0 active:scale-95"
                   title="How Scoring Works"
+                  aria-label="How Scoring Works"
                 >
                   <HelpCircle size={13} />
                 </button>
@@ -1034,7 +1036,7 @@ export default function App() {
                 className="touch-manipulation flex items-center gap-1.5 sm:gap-2 cursor-pointer group bg-transparent border-0 p-0 text-left shrink-0"
               >
                 {currentSport === 'nfl' ? (
-                  <PixelHelmet teamCode="KC" size={22} className="shrink-0" />
+                  <PixelShieldIcon size={22} color="#155e9e" className="shrink-0" />
                 ) : (
                   <span className="text-base select-none">🏀</span>
                 )}
@@ -1188,8 +1190,6 @@ export default function App() {
         <footer className="flex-shrink-0 bg-[#080d1a] border-t-2 border-[#1a264a] py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-center text-[10px] sm:text-xs font-retro text-[#fae5b8]/75 z-20">
           <div className="max-w-5xl mx-auto px-4 w-full flex items-center justify-center gap-2">
             <span className="font-bold text-[#fae5b8]">PIXEL PROS {currentSport.toUpperCase()}</span>
-            <span className="text-[#38bdf8]/60">·</span>
-            <span>WHOLE NUMBERS ONLY</span>
             <span className="text-[#38bdf8]/60">·</span>
             <button
               onClick={() => setIsRulesModalOpen(true)}

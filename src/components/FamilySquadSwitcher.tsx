@@ -190,29 +190,29 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
               <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
               <span className="text-[9px] text-[#93c5fd]">✏️</span>
             </button>
-            <span className="font-pixel text-[10px] text-[#38bdf8] font-bold tracking-wide">
-              SQUADS ({squadList.length})
-            </span>
           </div>
 
           <button
             type="button"
             onClick={handleStartAdd}
-            className="touch-manipulation flex items-center gap-1 px-3 py-1 font-pixel text-[10px] rounded-xs border-2 border-[#16a34a] bg-[#14532d] active:bg-[#16a34a] text-[#86efac] font-bold whitespace-nowrap active:scale-95 shadow-xs"
+            className="touch-manipulation flex items-center gap-1 px-2.5 py-1 font-pixel text-[10px] rounded-xs border-2 border-[#16a34a] bg-[#14532d] active:bg-[#16a34a] text-[#86efac] font-bold whitespace-nowrap active:scale-95 shadow-xs"
             title="Add family squad to this room"
           >
             <Plus size={12} strokeWidth={3} />
-            <span>+SQUAD</span>
+            <span>SQUAD</span>
           </button>
         </div>
 
-        {/* Sub-row 2: Full-width carousel with prominent, easy-to-tap left/right arrow buttons */}
-        <div className="flex items-center gap-1 w-full">
+        {/* Sub-row 2: Full-width carousel with prominent left/right arrow buttons indicating scroll availability */}
+        <div className="flex items-center gap-1.5 w-full">
           <button
             type="button"
+            disabled={!mobileCanLeft}
             onClick={() => scrollToSquad('left', mobileCarouselRef.current)}
-            className={`touch-manipulation shrink-0 w-9 h-9 flex items-center justify-center bg-[#15233d] active:bg-[#20365c] text-[#38bdf8] border-2 border-[#38bdf8]/70 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs select-none ${
-              !mobileCanLeft ? 'opacity-40' : 'opacity-100'
+            className={`touch-manipulation shrink-0 w-9 h-9 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+              mobileCanLeft
+                ? 'bg-[#15233d] active:bg-[#20365c] text-[#38bdf8] border-2 border-[#38bdf8] cursor-pointer shadow-xs active:scale-95'
+                : 'bg-[#0b1021] text-gray-600 border-2 border-gray-700/50 opacity-30 cursor-not-allowed pointer-events-none'
             }`}
             title="Previous squads"
             aria-label="Previous squads"
@@ -222,7 +222,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
 
           <div
             ref={mobileCarouselRef}
-            className="snap-x snap-mandatory flex-1 min-w-0 flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x px-1 py-1 scroll-smooth"
+            className="snap-x snap-mandatory flex-1 min-w-0 flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x px-1 py-1 scroll-smooth scroll-pl-1 scroll-pr-1"
           >
             {squadList.map((squad) => {
               const isActive = squad.userName === normalizedActive;
@@ -239,7 +239,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
                     onSelectSquad(squad.userName);
                     e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
                   }}
-                  className={`snap-start touch-manipulation shrink-0 flex items-center gap-1.5 px-3 py-1.5 font-pixel text-xs rounded-xs border-2 transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 ${
+                  className={`snap-center touch-manipulation shrink-0 flex items-center gap-1.5 px-3 py-1.5 font-pixel text-xs rounded-xs border-2 transition-all cursor-pointer select-none whitespace-nowrap active:translate-y-0.5 ${
                     isActive
                       ? 'bg-[#155e9e] text-[#fae5b8] border-[#38bdf8] shadow-[0_2px_0_0_#051a30] font-bold ring-1 ring-[#38bdf8]/50'
                       : 'bg-[#1a2238] text-[#94a3b8] active:text-[#fae5b8] border-[#273552] active:border-[#38bdf8]/60 active:bg-[#232e4b]'
@@ -284,9 +284,12 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
 
           <button
             type="button"
+            disabled={!mobileCanRight}
             onClick={() => scrollToSquad('right', mobileCarouselRef.current)}
-            className={`touch-manipulation shrink-0 w-9 h-9 flex items-center justify-center bg-[#15233d] active:bg-[#20365c] text-[#38bdf8] border-2 border-[#38bdf8]/70 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs select-none ${
-              !mobileCanRight ? 'opacity-40' : 'opacity-100'
+            className={`touch-manipulation shrink-0 w-9 h-9 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+              mobileCanRight
+                ? 'bg-[#15233d] active:bg-[#20365c] text-[#38bdf8] border-2 border-[#38bdf8] cursor-pointer shadow-xs active:scale-95'
+                : 'bg-[#0b1021] text-gray-600 border-2 border-gray-700/50 opacity-30 cursor-not-allowed pointer-events-none'
             }`}
             title="Next squads"
             aria-label="Next squads"
@@ -325,9 +328,12 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
             <div className="relative flex-1 min-w-0 flex items-center gap-1.5">
               <button
                 type="button"
+                disabled={!desktopCanLeft}
                 onClick={() => scrollToSquad('left', desktopCarouselRef.current)}
-                className={`touch-manipulation shrink-0 w-7 h-8 flex items-center justify-center bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8]/60 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs z-10 select-none transition-all ${
-                  !desktopCanLeft ? 'opacity-40' : 'opacity-100'
+                className={`touch-manipulation shrink-0 w-7 h-8 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+                  desktopCanLeft
+                    ? 'bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8] cursor-pointer shadow-xs active:scale-95'
+                    : 'bg-[#0b1021] text-gray-600 border border-gray-700/50 opacity-30 cursor-not-allowed pointer-events-none'
                 }`}
                 title="Scroll squads left"
                 aria-label="Scroll squads left"
@@ -414,9 +420,12 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
 
               <button
                 type="button"
+                disabled={!desktopCanRight}
                 onClick={() => scrollToSquad('right', desktopCarouselRef.current)}
-                className={`touch-manipulation shrink-0 w-7 h-8 flex items-center justify-center bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8]/60 rounded-xs font-pixel active:scale-95 cursor-pointer shadow-xs z-10 select-none transition-all ${
-                  !desktopCanRight ? 'opacity-40' : 'opacity-100'
+                className={`touch-manipulation shrink-0 w-7 h-8 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+                  desktopCanRight
+                    ? 'bg-[#15233d] hover:bg-[#20365c] text-[#38bdf8] border border-[#38bdf8] cursor-pointer shadow-xs active:scale-95'
+                    : 'bg-[#0b1021] text-gray-600 border border-gray-700/50 opacity-30 cursor-not-allowed pointer-events-none'
                 }`}
                 title="Scroll squads right"
                 aria-label="Scroll squads right"
@@ -435,7 +444,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
                 title="Add family squad to this room"
               >
                 <Plus size={12} strokeWidth={3} />
-                <span>+SQUAD</span>
+                <span>SQUAD</span>
               </button>
 
               <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#22c55e] whitespace-nowrap select-none">

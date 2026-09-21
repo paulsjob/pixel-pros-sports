@@ -200,7 +200,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div>
             <h2 className="font-pixel text-xs sm:text-sm text-[#5c3509] tracking-wider uppercase">
               {activeTier === 'family'
-                ? `ROOM "${roomCode.toUpperCase()}" 3-STAR STANDINGS`
+                ? `ROOM "${roomCode.toUpperCase()}"`
                 : sport === 'nba'
                 ? 'TOP NBA ATHLETES'
                 : 'TOP NFL ATHLETES'}
@@ -208,14 +208,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
 
           <span className="font-pixel text-[10px] sm:text-[11px] text-[#12579b] bg-[#fae9c8] px-2 py-0.5 border border-[#d4a86a] rounded-xs shrink-0 whitespace-nowrap">
-            {activeTier === 'family' ? `${familyListWithDynamicTotals.length} TEAMS` : `${top20Players.length} STARS`}
+            {activeTier === 'family'
+              ? `${familyListWithDynamicTotals.length === 1 ? '1 SQUAD' : `${familyListWithDynamicTotals.length} SQUADS`}`
+              : `${top20Players.length} STARS`}
           </span>
         </div>
 
         {/* 2-Column Table Column Headers */}
         <div className="flex items-center justify-between px-2.5 sm:px-3 py-1.5 mb-2 bg-[#d4a86a]/30 border border-[#d4a86a] rounded-xs font-pixel text-[10px] text-[#784610]">
-          <span className="tracking-wider">RANK &amp; {activeTier === 'family' ? 'HOUSEHOLD MEMBER' : 'PLAYER'}</span>
-          <span className="tracking-wider text-right">TOTAL POINTS</span>
+          <span className="tracking-wider">{activeTier === 'family' ? 'RANK' : 'RANK & PLAYER'}</span>
+          <span className="tracking-wider text-right">PTS</span>
         </div>
 
         {/* List Content */}

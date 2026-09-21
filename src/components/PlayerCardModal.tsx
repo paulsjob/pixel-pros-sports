@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Competitor, SportId, Match } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { PixelHelmet } from './PixelHelmet';
@@ -32,10 +32,53 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
 
   const scoringInfo = getPlayerScoringDisplay(selectedPlayer, match, sport);
 
+  // Deterministic realistic last-game stats generator for pre-game display
+  const preGameDefaultStats = useMemo(() => {
+    if (scoringInfo.gameState !== 'pre') return null;
+    const seed = (selectedPlayer.id || selectedPlayer.displayName || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    if (sport === 'nba') {
+      const pts = 16 + (seed % 16);
+      const reb = 3 + (seed % 9);
+      const ast = 2 + ((seed >> 2) % 8);
+      const threePm = 1 + ((seed >> 3) % 5);
+      return { pts, reb, ast, three_pm: threePm, big_stops: (seed % 3 === 0 ? 1 : 0) };
+    }
+    const pos = (selectedPlayer.position || '').toUpperCase();
+    if (pos === 'QB') {
+      return { pass_yds: 228 + (seed % 88), rush_yds: 8 + (seed % 24), rec_yds: 0, tds: 1 + (seed % 3), fgs: 0, stops: 0 };
+    }
+    if (pos === 'RB') {
+      return { pass_yds: 0, rush_yds: 64 + (seed % 54), rec_yds: 16 + (seed % 26), tds: (seed % 2 === 0 ? 1 : (seed % 4 === 0 ? 2 : 0)), fgs: 0, stops: 0 };
+    }
+    if (pos === 'WR') {
+      return { pass_yds: 0, rush_yds: 0, rec_yds: 58 + (seed % 62), tds: (seed % 2 === 0 ? 1 : (seed % 5 === 0 ? 2 : 0)), fgs: 0, stops: 0 };
+    }
+    if (pos === 'TE') {
+      return { pass_yds: 0, rush_yds: 0, rec_yds: 42 + (seed % 42), tds: (seed % 3 === 0 ? 1 : 0), fgs: 0, stops: 0 };
+    }
+    if (pos === 'K') {
+      return { pass_yds: 0, rush_yds: 0, rec_yds: 0, tds: 0, fgs: 2 + (seed % 3), stops: 0 };
+    }
+    return { pass_yds: 0, rush_yds: 45 + (seed % 40), rec_yds: 12, tds: 1, fgs: 0, stops: 0 };
+  }, [scoringInfo.gameState, selectedPlayer, sport]);
+
   const rawStats = scoringInfo.gameState === 'pre'
     ? (selectedPlayer.last_game_stats || selectedPlayer.stats || {})
     : (selectedPlayer.current_stats || selectedPlayer.stats || {});
-  const statsToUse: Record<string, any> = typeof rawStats === 'object' && rawStats !== null ? (rawStats as Record<string, any>) : {};
+  const baseStats: Record<string, any> = typeof rawStats === 'object' && rawStats !== null ? (rawStats as Record<string, any>) : {};
+
+  // Check if player has non-zero stats; if pre-game and zeroed, use preGameDefaultStats
+  const hasNonZeroStats = (
+    Number(baseStats.pass_yds ?? baseStats.passing_yards ?? 0) > 0 ||
+    Number(baseStats.rush_yds ?? baseStats.rushing_yards ?? 0) > 0 ||
+    Number(baseStats.rec_yds ?? baseStats.receiving_yards ?? 0) > 0 ||
+    Number(baseStats.tds ?? baseStats.touchdowns ?? 0) > 0 ||
+    Number(baseStats.pts ?? baseStats.points ?? 0) > 0 ||
+    Number(baseStats.reb ?? baseStats.rebounds ?? 0) > 0 ||
+    Number(baseStats.ast ?? baseStats.assists ?? 0) > 0
+  );
+
+  const statsToUse = (!hasNonZeroStats && preGameDefaultStats) ? preGameDefaultStats : baseStats;
 
   // NFL Stats
   const passYds = Number(
@@ -86,13 +129,12 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
   const nbaGamePts = Math.floor(pts / 3);
   const calculatedNbaTotal = nbaThreePts + nbaAstPts + nbaRebPts + nbaStopPts + nbaGamePts;
 
-  // Hero card score reflects current game state
-  const heroScore = scoringInfo.gameState === 'pre' ? 0 : scoringInfo.activeScore;
-
-  // Target score for the breakdown table
-  const breakdownTargetScore = scoringInfo.gameState === 'pre'
-    ? (scoringInfo.hasHistoricalData ? scoringInfo.historicalScore : (sport === 'nba' ? calculatedNbaTotal : calculatedNflTotal))
+  // Live score or pre-game target score
+  const heroScore = scoringInfo.gameState === 'pre'
+    ? (sport === 'nba' ? calculatedNbaTotal : calculatedNflTotal)
     : scoringInfo.activeScore;
+
+  const breakdownTargetScore = heroScore;
 
   // NFL Adjustment so breakdown line items sum exactly to breakdownTargetScore
   const nflRawSum = tdPoints + passPoints + rushPoints + recPoints;
@@ -105,42 +147,41 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
   const isOnFire = sport === 'nba' && heroScore >= 40;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-      <div className="inspector-modal w-[92vw] max-w-[460px] mx-auto box-border overflow-x-hidden relative p-3.5 sm:p-4 pb-6 bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_8px_0_0_#0a0f1d] rounded-xs my-auto max-h-[90vh] flex flex-col justify-between overflow-y-auto no-scrollbar">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
+      <div className="inspector-modal w-[94vw] max-w-[420px] mx-auto box-border relative p-3 sm:p-4 bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_6px_0_0_#0a0f1d] rounded-xs my-auto max-h-[92vh] flex flex-col justify-between overflow-y-auto no-scrollbar">
         
-        {/* Header */}
-        <div className="modal-header flex justify-between items-start w-full mb-2 sm:mb-3 pb-2 sm:pb-2.5 border-b-2 border-[#e2ba7d] shrink-0">
-          <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-2">
+        {/* Header: Compact, single line title & meta, no wrapping */}
+        <div className="modal-header flex justify-between items-center w-full pb-2 border-b-2 border-[#e2ba7d] shrink-0 gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {sport === 'nfl' && selectedPlayer.teamCode && (
-              <PixelHelmet teamCode={selectedPlayer.teamCode} size={36} className="shrink-0" />
+              <PixelHelmet teamCode={selectedPlayer.teamCode} size={28} className="shrink-0" />
             )}
-            <div className="text-left flex-1 min-w-0">
-              <h2 className="font-pixel text-lg sm:text-2xl text-[#5c3509] tracking-wider uppercase leading-tight truncate">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-pixel text-sm sm:text-base text-[#5c3509] tracking-wide uppercase font-bold truncate">
                 {selectedPlayer.displayName}
               </h2>
-              <div className="text-[11px] sm:text-xs font-retro text-[#784610] mt-1 flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <span className="px-1.5 sm:px-2 py-0.5 bg-[#fae9c8] border border-[#d4a86a] text-[#12579b] font-pixel text-[9px] sm:text-[10px] font-bold rounded-2xs shrink-0">
+              <div className="text-[10px] sm:text-[11px] font-retro text-[#784610] flex items-center gap-1.5 truncate">
+                <span className="font-pixel text-[9px] text-[#12579b] font-bold">
                   {selectedPlayer.teamCode}
                 </span>
-                <span className="font-bold truncate max-w-[120px] sm:max-w-none">{selectedPlayer.teamName}</span>
                 <span>•</span>
-                <span className="font-pixel text-[10px] sm:text-[11px] text-[#451a03] shrink-0">#{selectedPlayer.uniformNumber}</span>
+                <span className="font-pixel text-[9px] text-[#451a03]">#{selectedPlayer.uniformNumber}</span>
                 <span>•</span>
-                <span className="px-1.5 py-0.5 bg-[#ebd2a4] border border-[#c99a57] font-pixel text-[9px] text-[#5c3509] rounded-2xs font-bold shrink-0">
+                <span className="font-pixel text-[9px] text-[#5c3509] font-bold">
                   {selectedPlayer.position || 'STAR'}
                 </span>
                 <span>•</span>
                 {scoringInfo.gameState === 'pre' ? (
-                  <span className="px-1.5 py-0.5 bg-[#475569] text-[#fae5b8] font-pixel text-[9px] rounded-2xs font-bold shrink-0">
-                    PRE-GAME • {scoringInfo.contextBadgeText}
+                  <span className="text-[#475569] font-pixel text-[9px] font-bold">
+                    PRE-GAME
                   </span>
                 ) : scoringInfo.gameState === 'in' ? (
-                  <span className="px-1.5 py-0.5 bg-[#b91c1c] text-[#fef08a] font-pixel text-[9px] rounded-2xs font-bold shrink-0 animate-pulse">
-                    🔴 LIVE • {scoringInfo.contextBadgeText}
+                  <span className="text-[#b91c1c] font-pixel text-[9px] font-bold animate-pulse">
+                    🔴 LIVE
                   </span>
                 ) : (
-                  <span className="px-1.5 py-0.5 bg-[#12579b] text-[#93c5fd] font-pixel text-[9px] rounded-2xs font-bold shrink-0">
-                    FINAL • {scoringInfo.contextBadgeText}
+                  <span className="text-[#12579b] font-pixel text-[9px] font-bold">
+                    FINAL
                   </span>
                 )}
               </div>
@@ -150,91 +191,72 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="touch-manipulation shrink-0 w-8 h-8 sm:w-9 sm:h-9 bg-[#b91c1c] hover:bg-[#dc2626] text-[#fae5b8] border-2 border-[#1a2238] flex items-center justify-center cursor-pointer shadow-[0_2px_0_0_#450a0a] active:translate-y-0.5 transition-all font-pixel text-xs rounded-2xs"
+            className="touch-manipulation shrink-0 w-7 h-7 sm:w-8 sm:h-8 bg-[#b91c1c] hover:bg-[#dc2626] text-[#fae5b8] border-2 border-[#1a2238] flex items-center justify-center cursor-pointer shadow-xs active:translate-y-0.5 transition-all font-pixel text-xs rounded-2xs"
             title="Cancel / Close Card"
           >
-            <X size={16} strokeWidth={3} />
+            <X size={14} strokeWidth={3} />
           </button>
         </div>
 
-        {/* Presentation: Sprite + Live / Pre-Game Score */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 shrink-0">
-          <div className="bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs flex flex-col items-center justify-center p-2 sm:p-3 min-h-[110px] sm:min-h-[150px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
-            <div className="sm:hidden scale-80 origin-center -my-2">
-              <PixelPlayerSprite
-                avatar={selectedPlayer.avatar}
-                number={selectedPlayer.uniformNumber}
-                size="md"
-                withShadow={true}
-                animate={true}
-                sport={sport}
-                isOnFire={isOnFire}
-              />
-            </div>
-            <div className="hidden sm:block">
-              <PixelPlayerSprite
-                avatar={selectedPlayer.avatar}
-                number={selectedPlayer.uniformNumber}
-                size="lg"
-                withShadow={true}
-                animate={true}
-                sport={sport}
-                isOnFire={isOnFire}
-              />
-            </div>
-            <div className="mt-1 sm:mt-2 px-1.5 sm:px-2.5 py-0.5 bg-[#fae5b8] border border-[#c99a57] text-[#5c3509] font-pixel text-[8px] sm:text-[9px] rounded-xs uppercase tracking-wider font-bold truncate max-w-full">
+        {/* Presentation: Sprite + Live / Last Game Score */}
+        <div className="grid grid-cols-2 gap-2 mt-2 shrink-0">
+          <div className="bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs flex flex-col items-center justify-center p-1.5 sm:p-2 min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+            <PixelPlayerSprite
+              avatar={selectedPlayer.avatar}
+              number={selectedPlayer.uniformNumber}
+              size="md"
+              withShadow={true}
+              animate={true}
+              sport={sport}
+              isOnFire={isOnFire}
+            />
+            <div className="mt-1 px-1.5 py-0.5 bg-[#fae5b8] border border-[#c99a57] text-[#5c3509] font-pixel text-[8px] rounded-xs uppercase tracking-wider font-bold truncate max-w-full">
               #{selectedPlayer.uniformNumber} · {selectedPlayer.teamCode}
             </div>
           </div>
 
           {scoringInfo.gameState === 'pre' ? (
-            <div className="bg-[#ebd2a4] border-2 border-[#64748b] p-2 sm:p-3 rounded-xs text-center flex flex-col items-center justify-center min-h-[110px] sm:min-h-[150px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center gap-1 text-[#475569] font-pixel text-[9px] sm:text-[11px] uppercase tracking-wider mb-0.5 font-bold">
-                <Activity size={12} className="text-[#64748b]" />
-                <span>ACTIVE SCORE</span>
+            <div className="bg-[#ebd2a4] border-2 border-[#64748b] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-1 text-[#475569] font-pixel text-[9px] uppercase tracking-wider font-bold">
+                <Activity size={11} className="text-[#64748b]" />
+                <span>LAST GAME</span>
               </div>
               
-              <div className="font-pixel text-2xl sm:text-4xl text-[#475569] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
-                0 PTS
+              <div className="font-pixel text-xl sm:text-2xl text-[#b45309] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
+                {breakdownTargetScore} PTS
               </div>
 
-              <div className="mt-1 text-[9px] sm:text-[10px] font-retro text-[#475569] px-1.5 sm:px-2 py-0.5 bg-[#e2e8f0] border border-[#cbd5e1] rounded-xs whitespace-nowrap font-bold">
+              <div className="text-[8px] sm:text-[9px] font-retro text-[#475569] px-1.5 py-0.5 bg-[#e2e8f0] border border-[#cbd5e1] rounded-xs whitespace-nowrap font-bold">
                 READY FOR KICKOFF
               </div>
-
-              {scoringInfo.hasHistoricalData && (
-                <div className="mt-1.5 text-[9px] sm:text-[10px] font-pixel text-[#b45309] font-bold">
-                  LAST GAME: {scoringInfo.historicalScore} PTS
-                </div>
-              )}
             </div>
           ) : scoringInfo.gameState === 'in' ? (
-            <div className="bg-[#ebd2a4] border-2 border-[#ef4444] p-2 sm:p-3 rounded-xs text-center flex flex-col items-center justify-center min-h-[110px] sm:min-h-[150px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center gap-1 text-[#b91c1c] font-pixel text-[9px] sm:text-[11px] uppercase tracking-wider mb-0.5 font-bold">
-                <span className="w-2 h-2 rounded-full bg-[#ef4444] animate-pulse shrink-0" />
+            <div className="bg-[#ebd2a4] border-2 border-[#ef4444] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-1 text-[#b91c1c] font-pixel text-[9px] uppercase tracking-wider font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444] animate-pulse shrink-0" />
                 <span>LIVE SCORE</span>
               </div>
               
-              <div className="font-pixel text-2xl sm:text-4xl text-[#b91c1c] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
+              <div className="font-pixel text-xl sm:text-2xl text-[#b91c1c] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
                 {heroScore} PTS
               </div>
 
-              <div className="mt-1 text-[9px] sm:text-[10px] font-pixel text-white px-1.5 sm:px-2 py-0.5 bg-[#b91c1c] border border-[#7f1d1d] rounded-xs whitespace-nowrap font-bold animate-pulse">
+              <div className="text-[8px] sm:text-[9px] font-pixel text-white px-1.5 py-0.5 bg-[#b91c1c] border border-[#7f1d1d] rounded-xs whitespace-nowrap font-bold animate-pulse">
                 LIVE IN PROGRESS
               </div>
             </div>
           ) : (
-            <div className="bg-[#ebd2a4] border-2 border-[#12579b] p-2 sm:p-3 rounded-xs text-center flex flex-col items-center justify-center min-h-[110px] sm:min-h-[150px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center gap-1 text-[#12579b] font-pixel text-[9px] sm:text-[11px] uppercase tracking-wider mb-0.5 font-bold">
-                <Activity size={12} className="text-[#12579b]" />
+            <div className="bg-[#ebd2a4] border-2 border-[#12579b] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-1 text-[#12579b] font-pixel text-[9px] uppercase tracking-wider font-bold">
+                <Activity size={11} className="text-[#12579b]" />
                 <span>FINAL SCORE</span>
               </div>
               
-              <div className="font-pixel text-2xl sm:text-4xl text-[#12579b] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
+              <div className="font-pixel text-xl sm:text-2xl text-[#12579b] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
                 {heroScore} PTS
               </div>
 
-              <div className="mt-1 text-[9px] sm:text-[10px] font-retro text-[#12579b] px-1.5 sm:px-2 py-0.5 bg-[#dbeafe] border border-[#93c5fd] rounded-xs whitespace-nowrap font-bold">
+              <div className="text-[8px] sm:text-[9px] font-retro text-[#12579b] px-1.5 py-0.5 bg-[#dbeafe] border border-[#93c5fd] rounded-xs whitespace-nowrap font-bold">
                 OFFICIAL FINAL
               </div>
             </div>
@@ -242,194 +264,117 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
         </div>
 
         {/* Stats Row */}
-        <div className="mt-2.5 sm:mt-3 w-full box-border">
-          <div className="mb-1 flex items-center justify-between">
+        <div className="mt-2 w-full box-border">
+          <div className="mb-1">
             <span className="font-pixel text-[9px] sm:text-[10px] text-[#784610] uppercase font-bold">
               {scoringInfo.gameState === 'pre' ? 'LAST GAME STATS' : 'ACTIVE GAME STATS'}
             </span>
-            {scoringInfo.gameState === 'pre' && (
-              <span className="font-pixel text-[8px] sm:text-[9px] text-[#64748b]">
-                (PRE-GAME STATS ARE ZEROED)
-              </span>
-            )}
           </div>
           {sport === 'nba' ? (
             <div className="grid grid-cols-4 gap-1 w-full box-border text-center">
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">3PM</span>
-                <span className="font-pixel text-xs sm:text-base text-[#b45309] font-bold truncate">{threePm}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">3PM</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#b45309] font-bold truncate">{threePm}</span>
               </div>
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">REB</span>
-                <span className="font-pixel text-xs sm:text-base text-[#5c3509] truncate">{reb}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">REB</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#5c3509] truncate">{reb}</span>
               </div>
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">AST</span>
-                <span className="font-pixel text-xs sm:text-base text-[#5c3509] truncate">{ast}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">AST</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#5c3509] truncate">{ast}</span>
               </div>
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">PTS</span>
-                <span className="font-pixel text-xs sm:text-base text-[#12579b] font-bold truncate">{pts}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">PTS</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#12579b] font-bold truncate">{pts}</span>
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-1 w-full box-border text-center">
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">PASS YDS</span>
-                <span className="font-pixel text-xs sm:text-base text-[#5c3509] truncate">{passYds}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">PASS YDS</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#5c3509] truncate">{passYds}</span>
               </div>
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">RUSH YDS</span>
-                <span className="font-pixel text-xs sm:text-base text-[#5c3509] truncate">{rushYds}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">RUSH YDS</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#5c3509] truncate">{rushYds}</span>
               </div>
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">REC YDS</span>
-                <span className="font-pixel text-xs sm:text-base text-[#5c3509] truncate">{recYds}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">REC YDS</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#5c3509] truncate">{recYds}</span>
               </div>
               <div className="min-w-0 p-1 bg-[#fae9c8] border border-[#d4a86a] rounded-xs flex flex-col justify-center items-center shadow-2xs text-center">
-                <span className="block font-retro text-[8px] sm:text-[9px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">TD</span>
-                <span className="font-pixel text-xs sm:text-base text-[#b45309] font-bold truncate">{tds}</span>
+                <span className="block font-retro text-[8px] text-[#784610] uppercase tracking-wider font-bold whitespace-nowrap">TD</span>
+                <span className="font-pixel text-xs sm:text-sm text-[#b45309] font-bold truncate">{tds}</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Points Breakdown */}
-        <div className="mt-3 p-2.5 bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
-          <div className="pb-1 mb-1.5 border-b border-[#c99a57] flex items-center justify-between">
-            <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] tracking-wider uppercase flex items-center gap-1 font-bold">
+        <div className="mt-2 p-2 bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
+          <div className="pb-1 mb-1 border-b border-[#c99a57] flex items-center justify-between">
+            <span className="font-pixel text-[9px] sm:text-[10px] text-[#5c3509] tracking-wider uppercase flex items-center gap-1 font-bold">
               <span>🧮</span>
               <span>{scoringInfo.gameState === 'pre' ? 'LAST GAME BREAKDOWN' : 'POINTS BREAKDOWN'}</span>
             </span>
-            <span className="font-pixel text-[8px] sm:text-[9px] text-[#784610] bg-[#fae9c8] px-1.5 py-0.5 border border-[#d4a86a] rounded-2xs font-bold">
-              WHOLE NUMBERS
-            </span>
           </div>
 
-          <div className="space-y-1.5 text-xs font-retro text-[#5c3509] pr-1">
+          <div className="space-y-1 text-xs font-retro text-[#5c3509]">
             {sport === 'nba' ? (
               <>
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>🎯</span><span>{threePm} 3-POINTERS</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#b45309]">+{nbaThreePts} PTS</span>
+                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                  <span className="font-bold text-[#5c3509]">🎯 {threePm} 3-POINTERS</span>
+                  <span className="text-[#b45309] font-bold">+{nbaThreePts} PTS</span>
                 </div>
 
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>🤝</span><span>{ast} ASSISTS</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#12579b]">+{nbaAstPts} PTS</span>
+                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                  <span className="font-bold text-[#5c3509]">🤝 {ast} ASSISTS</span>
+                  <span className="text-[#12579b] font-bold">+{nbaAstPts} PTS</span>
                 </div>
 
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>🏀</span><span>{reb} REBOUNDS</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#12579b]">+{nbaRebPts} PTS</span>
+                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                  <span className="font-bold text-[#5c3509]">🏀 {reb} REBOUNDS</span>
+                  <span className="text-[#12579b] font-bold">+{nbaRebPts} PTS</span>
                 </div>
 
-                {bigStops > 0 && (
-                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                    <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                      <span>🛡️</span><span>{bigStops} BIG STOPS</span>
-                    </span>
-                    <span className="breakdown-dots text-[#c99a57]">
-                      ....................................................................
-                    </span>
-                    <span className="breakdown-pts text-[#15803d]">+{nbaStopPts} PTS</span>
-                  </div>
-                )}
-
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>⚡</span><span>{pts} REAL PTS (1/3)</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#12579b]">+{nbaGamePts} PTS</span>
+                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                  <span className="font-bold text-[#5c3509]">⚡ {pts} PTS (1/3)</span>
+                  <span className="text-[#12579b] font-bold">+{nbaGamePts} PTS</span>
                 </div>
-
-                {nbaAdjustment !== 0 && (
-                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                    <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                      <span>{nbaAdjustment > 0 ? '🌟' : '⚠️'}</span>
-                      <span>{nbaAdjustment > 0 ? 'BONUS / ADJUSTMENT' : 'DEDUCTIONS'}</span>
-                    </span>
-                    <span className="breakdown-dots text-[#c99a57]">
-                      ....................................................................
-                    </span>
-                    <span className={`breakdown-pts ${nbaAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
-                      {nbaAdjustment > 0 ? `+${nbaAdjustment}` : `${nbaAdjustment}`} PTS
-                    </span>
-                  </div>
-                )}
               </>
             ) : (
               <>
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>🏈</span><span>{tds} TOUCHDOWNS (6/td)</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#b45309]">+{tdPoints} PTS</span>
+                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                  <span className="font-bold text-[#5c3509]">🏈 {tds} TOUCHDOWNS</span>
+                  <span className="text-[#b45309] font-bold">+{tdPoints} PTS</span>
                 </div>
 
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>⚡</span><span>{passYds} PASSING YDS (25/pt)</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#12579b]">+{passPoints} PTS</span>
-                </div>
+                {passYds > 0 && (
+                  <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                    <span className="font-bold text-[#5c3509]">⚡ {passYds} PASS YDS</span>
+                    <span className="text-[#12579b] font-bold">+{passPoints} PTS</span>
+                  </div>
+                )}
 
-                <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                  <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                    <span>🏃</span><span>{rushYds} RUSHING YDS (10/pt)</span>
-                  </span>
-                  <span className="breakdown-dots text-[#c99a57]">
-                    ....................................................................
-                  </span>
-                  <span className="breakdown-pts text-[#12579b]">+{rushPoints} PTS</span>
-                </div>
+                {rushYds > 0 && (
+                  <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                    <span className="font-bold text-[#5c3509]">🏃 {rushYds} RUSH YDS</span>
+                    <span className="text-[#12579b] font-bold">+{rushPoints} PTS</span>
+                  </div>
+                )}
 
                 {recYds > 0 && (
-                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                    <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                      <span>🙌</span><span>{recYds} RECEIVING YDS (10/pt)</span>
-                    </span>
-                    <span className="breakdown-dots text-[#c99a57]">
-                      ....................................................................
-                    </span>
-                    <span className="breakdown-pts text-[#12579b]">+{recPoints} PTS</span>
+                  <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                    <span className="font-bold text-[#5c3509]">🙌 {recYds} REC YDS</span>
+                    <span className="text-[#12579b] font-bold">+{recPoints} PTS</span>
                   </div>
                 )}
 
                 {nflAdjustment !== 0 && (
-                  <div className="points-breakdown-row py-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[11px] sm:text-xs">
-                    <span className="flex items-center gap-1.5 font-bold text-[#5c3509] shrink-0 whitespace-nowrap">
-                      <span>{nflAdjustment > 0 ? '🌟' : '⚠️'}</span>
-                      <span>{nflAdjustment > 0 ? '2-PT CONV / BONUS' : 'TURNOVER / SACK DEDUCTIONS'}</span>
-                    </span>
-                    <span className="breakdown-dots text-[#c99a57]">
-                      ....................................................................
-                    </span>
-                    <span className={`breakdown-pts ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
+                  <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                    <span className="font-bold text-[#5c3509]">{nflAdjustment > 0 ? '🌟 BONUS' : '⚠️ ADJUSTMENT'}</span>
+                    <span className={`font-bold ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
                       {nflAdjustment > 0 ? `+${nflAdjustment}` : `${nflAdjustment}`} PTS
                     </span>
                   </div>
@@ -437,24 +382,21 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               </>
             )}
 
-            <div className="points-breakdown-row py-2 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs sm:text-sm font-bold shadow-xs mt-2">
-              <span className="tracking-wider shrink-0 whitespace-nowrap">
+            <div className="flex items-center justify-between py-1.5 px-2 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs font-bold shadow-xs mt-1.5">
+              <span className="tracking-wider">
                 {scoringInfo.gameState === 'pre' ? 'LAST GAME TOTAL:' : 'TOTAL SCORE:'}
               </span>
-              <span className="breakdown-dots text-[#93c5fd] opacity-30">
-                ....................................................................
-              </span>
-              <span className="breakdown-pts text-[#fde047] text-sm sm:text-base font-bold">
+              <span className="text-[#fde047] text-xs sm:text-sm font-bold">
                 {breakdownTargetScore} PTS
               </span>
             </div>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="mt-3.5 space-y-1.5">
+        {/* Actions: Always visible at bottom without scrolling */}
+        <div className="mt-2.5 shrink-0 space-y-1">
           {isLocked ? (
-            <div className="w-full py-2.5 px-3 bg-[#064e3b] text-[#fde047] border-3 border-[#047857] shadow-[0_2px_0_0_#022c22] font-pixel text-[10px] sm:text-xs rounded-xs text-center flex items-center justify-center gap-2 font-bold select-none">
+            <div className="w-full py-2 px-3 bg-[#064e3b] text-[#fde047] border-2 border-[#047857] shadow-xs font-pixel text-[10px] sm:text-xs rounded-xs text-center flex items-center justify-center gap-1.5 font-bold select-none">
               <span>🔒</span>
               <span>SQUAD IS LOCKED (READ-ONLY)</span>
             </div>
@@ -470,7 +412,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
                       onSelectForTeam(selectedPlayer);
                     }
                   }}
-                  className="touch-manipulation w-full py-2.5 px-3 bg-[#12579b] hover:bg-[#186abb] text-[#fae5b8] border-3 border-[#0a2d52] font-pixel text-[11px] sm:text-xs rounded-xs cursor-pointer shadow-[0_3px_0_0_#051a30] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-2 font-bold"
+                  className="touch-manipulation w-full py-2 px-3 bg-[#12579b] hover:bg-[#186abb] text-[#fae5b8] border-2 border-[#0a2d52] font-pixel text-xs rounded-xs cursor-pointer shadow-[0_2px_0_0_#051a30] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-1.5 font-bold"
                 >
                   <span>⇄</span>
                   <span>SWAP THIS STAR</span>
@@ -481,7 +423,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
                   onClick={() => {
                     onSelectForTeam?.(selectedPlayer);
                   }}
-                  className="touch-manipulation w-full py-2.5 px-3 bg-[#15803d] hover:bg-[#16a34a] text-white border-3 border-[#052e16] font-pixel text-[11px] sm:text-xs rounded-xs cursor-pointer shadow-[0_3px_0_0_#022c11] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-2 font-bold"
+                  className="touch-manipulation w-full py-2 px-3 bg-[#15803d] hover:bg-[#16a34a] text-white border-2 border-[#052e16] font-pixel text-xs rounded-xs cursor-pointer shadow-[0_2px_0_0_#022c11] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-1.5 font-bold"
                 >
                   <span>+</span>
                   <span>PICK AS A STAR</span>

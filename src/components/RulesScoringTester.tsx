@@ -39,7 +39,7 @@ export const RulesScoringTester: React.FC<RulesScoringTesterProps> = ({ onScoreP
           <div className="flex items-center gap-2">
             <Trophy size={20} className="text-[#b45309]" />
             <h2 className="font-pixel text-sm sm:text-base text-[#5c3509]">
-              FAMILY-FRIENDLY SCORING ENGINE (WHOLE NUMBERS ONLY)
+              FAMILY-FRIENDLY SCORING ENGINE
             </h2>
           </div>
           <p className="font-retro text-xs text-[#784610] mt-1">

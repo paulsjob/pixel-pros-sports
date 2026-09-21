@@ -4,16 +4,8 @@ import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS, DEFAULT_NFL_MA
 import { getNBATeamFullName, getNBATeamColors, DEFAULT_NBA_COMPETITORS } from '../utils/nbaTeamData';
 import { runPureDynamicDepthChartSync } from './espnDepthChartSync';
 
-const SKIN_TONES = ['#f8d9b6', '#e0ac69', '#c68642', '#8d5524', '#523318'];
-
-function getSkinTone(name?: string): string {
-  if (!name) return '#e0ac69';
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash << 5) - hash + name.charCodeAt(i);
-    hash |= 0;
-  }
-  return SKIN_TONES[Math.abs(hash) % SKIN_TONES.length];
+function getSkinTone(_name?: string): string {
+  return '#d49b6a';
 }
 
 const ESPN_NFL_SCOREBOARD = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';

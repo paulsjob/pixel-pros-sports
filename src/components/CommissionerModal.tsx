@@ -404,49 +404,51 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-3 bg-black/85 backdrop-blur-xs font-sans">
       <div className="relative w-[95vw] max-w-[1500px] h-[92vh] max-h-[92vh] my-[2vh] mx-auto bg-slate-950 border border-slate-800 text-slate-100 rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-slate-900/90 border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
-              <Shield size={20} />
+        <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3.5 bg-slate-900/90 border-b border-slate-800 shrink-0 gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <Shield size={18} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-semibold text-slate-100 tracking-tight">
-                  🛡️ PIXEL PROS MASTER CONSOLE
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-xs sm:text-base font-semibold text-slate-100 tracking-tight truncate">
+                  🛡️ MASTER CONSOLE
                 </h2>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                <span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium whitespace-nowrap">
                   {isSupabaseConfigured ? 'Supabase Live' : 'Local Storage'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5 hidden sm:block">
+              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 hidden md:block">
                 Live Supabase Status • Active Sport: {currentSport.toUpperCase()} • Week {getCurrentNFLWeek()} Active • Real-time DB Sync
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {isAuthenticated && (
               <>
                 <button
                   type="button"
                   onClick={() => handleRunSync('nfl')}
                   disabled={syncingNFL}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[11px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
                   title="Re-sync NFL scoreboard & rosters from ESPN"
                 >
                   <RefreshCw size={12} className={syncingNFL ? 'animate-spin text-blue-400' : 'text-slate-400'} />
-                  <span>{syncingNFL ? 'Syncing...' : '🔄 RE-SYNC NFL'}</span>
+                  <span className="hidden sm:inline">{syncingNFL ? 'Syncing...' : '🔄 RE-SYNC NFL'}</span>
+                  <span className="sm:hidden">NFL</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleRunSync('nba')}
                   disabled={syncingNBA}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[11px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
                   title="Re-sync NBA scoreboard & rosters from ESPN"
                 >
                   <RefreshCw size={12} className={syncingNBA ? 'animate-spin text-amber-400' : 'text-slate-400'} />
-                  <span>{syncingNBA ? 'Syncing...' : '🔄 RE-SYNC NBA'}</span>
+                  <span className="hidden sm:inline">{syncingNBA ? 'Syncing...' : '🔄 RE-SYNC NBA'}</span>
+                  <span className="sm:hidden">NBA</span>
                 </button>
 
                 <button
@@ -462,7 +464,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               title="Close Console"
             >
               <X size={18} />
@@ -508,12 +510,12 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
         ) : (
           /* AUTHENTICATED SAAS DASHBOARD */
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            {/* Tab Bar */}
-            <div className="flex items-center gap-2 px-4 sm:px-6 pt-3 pb-2 bg-slate-900/40 border-b border-slate-800 shrink-0">
+            {/* Tab Bar: scrollable on small devices */}
+            <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 pt-2.5 pb-2 bg-slate-900/40 border-b border-slate-800 shrink-0 overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => setActiveTab('rooms')}
-                className={`px-3.5 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 sm:gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   activeTab === 'rooms'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -529,7 +531,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('preflight')}
-                className={`px-3.5 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 sm:gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   activeTab === 'preflight'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -545,7 +547,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('sync')}
-                className={`px-3.5 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 sm:gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   activeTab === 'sync'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -557,13 +559,13 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
             </div>
 
             {/* TAB CONTENT AREA */}
-            <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-6 space-y-4">
               {/* TAB 1: ROOMS & SQUADS MANAGER */}
               {activeTab === 'rooms' && (
                 <div className="space-y-4">
                   {/* Action Bar */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
-                    <div className="relative flex-1 max-w-md">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-900/60 p-2.5 sm:p-3 rounded-lg border border-slate-800">
+                    <div className="relative flex-1 max-w-full sm:max-w-md">
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="text"
@@ -583,25 +585,25 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 justify-end flex-wrap">
                       <button
                         type="button"
                         onClick={handleExpandAll}
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                        className="px-2 sm:px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
                       >
                         Expand All
                       </button>
                       <button
                         type="button"
                         onClick={handleCollapseAll}
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                        className="px-2 sm:px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
                       >
                         Collapse All
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowNewRoomModal(true)}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                        className="px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer shadow-sm whitespace-nowrap"
                       >
                         <Plus size={13} />
                         <span>+ New Room</span>
@@ -610,27 +612,27 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                   </div>
 
                   {/* Summary Bar */}
-                  <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                    <div className="flex items-center gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-400 px-1 gap-1">
+                    <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                       <span><strong>{totalRoomsCount}</strong> Active Rooms</span>
                       <span>•</span>
                       <span><strong>{totalSquadsCount}</strong> Registered Squads</span>
                       <span>•</span>
                       <span><strong>{totalPicksCount}</strong> Active Picks</span>
                     </div>
-                    <div>
+                    <div className="text-[11px] text-slate-500 hidden sm:block">
                       Click any row to expand squad details and god-mode actions
                     </div>
                   </div>
 
                   {/* Rooms Table */}
                   <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/30">
-                    <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      <div className="col-span-3 sm:col-span-2">Room Code</div>
-                      <div className="col-span-2 sm:col-span-1">Sport</div>
-                      <div className="col-span-2 sm:col-span-2">Squads</div>
-                      <div className="col-span-2 sm:col-span-2">Status</div>
-                      <div className="col-span-3 sm:col-span-5 text-right">Actions</div>
+                    <div className="hidden md:grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-900/80 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      <div className="col-span-3 lg:col-span-2">Room Code</div>
+                      <div className="col-span-2 lg:col-span-1">Sport</div>
+                      <div className="col-span-2 lg:col-span-2">Squads</div>
+                      <div className="col-span-2 lg:col-span-2">Status</div>
+                      <div className="col-span-3 lg:col-span-5 text-right">Actions</div>
                     </div>
 
                     {loadingRooms && allRooms.length === 0 ? (
@@ -652,30 +654,30 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
 
                         return (
                           <div key={roomKey} className="border-b border-slate-800/60 last:border-b-0">
-                            {/* Room Header Row */}
+                            {/* Desktop / Horizontal View (md and up) */}
                             <div
                               onClick={() => toggleRoomExpanded(roomKey)}
-                              className={`grid grid-cols-12 gap-2 px-4 py-3 items-center text-xs transition-colors cursor-pointer select-none ${
+                              className={`hidden md:grid grid-cols-12 gap-2 px-4 py-3 items-center text-xs transition-colors cursor-pointer select-none ${
                                 isCurrent
                                   ? 'bg-blue-950/30 hover:bg-blue-950/40'
                                   : 'hover:bg-slate-900/50'
                               }`}
                             >
-                              <div className="col-span-3 sm:col-span-2 flex items-center gap-2">
-                                <span className="text-slate-400">
+                              <div className="col-span-3 lg:col-span-2 flex items-center gap-2 min-w-0">
+                                <span className="text-slate-400 shrink-0">
                                   {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                 </span>
-                                <span className="font-semibold text-slate-100 font-mono tracking-wide text-sm">
+                                <span className="font-semibold text-slate-100 font-mono tracking-wide text-sm truncate">
                                   {room.roomCode}
                                 </span>
                                 {isCurrent && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-medium border border-blue-500/30">
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-medium border border-blue-500/30 shrink-0">
                                     CURRENT
                                   </span>
                                 )}
                               </div>
 
-                              <div className="col-span-2 sm:col-span-1">
+                              <div className="col-span-2 lg:col-span-1">
                                 <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider ${
                                   room.sport === 'nfl'
                                     ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
@@ -685,11 +687,11 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 </span>
                               </div>
 
-                              <div className="col-span-2 sm:col-span-2 text-slate-300">
+                              <div className="col-span-2 lg:col-span-2 text-slate-300">
                                 {room.squads.length} {room.squads.length === 1 ? 'Squad' : 'Squads'}
                               </div>
 
-                              <div className="col-span-2 sm:col-span-2">
+                              <div className="col-span-2 lg:col-span-2">
                                 {allLocked ? (
                                   <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium flex items-center gap-1 w-fit">
                                     <Lock size={10} /> Locked
@@ -705,7 +707,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 )}
                               </div>
 
-                              <div className="col-span-3 sm:col-span-5 flex items-center justify-end gap-1.5 sm:gap-2" onClick={(e) => e.stopPropagation()}>
+                              <div className="col-span-3 lg:col-span-5 flex items-center justify-end gap-1.5 sm:gap-2" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
                                   onClick={() => handleLockAllInRoom(room.roomCode, room.sport, false)}
@@ -713,7 +715,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                   title="Unlock all squads in this room"
                                 >
                                   <Unlock size={12} className="text-emerald-400" />
-                                  <span className="hidden sm:inline">Unlock All</span>
+                                  <span>Unlock All</span>
                                 </button>
                                 <button
                                   type="button"
@@ -722,7 +724,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                   title="Lock all squads in this room"
                                 >
                                   <Lock size={12} className="text-amber-400" />
-                                  <span className="hidden sm:inline">Lock All</span>
+                                  <span>Lock All</span>
                                 </button>
                                 <button
                                   type="button"
@@ -731,7 +733,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                   title="Copy 1-tap invite link"
                                 >
                                   <Copy size={12} className="text-blue-400" />
-                                  <span className="hidden md:inline">Copy Link</span>
+                                  <span className="hidden xl:inline">Copy Link</span>
                                 </button>
                                 <button
                                   type="button"
@@ -740,7 +742,95 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                   title="Wipe room and squads"
                                 >
                                   <Trash2 size={12} className="text-red-400" />
-                                  <span className="hidden sm:inline">Wipe Room</span>
+                                  <span className="hidden xl:inline">Wipe Room</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Mobile / Tablet Vertical Card View (< md) */}
+                            <div
+                              onClick={() => toggleRoomExpanded(roomKey)}
+                              className={`md:hidden p-3 transition-colors cursor-pointer select-none space-y-2.5 ${
+                                isCurrent
+                                  ? 'bg-blue-950/30'
+                                  : 'hover:bg-slate-900/50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-slate-400 shrink-0">
+                                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                  </span>
+                                  <span className="font-semibold text-slate-100 font-mono tracking-wide text-sm truncate">
+                                    {room.roomCode}
+                                  </span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider shrink-0 ${
+                                    room.sport === 'nfl'
+                                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  }`}>
+                                    {room.sport.toUpperCase()}
+                                  </span>
+                                  {isCurrent && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-medium border border-blue-500/30 shrink-0">
+                                      CURRENT
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs text-slate-300 font-medium">
+                                    {room.squads.length} {room.squads.length === 1 ? 'Squad' : 'Squads'}
+                                  </span>
+                                  {allLocked ? (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium flex items-center gap-1">
+                                      <Lock size={9} /> Locked
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium flex items-center gap-1">
+                                      <Unlock size={9} /> Open
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Mobile actions: Clean, spacious flex row */}
+                              <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-800/60" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleLockAllInRoom(room.roomCode, room.sport, false)}
+                                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center gap-1 border border-slate-700 transition-colors cursor-pointer"
+                                  title="Unlock all squads"
+                                >
+                                  <Unlock size={11} className="text-emerald-400" />
+                                  <span>Unlock All</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleLockAllInRoom(room.roomCode, room.sport, true)}
+                                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center gap-1 border border-slate-700 transition-colors cursor-pointer"
+                                  title="Lock all squads"
+                                >
+                                  <Lock size={11} className="text-amber-400" />
+                                  <span>Lock All</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyOneTapLink(room.roomCode, room.sport)}
+                                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center gap-1 border border-slate-700 transition-colors cursor-pointer"
+                                  title="Copy 1-tap invite link"
+                                >
+                                  <Copy size={11} className="text-blue-400" />
+                                  <span>Copy Link</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRoomToDelete({ room: room.roomCode, sport: room.sport })}
+                                  className="px-2 py-1 rounded bg-red-950/50 hover:bg-red-900/70 text-red-300 text-[11px] font-medium flex items-center gap-1 border border-red-800/60 transition-colors cursor-pointer ml-auto"
+                                  title="Wipe room and squads"
+                                >
+                                  <Trash2 size={11} className="text-red-400" />
+                                  <span>Wipe</span>
                                 </button>
                               </div>
                             </div>
@@ -838,7 +928,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                           </div>
 
                                           {/* Right: Squad Actions */}
-                                          <div className="flex items-center gap-1.5 shrink-0 self-end md:self-center">
+                                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap self-start sm:self-end md:self-center pt-1 md:pt-0">
                                             <button
                                               type="button"
                                               onClick={() => handleStartRename(room.roomCode, room.sport, squad.userName)}
@@ -876,18 +966,18 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 )}
 
                                 {/* Inline Add Squad Form */}
-                                <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center gap-2">
+                                <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center gap-2 flex-wrap">
                                   <input
                                     type="text"
                                     value={squadInputs[roomKey] || ''}
                                     onChange={(e) => setSquadInputs((prev) => ({ ...prev, [roomKey]: e.target.value.toUpperCase() }))}
-                                    placeholder="Add squad to this room (e.g. GRANDMA)..."
-                                    className="px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder:text-slate-500 w-64 uppercase focus:outline-none focus:border-blue-500"
+                                    placeholder="Add squad (e.g. SQUAD 2)..."
+                                    className="px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder:text-slate-500 flex-1 min-w-[150px] max-w-sm uppercase focus:outline-none focus:border-blue-500"
                                   />
                                   <button
                                     type="button"
                                     onClick={() => handleCreateSquad(room.roomCode, room.sport)}
-                                    className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                                    className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
                                   >
                                     <Plus size={12} />
                                     <span>Add Squad</span>
@@ -959,7 +1049,7 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
 
                   {/* 16 Matchups Pre-Flight Table */}
                   <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/30">
-                    <div className="flex items-center justify-between px-4 py-3 bg-slate-900/80 border-b border-slate-800">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 px-4 py-3 bg-slate-900/80 border-b border-slate-800">
                       <div>
                         <h4 className="text-sm font-semibold text-slate-100">
                           Active NFL Slate Ingestion (16 Games • 32 Franchises)
@@ -973,14 +1063,14 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                         type="button"
                         onClick={handleReseedNFLManifest}
                         disabled={reseedLoading}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50 shrink-0"
                       >
                         <Sparkles size={13} className={reseedLoading ? 'animate-spin' : ''} />
                         <span>{reseedLoading ? 'Reseeding...' : '⚡ Reseed 32-Team Manifest'}</span>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-slate-950/60 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <div className="hidden md:grid grid-cols-12 gap-2 px-4 py-2 bg-slate-950/60 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                       <div className="col-span-4 sm:col-span-3">Matchup</div>
                       <div className="col-span-3 sm:col-span-3">Kickoff / Status</div>
                       <div className="col-span-3 sm:col-span-3">Roster Verification</div>
@@ -997,40 +1087,69 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                         const homeCount = homeRoster.length || 8;
 
                         return (
-                          <div key={m.id || idx} className="grid grid-cols-12 gap-2 px-4 py-2.5 items-center text-xs hover:bg-slate-900/40">
-                            <div className="col-span-4 sm:col-span-3 flex items-center gap-2">
-                              <span className="font-mono font-bold text-slate-100">{awayCode}</span>
-                              <span className="text-slate-500">@</span>
-                              <span className="font-mono font-bold text-slate-100">{homeCode}</span>
-                              <span className="text-slate-400 text-[11px] hidden md:inline truncate">
-                                ({getTeamFullName(awayCode)} vs {getTeamFullName(homeCode)})
-                              </span>
+                          <div key={m.id || idx} className="hover:bg-slate-900/40">
+                            {/* Desktop row (md and up) */}
+                            <div className="hidden md:grid grid-cols-12 gap-2 px-4 py-2.5 items-center text-xs">
+                              <div className="col-span-4 sm:col-span-3 flex items-center gap-2">
+                                <span className="font-mono font-bold text-slate-100">{awayCode}</span>
+                                <span className="text-slate-500">@</span>
+                                <span className="font-mono font-bold text-slate-100">{homeCode}</span>
+                                <span className="text-slate-400 text-[11px] hidden lg:inline truncate">
+                                  ({getTeamFullName(awayCode)} vs {getTeamFullName(homeCode)})
+                                </span>
+                              </div>
+
+                              <div className="col-span-3 sm:col-span-3 text-slate-300 text-xs flex items-center gap-1.5">
+                                <Clock size={12} className="text-slate-500" />
+                                <span>{m.quarterTime || m.quarter_time || 'Sun 1:00 PM'}</span>
+                              </div>
+
+                              <div className="col-span-3 sm:col-span-3 flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                                  {awayCode}: {awayCount}p
+                                </span>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                                  {homeCode}: {homeCount}p
+                                </span>
+                                <span className="text-[10px] text-emerald-400 font-medium hidden xl:inline">
+                                  &gt;= 6 Starters
+                                </span>
+                              </div>
+
+                              <div className="col-span-2 sm:col-span-3 flex items-center justify-end gap-2">
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium hidden sm:inline">
+                                  0 Clones 🟢
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                                  PASS ✅
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="col-span-3 sm:col-span-3 text-slate-300 text-xs flex items-center gap-1.5">
-                              <Clock size={12} className="text-slate-500" />
-                              <span>{m.quarterTime || m.quarter_time || 'Sun 1:00 PM'}</span>
-                            </div>
-
-                            <div className="col-span-3 sm:col-span-3 flex items-center gap-2 flex-wrap">
-                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                                {awayCode}: {awayCount}p
-                              </span>
-                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                                {homeCode}: {homeCount}p
-                              </span>
-                              <span className="text-[10px] text-emerald-400 font-medium hidden lg:inline">
-                                &gt;= 6 Starters
-                              </span>
-                            </div>
-
-                            <div className="col-span-2 sm:col-span-3 flex items-center justify-end gap-2">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium hidden sm:inline">
-                                0 Clones 🟢
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                                PASS ✅
-                              </span>
+                            {/* Mobile card (< md) */}
+                            <div className="md:hidden p-3 space-y-1.5 text-xs">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-bold text-slate-100">{awayCode}</span>
+                                  <span className="text-slate-500">@</span>
+                                  <span className="font-mono font-bold text-slate-100">{homeCode}</span>
+                                  <span className="text-slate-400 text-[11px] ml-1">
+                                    {m.quarterTime || m.quarter_time || 'Sun 1:00 PM'}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                                  PASS ✅
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                                  {awayCode}: {awayCount}p
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                                  {homeCode}: {homeCount}p
+                                </span>
+                                <span className="text-emerald-400 text-[10px]">0 Clones 🟢</span>
+                              </div>
                             </div>
                           </div>
                         );

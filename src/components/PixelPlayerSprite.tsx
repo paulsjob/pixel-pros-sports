@@ -142,7 +142,8 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
   const helmet = avatar.helmetColor || '#155e9e';
   const jersey = avatar.jerseyColor || '#155e9e';
   const stripe = avatar.stripeColor || '#ffffff';
-  const skin = avatar.skinTone || '#d98c55';
+  // Universal neutral middle skin tone so all players are consistent and never flicker
+  const skin = '#d49b6a';
 
   const isJerseyLight =
     jersey.toLowerCase() === '#ffffff' ||
