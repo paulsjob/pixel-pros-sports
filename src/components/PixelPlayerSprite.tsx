@@ -11,6 +11,7 @@ interface PixelPlayerSpriteProps {
   animate?: boolean;
   sport?: SportId;
   isOnFire?: boolean;
+  injuryStatus?: 'I' | 'Q' | null;
 }
 
 export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
@@ -29,6 +30,7 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
   animate = false,
   sport = 'nfl',
   isOnFire = false,
+  injuryStatus,
 }) => {
   const displayNum = number ?? avatar?.number ?? (sport === 'nba' ? 23 : 88);
 
@@ -163,6 +165,15 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
     (isJerseyLight ? (helmet.toLowerCase() !== '#ffffff' ? helmet : '#111827') : '#ffffff');
 
   // -------------------------------------------------------------
+  // Injury Visual Cue Filter:
+  // - Both 'I' (Injured / Out) and 'Q' (Questionable): 100% grayscale (no color at all)
+  // -------------------------------------------------------------
+  const injuryFilterStyle: React.CSSProperties =
+    injuryStatus === 'I' || injuryStatus === 'Q'
+      ? { filter: 'grayscale(100%)' }
+      : {};
+
+  // -------------------------------------------------------------
   // NBA BASKETBALL SPRITE (Tank top, bare shoulders, basketball)
   // -------------------------------------------------------------
   if (sport === 'nba') {
@@ -171,7 +182,7 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
         className={`relative flex flex-col items-center justify-center select-none ${className} ${
           animate ? 'animate-bounce-subtle' : ''
         }`}
-        style={{ width, height }}
+        style={{ width, height, ...injuryFilterStyle }}
       >
         {/* "He's on Fire!" Animated Pixel Flame Halo */}
         {isOnFire && (
@@ -297,7 +308,7 @@ export const PixelPlayerSprite: React.FC<PixelPlayerSpriteProps> = ({
       className={`relative flex flex-col items-center justify-center select-none ${className} ${
         animate ? 'animate-bounce-subtle' : ''
       }`}
-      style={{ width, height }}
+      style={{ width, height, ...injuryFilterStyle }}
     >
       <svg
         viewBox="0 0 38 52"

@@ -27,6 +27,8 @@ import {
   Calendar,
   Clock,
   Terminal,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { SportId, UserRoster } from '../types';
 import {
@@ -42,9 +44,12 @@ import {
   MasterRoomData,
   isSupabaseConfigured,
   reseedMasterNFLManifest,
+  archiveRoom,
+  autoArchiveCompletedRooms,
 } from '../lib/supabaseClient';
 import { syncESPNData, getLastESPNSyncTime, getCurrentNFLWeek } from '../lib/espnSync';
 import { runPureDynamicDepthChartSync } from '../lib/espnDepthChartSync';
+import { executeCompleteWeeklyRescan, getWeeklyRescanCountdown } from '../lib/rescanEngine';
 import { DEFAULT_NFL_MATCHES, NFL_TEAMS, getTeamFullName } from '../utils/teamData';
 import { NFL_ROSTER_MANIFEST } from '../data/nflRosterManifest';
 
@@ -94,6 +99,18 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [depthSyncLoading, setDepthSyncLoading] = useState(false);
   const [depthSyncProgress, setDepthSyncProgress] = useState<string | null>(null);
+
+  // Tuesday 4:00 AM EST Rescan Engine State
+  const [weeklyRescanLoading, setWeeklyRescanLoading] = useState(false);
+  const [weeklyRescanStatus, setWeeklyRescanStatus] = useState<string | null>(null);
+  const [rescanCountdown, setRescanCountdown] = useState(() => getWeeklyRescanCountdown());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRescanCountdown(getWeeklyRescanCountdown());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // New room & squad forms
   const [newRoomCode, setNewRoomCode] = useState('');
@@ -185,16 +202,55 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
     }
   };
 
+  const [roomFilterTab, setRoomFilterTab] = useState<'active' | 'archived' | 'all'>('active');
+  const [autoArchiveLoading, setAutoArchiveLoading] = useState(false);
+
+  const activeRoomsCount = useMemo(() => allRooms.filter((r) => !r.isArchived).length, [allRooms]);
+  const archivedRoomsCount = useMemo(() => allRooms.filter((r) => Boolean(r.isArchived)).length, [allRooms]);
+
+  const handleToggleArchiveRoom = async (roomCode: string, sport: SportId, isCurrentlyArchived: boolean) => {
+    const res = await archiveRoom(roomCode, sport, !isCurrentlyArchived);
+    if (res.success) {
+      showToast(isCurrentlyArchived ? `Unarchived Room ${roomCode}` : `Archived Room ${roomCode}`);
+      await refreshMasterRooms();
+    } else {
+      showToast(`Failed to update archive status for ${roomCode}`);
+    }
+  };
+
+  const handleAutoArchiveCompleted = async () => {
+    setAutoArchiveLoading(true);
+    try {
+      const res = await autoArchiveCompletedRooms();
+      if (res.success) {
+        showToast(`Auto-archived ${res.archivedCount} past/completed rooms! Board is clean.`);
+        await refreshMasterRooms();
+      } else {
+        showToast('Auto-archive completed (no additional rooms required archiving)');
+      }
+    } catch (e: any) {
+      showToast(`Error: ${e.message}`);
+    } finally {
+      setAutoArchiveLoading(false);
+    }
+  };
+
   const filteredRooms = useMemo(() => {
+    let list = allRooms;
+    if (roomFilterTab === 'active') {
+      list = list.filter((r) => !r.isArchived);
+    } else if (roomFilterTab === 'archived') {
+      list = list.filter((r) => Boolean(r.isArchived));
+    }
     const q = roomSearchFilter.trim().toLowerCase();
-    if (!q) return allRooms;
-    return allRooms.filter((r) => {
+    if (!q) return list;
+    return list.filter((r) => {
       if (r.roomCode.toLowerCase().includes(q)) return true;
       if (r.sport.toLowerCase().includes(q)) return true;
       if (r.squads.some((s) => s.userName.toLowerCase().includes(q))) return true;
       return false;
     });
-  }, [allRooms, roomSearchFilter]);
+  }, [allRooms, roomSearchFilter, roomFilterTab]);
 
   const totalRoomsCount = allRooms.length;
   const totalSquadsCount = useMemo(
@@ -308,6 +364,27 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
       await handleRunSync(currentSport);
     } catch (err: any) {
       showToast(`Purge failed: ${err.message}`);
+    }
+  };
+
+  const handleTriggerWeeklyRescan = async () => {
+    setWeeklyRescanLoading(true);
+    setWeeklyRescanStatus('Starting Tuesday 4:00 AM EST full rescan...');
+    try {
+      const res = await executeCompleteWeeklyRescan((msg) => setWeeklyRescanStatus(msg));
+      if (res.success) {
+        showToast(`Tuesday 4:00 AM Rescan complete! Active: Week ${res.activeWeek}`);
+        setWeeklyRescanStatus(`Success: Active Week ${res.activeWeek} • ${res.injuriesFound} injuries tracked • ${res.competitorsUpdated} athletes updated`);
+        onRefreshData();
+      } else {
+        showToast(`Rescan notice: ${res.message}`);
+        setWeeklyRescanStatus(`Notice: ${res.message}`);
+      }
+    } catch (err: any) {
+      showToast(`Rescan failed: ${err.message}`);
+      setWeeklyRescanStatus(`Failed: ${err.message}`);
+    } finally {
+      setWeeklyRescanLoading(false);
     }
   };
 
@@ -586,6 +663,58 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 sm:gap-2 justify-end flex-wrap">
+                      {/* Active vs Archived Filter Pills */}
+                      <div className="flex items-center p-0.5 bg-slate-950 border border-slate-800 rounded-lg text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setRoomFilterTab('active')}
+                          className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                            roomFilterTab === 'active'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Active ({activeRoomsCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRoomFilterTab('archived')}
+                          className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                            roomFilterTab === 'archived'
+                              ? 'bg-amber-600 text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Archived ({archivedRoomsCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRoomFilterTab('all')}
+                          className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                            roomFilterTab === 'all'
+                              ? 'bg-slate-700 text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          All ({allRooms.length})
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAutoArchiveCompleted}
+                        disabled={autoArchiveLoading}
+                        className="px-2.5 sm:px-3 py-1.5 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-800/60 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
+                        title="Auto-archive past week / completed game rooms"
+                      >
+                        {autoArchiveLoading ? (
+                          <RefreshCw size={12} className="animate-spin" />
+                        ) : (
+                          <Archive size={12} className="text-amber-400" />
+                        )}
+                        <span>Auto-Archive Completed</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={handleExpandAll}
@@ -675,6 +804,11 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                     CURRENT
                                   </span>
                                 )}
+                                {room.isArchived && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30 shrink-0 flex items-center gap-0.5">
+                                    <Archive size={9} /> ARCHIVED
+                                  </span>
+                                )}
                               </div>
 
                               <div className="col-span-2 lg:col-span-1">
@@ -728,6 +862,26 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 </button>
                                 <button
                                   type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleArchiveRoom(room.roomCode, room.sport, Boolean(room.isArchived));
+                                  }}
+                                  className={`px-2.5 py-1 rounded border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                                    room.isArchived
+                                      ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60'
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+                                  }`}
+                                  title={room.isArchived ? 'Restore / Unarchive Room' : 'Archive Room'}
+                                >
+                                  {room.isArchived ? (
+                                    <ArchiveRestore size={12} className="text-amber-400" />
+                                  ) : (
+                                    <Archive size={12} className="text-slate-400" />
+                                  )}
+                                  <span className="hidden xl:inline">{room.isArchived ? 'Unarchive' : 'Archive'}</span>
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleCopyOneTapLink(room.roomCode, room.sport)}
                                   className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                                   title="Copy 1-tap invite link"
@@ -776,6 +930,11 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                       CURRENT
                                     </span>
                                   )}
+                                  {room.isArchived && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30 shrink-0 flex items-center gap-0.5">
+                                      <Archive size={9} /> ARCHIVED
+                                    </span>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-2 shrink-0">
@@ -813,6 +972,26 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                                 >
                                   <Lock size={11} className="text-amber-400" />
                                   <span>Lock All</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleArchiveRoom(room.roomCode, room.sport, Boolean(room.isArchived));
+                                  }}
+                                  className={`px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 border transition-colors cursor-pointer ${
+                                    room.isArchived
+                                      ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60'
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                  }`}
+                                  title={room.isArchived ? 'Restore / Unarchive' : 'Archive'}
+                                >
+                                  {room.isArchived ? (
+                                    <ArchiveRestore size={11} className="text-amber-400" />
+                                  ) : (
+                                    <Archive size={11} className="text-slate-400" />
+                                  )}
+                                  <span>{room.isArchived ? 'Unarchive' : 'Archive'}</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1168,6 +1347,59 @@ export const CommissionerModal: React.FC<CommissionerModalProps> = ({
                       <span>{syncResult}</span>
                     </div>
                   )}
+
+                  {/* Tuesday 4:00 AM EST Weekly Rescan Engine */}
+                  <div className="p-4 bg-gradient-to-r from-amber-950/40 via-slate-900 to-indigo-950/40 border-2 border-amber-500/40 rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
+                          <Clock size={16} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-semibold text-white">Tuesday 4:00 AM EST Weekly Rescan Engine</h4>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                              AUTOMATED
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-0.5">
+                            Rolls into the next NFL week, re-scans all 32 dynamic depth charts (QB1/QB2/QB3), updates injury tags ([I] / [Q]), and unlocks rosters so players can create rooms and make new picks!
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTriggerWeeklyRescan}
+                        disabled={weeklyRescanLoading}
+                        className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-md shrink-0"
+                      >
+                        <RefreshCw size={13} className={weeklyRescanLoading ? 'animate-spin' : ''} />
+                        <span>{weeklyRescanLoading ? 'Executing Rescan...' : 'Run Tuesday 4 AM Rescan Now'}</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-mono text-[11px]">
+                      <div className="p-2 bg-slate-950/60 rounded border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Next Scheduled:</span>
+                        <span className="text-amber-300 font-bold">{rescanCountdown.formattedNext}</span>
+                      </div>
+                      <div className="p-2 bg-slate-950/60 rounded border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Countdown:</span>
+                        <span className="text-emerald-400 font-bold">{rescanCountdown.countdown}</span>
+                      </div>
+                      <div className="p-2 bg-slate-950/60 rounded border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Roster Lock Reset:</span>
+                        <span className="text-blue-300 font-bold">Unlocks @ 4:00 AM</span>
+                      </div>
+                    </div>
+
+                    {weeklyRescanStatus && (
+                      <div className="px-3 py-2 bg-slate-950/80 border border-amber-500/30 rounded-lg text-xs font-mono text-amber-300 flex items-center gap-2">
+                        <Terminal size={12} className="text-amber-400 shrink-0" />
+                        <span>{weeklyRescanStatus}</span>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Pure Dynamic Depth Chart Engine Banner Card */}
                   <div className="p-4 bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-500/40 rounded-xl space-y-3">

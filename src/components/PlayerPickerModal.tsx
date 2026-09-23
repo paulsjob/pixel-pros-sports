@@ -15,8 +15,29 @@ import {
   normalizeTeamCode,
   getPlayerVisualAvatar,
   getTeamColors,
+  sortMatchesByKickoffAndStatus,
+  isMatchEnded,
 } from '../utils/teamData';
+import { isRetiredPlayer, getStarterManifestDepth } from '../data/nflRosterManifest';
 import { DEFAULT_NBA_MATCHES } from '../utils/nbaTeamData';
+
+export function getPlayerDepthRank(p: Competitor): number {
+  if (typeof p.depthRank === 'number' && p.depthRank > 0) return p.depthRank;
+  if (p.depthOrder) {
+    const m = p.depthOrder.match(/\d+/);
+    if (m) return parseInt(m[0], 10);
+  }
+  const manifest = getStarterManifestDepth(p.displayName, p.teamCode, p.athleteId || p.id);
+  if (manifest?.depthRank) return manifest.depthRank;
+  return 1;
+}
+
+export function getPlayerDisplayDepth(p: Competitor): string {
+  if (p.depthOrder && /\d/.test(p.depthOrder)) return p.depthOrder;
+  const rank = getPlayerDepthRank(p);
+  const pos = p.position || 'STAR';
+  return `${pos}${rank}`;
+}
 
 interface PlayerPickerModalProps {
   isOpen: boolean;
@@ -27,6 +48,7 @@ interface PlayerPickerModalProps {
   selectedPlayerIds?: string[];
   matches?: Match[];
   sport?: SportId;
+  restrictToMatchPair?: string;
   onSelectPlayer: (player: Competitor, targetSlot: ActiveSlot) => void;
   onInspectPlayer?: (player: Competitor) => void;
 }
@@ -65,14 +87,24 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   selectedPlayerIds = [],
   matches = [],
   sport = 'nfl',
+  restrictToMatchPair,
   onSelectPlayer,
   onInspectPlayer,
 }) => {
+  const isRestrictedToGame = Boolean(
+    restrictToMatchPair &&
+    restrictToMatchPair !== 'ALL' &&
+    restrictToMatchPair !== 'SUPERSTARS'
+  );
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedGameFilter, setSelectedGameFilter] = useState<string>('ALL');
+  const [selectedGameFilter, setSelectedGameFilter] = useState<string>(
+    isRestrictedToGame ? restrictToMatchPair! : 'ALL'
+  );
   const [positionFilter, setPositionFilter] = useState<'ELIGIBLE' | 'ALL'>('ELIGIBLE');
   const [hideEndedGames, setHideEndedGames] = useState(false);
   const [matchPage, setMatchPage] = useState(0);
+  const [pendingInjuredPlayer, setPendingInjuredPlayer] = useState<Competitor | null>(null);
   const currentNFLWeek = getCurrentNFLWeek();
 
   const slotDefs = sport === 'nba' ? NBA_SLOT_DEFS : NFL_SLOT_DEFS;
@@ -80,8 +112,10 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
   useEffect(() => {
     setPositionFilter('ELIGIBLE');
-    setMatchPage(0);
-  }, [activeSlot, isOpen]);
+    if (isRestrictedToGame && restrictToMatchPair) {
+      setSelectedGameFilter(restrictToMatchPair);
+    }
+  }, [activeSlot, isOpen, isRestrictedToGame, restrictToMatchPair]);
 
   const activeMatches = useMemo(() => {
     const defaultList = sport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES;
@@ -120,31 +154,11 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       }
     }
 
-    return combined.sort((a, b) => {
-      if (a.status === 'live' && b.status !== 'live') return -1;
-      if (b.status === 'live' && a.status !== 'live') return 1;
-      if (a.status === 'upcoming' && b.status === 'final') return -1;
-      if (b.status === 'upcoming' && a.status === 'final') return 1;
-      const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
-      const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
-      return dateA - dateB;
-    });
+    return sortMatchesByKickoffAndStatus(combined);
   }, [matches, sport, currentNFLWeek]);
 
   const checkMatchEnded = (m?: Match | null): boolean => {
-    if (!m) return false;
-    const status = (m.status || '').toLowerCase();
-    const state = String((m as any).status?.type?.state || '').toLowerCase();
-    const qTime = String(m.quarter_time || m.quarterTime || m.periodLabel || '').toLowerCase();
-    const isCompleted = Boolean((m as any).completed || (m as any).isFinal);
-    return (
-      status === 'final' ||
-      status === 'post' ||
-      state === 'post' ||
-      state === 'final' ||
-      isCompleted ||
-      qTime.includes('final')
-    );
+    return isMatchEnded(m);
   };
 
   const isPlayerGameEnded = (player: Competitor): boolean => {
@@ -164,6 +178,22 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
   const MATCHES_PER_PAGE = 6;
   const totalMatchPages = Math.max(1, Math.ceil(displayMatches.length / MATCHES_PER_PAGE));
+
+  // Keep the match page aligned with the selected match filter so buttons do not jump
+  useEffect(() => {
+    if (selectedGameFilter && selectedGameFilter !== 'ALL') {
+      const idx = displayMatches.findIndex((m) => {
+        const away = normalizeCode(m.awayTeamCode || m.away_team || '');
+        const home = normalizeCode(m.homeTeamCode || m.home_team || '');
+        return `${away}@${home}` === selectedGameFilter;
+      });
+      if (idx >= 0) {
+        const page = Math.floor(idx / MATCHES_PER_PAGE);
+        setMatchPage((curPage) => (curPage !== page ? page : curPage));
+      }
+    }
+  }, [selectedGameFilter, displayMatches]);
+
   const currentMatchesSubset = useMemo(() => {
     return displayMatches.slice(
       matchPage * MATCHES_PER_PAGE,
@@ -330,7 +360,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
     // 1. Enforce Position Requirement (1 QB, 1 RB, 1 WR/TE)
     if (positionFilter === 'ELIGIBLE') {
-      list = list.filter((p) => isPositionAllowedForSlot(activeSlot, p.position, sport));
+      list = list.filter((p) => isPositionAllowedForSlot(activeSlot, p, sport));
     }
 
     // 2. Hide Ended Games if toggle enabled
@@ -356,6 +386,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
 
     for (const player of list) {
       if (!player) continue;
+      if (isRetiredPlayer(player.displayName)) continue;
       const idKey = player.id ? String(player.id) : '';
       const nameKey = `${(player.displayName || player.shortName || '').trim().toLowerCase()}__${(player.teamCode || (player as any).team || '').trim().toUpperCase()}`;
 
@@ -366,6 +397,15 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
       if (nameKey && nameKey !== '__') seenKeys.add(nameKey);
       deduped.push(player);
     }
+
+    // Create lookup for match kickoff order to ensure stable sorting across sync updates
+    const matchOrderMap = new Map<string, number>();
+    activeMatches.forEach((m, idx) => {
+      const away = normalizeCode(m.awayTeamCode || m.away_team || '');
+      const home = normalizeCode(m.homeTeamCode || m.home_team || '');
+      if (away && !matchOrderMap.has(away)) matchOrderMap.set(away, idx);
+      if (home && !matchOrderMap.has(home)) matchOrderMap.set(home, idx);
+    });
 
     return deduped.sort((a, b) => {
       // Prioritize active and upcoming games over ended games
@@ -383,7 +423,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
         ? normalizeCode(selectedGameFilter.split('@')[0])
         : '';
 
-      // 1. Group by Team (Away team first, then Home team)
+      // 1. Group by Team if specific matchup is selected (Away team first, then Home team)
       if (awayTeam && aTeam !== bTeam) {
         if (aTeam === awayTeam) return -1;
         if (bTeam === awayTeam) return 1;
@@ -397,12 +437,37 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
         return posA - posB;
       }
 
-      // 3. Sort by Points / Last Points descending within same position
+      // 2.5 Depth Rank (QB1 before QB2 before QB3, RB1 before RB2, etc.)
+      // Guaranteed depth rank calculation ensures starters (Burrow, Mahomes, etc.) are always #1
+      const rankA = getPlayerDepthRank(a);
+      const rankB = getPlayerDepthRank(b);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+
+      // 3. Sort by Points / Last Points descending within same depth
       const scoreA = (a as any).current_score ?? (a as any).last_game_score ?? a.score ?? 0;
       const scoreB = (b as any).current_score ?? (b as any).last_game_score ?? b.score ?? 0;
-      return scoreB - scoreA;
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA;
+      }
+
+      // 4. Deterministic Match Kickoff Order (Earlier games first, e.g. Thursday ATL@GB)
+      const orderA = matchOrderMap.get(aTeam) ?? 999;
+      const orderB = matchOrderMap.get(bTeam) ?? 999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      // 5. Team Code Alphabetical tiebreaker
+      if (aTeam !== bTeam) {
+        return aTeam.localeCompare(bTeam);
+      }
+
+      // 6. Player Name Alphabetical tiebreaker (Guarantees zero jitter/jumping)
+      return (a.displayName || a.shortName || '').localeCompare(b.displayName || b.shortName || '');
     });
-  }, [allPlayers, selectedGameFilter, activeMatchObj, searchQuery, positionFilter, hideEndedGames, activeSlot, sport]);
+  }, [allPlayers, selectedGameFilter, activeMatchObj, searchQuery, positionFilter, hideEndedGames, activeSlot, sport, activeMatches]);
 
   const selectedPlayerNormKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -442,100 +507,120 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           </button>
         </div>
 
-        {/* 2-Row, 3-Pill Matchup Grid with Grayed Out Navigation Arrows */}
-        <div className="flex flex-col gap-1.5 p-2 bg-[#ecd7ab]/90 rounded-xs border-2 border-[#c99a57] shadow-inner shrink-0">
-          <div className="flex items-center gap-1.5 w-full">
-            {/* Left Arrow: grayed out when no previous pages */}
-            <button
-              type="button"
-              disabled={matchPage === 0}
-              onClick={() => setMatchPage((p) => Math.max(0, p - 1))}
-              className={`touch-manipulation shrink-0 w-8 sm:w-9 h-14 sm:h-16 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
-                matchPage > 0
-                  ? 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] cursor-pointer shadow-xs active:scale-95 font-bold'
-                  : 'bg-[#d8c29a] text-gray-500 border-2 border-gray-400/50 opacity-25 cursor-not-allowed pointer-events-none'
-              }`}
-              title="Previous Matchups"
-              aria-label="Previous Matchups"
-            >
-              ◀
-            </button>
-
-            {/* 2-Row, 3-Column Matchup Pills */}
-            <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-1.5 min-w-0">
-              {currentMatchesSubset.map((m) => {
-                const away = normalizeCode(m.awayTeamCode || m.away_team || '');
-                const home = normalizeCode(m.homeTeamCode || m.home_team || '');
-                const pairKey = `${away}@${home}`;
-                const isSelected = selectedGameFilter === pairKey;
-                const isLive = m.status === 'live';
-                const isFinal = checkMatchEnded(m);
-                return (
-                  <button
-                    key={pairKey || m.id}
-                    type="button"
-                    onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
-                    className={`touch-manipulation px-1 py-1.5 rounded-xs font-pixel text-[10px] sm:text-[11px] border-2 text-center truncate cursor-pointer transition-all flex items-center justify-center gap-1 font-bold ${
-                      isSelected
-                        ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
-                        : isLive
-                        ? 'bg-[#ffe8e8] text-[#900] border-[#c0392b]'
-                        : isFinal
-                        ? 'bg-[#d8c29a] text-[#5c3509]/80 border-[#b38947]'
-                        : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                    }`}
-                    title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
-                  >
-                    {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />}
-                    <span className="truncate">{away}@{home}</span>
-                  </button>
-                );
-              })}
+        {/* Dedicated Game Slate Banner OR 2-Row Matchup Carousel */}
+        {isRestrictedToGame ? (
+          <div className="flex items-center justify-between p-2.5 bg-[#12579b] text-[#fae5b8] rounded-xs border-2 border-[#0a2d52] shadow-xs shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🏈</span>
+              <div>
+                <div className="font-pixel text-[11px] sm:text-xs font-bold text-white tracking-wider flex items-center gap-1.5">
+                  <span>GAME SLATE: {restrictToMatchPair}</span>
+                  <span className="px-1.5 py-0.2 bg-[#38bdf8] text-[#0a2d52] text-[8px] rounded-2xs font-black">STRICT</span>
+                </div>
+                <div className="font-retro text-[9px] sm:text-[10px] text-[#fae5b8]/90">
+                  Only athletes playing in {restrictToMatchPair?.replace('@', ' @ ')} can be drafted for this game battle.
+                </div>
+              </div>
             </div>
-
-            {/* Right Arrow: grayed out when on last page */}
-            <button
-              type="button"
-              disabled={matchPage >= totalMatchPages - 1}
-              onClick={() => setMatchPage((p) => Math.min(totalMatchPages - 1, p + 1))}
-              className={`touch-manipulation shrink-0 w-8 sm:w-9 h-14 sm:h-16 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
-                matchPage < totalMatchPages - 1
-                  ? 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] cursor-pointer shadow-xs active:scale-95 font-bold'
-                  : 'bg-[#d8c29a] text-gray-500 border-2 border-gray-400/50 opacity-25 cursor-not-allowed pointer-events-none'
-              }`}
-              title="Next Matchups"
-              aria-label="Next Matchups"
-            >
-              ▶
-            </button>
+            <span className="font-pixel text-[8px] bg-[#0a2d52] text-[#38bdf8] px-2 py-1 rounded-2xs border border-[#38bdf8]/40 font-bold whitespace-nowrap">
+              GAME PICKS
+            </span>
           </div>
-
-          {/* Sub-bar: Active Filter Indicator & Hide Ended Games */}
-          <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#c99a57]/50 text-[10px] font-pixel">
-            {selectedGameFilter !== 'ALL' ? (
+        ) : (
+          <div className="flex flex-col gap-1.5 p-2 bg-[#ecd7ab]/90 rounded-xs border-2 border-[#c99a57] shadow-inner shrink-0">
+            <div className="flex items-center gap-1.5 w-full">
+              {/* Left Arrow: grayed out when no previous pages */}
               <button
                 type="button"
-                onClick={() => setSelectedGameFilter('ALL')}
-                className="touch-manipulation px-2 py-0.5 bg-[#12579b] text-[#fae5b8] border border-[#0a2d52] rounded-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-[#0c3764]"
+                disabled={matchPage === 0}
+                onClick={() => setMatchPage((p) => Math.max(0, p - 1))}
+                className={`touch-manipulation shrink-0 w-8 sm:w-9 h-14 sm:h-16 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+                  matchPage > 0
+                    ? 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] cursor-pointer shadow-xs active:scale-95 font-bold'
+                    : 'bg-[#d8c29a] text-gray-500 border-2 border-gray-400/50 opacity-25 cursor-not-allowed pointer-events-none'
+                }`}
+                title="Previous Matchups"
+                aria-label="Previous Matchups"
               >
-                <span>FILTER: {selectedGameFilter}</span>
-                <span className="text-[#fca5a5]">✕ CLEAR</span>
+                ◀
               </button>
-            ) : (
-              <span className="text-[#784610] text-[9px] font-bold">ALL GAMES</span>
-            )}
 
-            <label className="flex items-center gap-1.5 cursor-pointer font-pixel text-[9px] text-[#5c3509] font-bold select-none bg-[#fae5b8] px-2 py-0.5 rounded-xs border border-[#c99a57]">
-              <input
-                type="checkbox"
-                checked={hideEndedGames}
-                onChange={(e) => setHideEndedGames(e.target.checked)}
-                className="cursor-pointer accent-[#12579b]"
-              />
-              <span>🔒 HIDE ENDED</span>
-            </label>
+              {/* 2-Row, 3-Column Matchup Pills */}
+              <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-1.5 min-w-0">
+                {currentMatchesSubset.map((m) => {
+                  const away = normalizeCode(m.awayTeamCode || m.away_team || '');
+                  const home = normalizeCode(m.homeTeamCode || m.home_team || '');
+                  const pairKey = `${away}@${home}`;
+                  const isSelected = selectedGameFilter === pairKey;
+                  const isLive = m.status === 'live';
+                  const isFinal = checkMatchEnded(m);
+                  return (
+                    <button
+                      key={pairKey || m.id}
+                      type="button"
+                      onClick={() => setSelectedGameFilter(isSelected ? 'ALL' : pairKey)}
+                      className={`touch-manipulation px-1 py-1.5 rounded-xs font-pixel text-[10px] sm:text-[11px] border-2 text-center truncate cursor-pointer transition-all flex items-center justify-center gap-1 font-bold ${
+                        isSelected
+                          ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                          : isLive
+                          ? 'bg-[#ffe8e8] text-[#900] border-[#c0392b]'
+                          : isFinal
+                          ? 'bg-[#d8c29a] text-[#5c3509]/80 border-[#b38947]'
+                          : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
+                      }`}
+                      title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
+                    >
+                      {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />}
+                      <span className="truncate">{away}@{home}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right Arrow: grayed out when on last page */}
+              <button
+                type="button"
+                disabled={matchPage >= totalMatchPages - 1}
+                onClick={() => setMatchPage((p) => Math.min(totalMatchPages - 1, p + 1))}
+                className={`touch-manipulation shrink-0 w-8 sm:w-9 h-14 sm:h-16 flex items-center justify-center rounded-xs font-pixel select-none transition-all ${
+                  matchPage < totalMatchPages - 1
+                    ? 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-2 border-[#1a2238] cursor-pointer shadow-xs active:scale-95 font-bold'
+                    : 'bg-[#d8c29a] text-gray-500 border-2 border-gray-400/50 opacity-25 cursor-not-allowed pointer-events-none'
+                }`}
+                title="Next Matchups"
+                aria-label="Next Matchups"
+              >
+                ▶
+              </button>
+            </div>
+
+            {/* Sub-bar: Active Filter Indicator & Hide Ended Games */}
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#c99a57]/50 text-[10px] font-pixel">
+              {selectedGameFilter !== 'ALL' ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedGameFilter('ALL')}
+                  className="touch-manipulation px-2 py-0.5 bg-[#12579b] text-[#fae5b8] border border-[#0a2d52] rounded-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-[#0c3764]"
+                >
+                  <span>FILTER: {selectedGameFilter}</span>
+                  <span className="text-[#fca5a5]">✕ CLEAR</span>
+                </button>
+              ) : (
+                <span className="text-[#784610] text-[9px] font-bold">ALL GAMES</span>
+              )}
+
+              <label className="flex items-center gap-1.5 cursor-pointer font-pixel text-[9px] text-[#5c3509] font-bold select-none bg-[#fae5b8] px-2 py-0.5 rounded-xs border border-[#c99a57]">
+                <input
+                  type="checkbox"
+                  checked={hideEndedGames}
+                  onChange={(e) => setHideEndedGames(e.target.checked)}
+                  className="cursor-pointer accent-[#12579b]"
+                />
+                <span>🔒 HIDE ENDED</span>
+              </label>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="relative flex items-center shrink-0">
           <Search size={14} className="absolute left-2.5 text-[#784610] pointer-events-none" />
@@ -578,166 +663,258 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                 });
                 const scoringInfo = getPlayerScoringDisplay(player, playerMatch, sport);
 
-                const isPosAllowed = isPositionAllowedForSlot(activeSlot, player.position, sport);
+                const isPosAllowed = isPositionAllowedForSlot(activeSlot, player, sport);
                 const isGameEnded = isPlayerGameEnded(player) || scoringInfo.gameState === 'post' || scoringInfo.isFinal;
+
+                const isInjuredOrQuestionable = player.injuryStatus === 'I' || player.injuryStatus === 'Q';
 
                 return (
                   <div
                     key={player.id || `${player.displayName}_${index}`}
                     onClick={() => onInspectPlayer?.(player)}
-                    className={`touch-manipulation bg-[#fae5b8] hover:bg-[#fff9ea] border-2 rounded-xs p-2.5 sm:p-3 flex flex-col items-center justify-between min-h-[290px] h-auto cursor-pointer transition-all shadow-[0_3px_0_0_#d4a86a] hover:shadow-[0_4px_0_0_#0a2d52] active:translate-y-0.5 relative select-none ${
-                      isCurrentSlot
-                        ? 'border-[#12579b] ring-2 ring-[#12579b]/40 bg-[#f8efdc]'
+                    className={`touch-manipulation border-2 rounded-xs p-2.5 sm:p-3 flex flex-col items-center justify-between min-h-[290px] h-auto cursor-pointer transition-all active:translate-y-0.5 relative select-none ${
+                      isInjuredOrQuestionable
+                        ? 'bg-[#d8d9dc] hover:bg-[#e2e3e6] border-[#9ca3af] shadow-[0_3px_0_0_#9ca3af]'
+                        : isCurrentSlot
+                        ? 'bg-[#f8efdc] border-[#12579b] ring-2 ring-[#12579b]/40 shadow-[0_3px_0_0_#0a2d52]'
                         : isGameEnded
-                        ? 'border-[#78716c] bg-[#e7e5e4]/50 opacity-80'
+                        ? 'bg-[#e7e5e4]/50 border-[#78716c] opacity-80 shadow-[0_3px_0_0_#78716c]'
                         : !isPosAllowed
-                        ? 'border-[#b91c1c] bg-[#fee2e2]/40'
+                        ? 'bg-[#fee2e2]/40 border-[#b91c1c] shadow-[0_3px_0_0_#991b1b]'
                         : isSelectedElsewhere
-                        ? 'border-[#c99a57] opacity-60'
-                        : 'border-[#c99a57] hover:border-[#12579b]'
+                        ? 'bg-[#fae5b8] border-[#c99a57] opacity-60 shadow-[0_3px_0_0_#d4a86a]'
+                        : 'bg-[#fae5b8] hover:bg-[#fff9ea] border-[#c99a57] hover:border-[#12579b] shadow-[0_3px_0_0_#d4a86a] hover:shadow-[0_4px_0_0_#0a2d52]'
                     }`}
-                    title={`Tap to inspect stats for ${player.displayName}`}
+                    title={`Tap to inspect stats for ${player.displayName}${player.injuryDetail ? ` (${player.injuryDetail})` : ''}`}
                   >
-                    {/* Status Ribbon (Ended Game or Invalid Position Warning) */}
-                    {isGameEnded ? (
-                      <div className="w-full mb-1 flex items-center justify-center">
-                        <span className="w-full text-center px-1 py-0.5 bg-[#44403c] text-[#f5f5f4] font-pixel text-[8px] font-bold rounded-2xs border border-[#292524]">
-                          🔒 GAME COMPLETED (FINAL)
-                        </span>
-                      </div>
-                    ) : !isPosAllowed ? (
-                      <div className="w-full mb-1 flex items-center justify-center">
-                        <span className="w-full text-center px-1 py-0.5 bg-[#b91c1c] text-white font-pixel text-[8px] font-bold rounded-2xs border border-[#7f1d1d]">
-                          NEEDS {currentSlotDef.positionReq}
-                        </span>
-                      </div>
-                    ) : null}
+                    {/* Vibrant Un-Grayscaled Pop Badges on Top Right Corner (perfectly level with #11 • WR2) */}
+                    {player.injuryStatus === 'I' && (
+                      <span
+                        className="absolute top-2.5 right-2.5 z-20 h-5 px-1.5 bg-[#dc2626] text-white font-pixel text-[9px] font-black rounded-2xs border border-[#991b1b] shadow-2xs tracking-wider pointer-events-none flex items-center justify-center leading-none"
+                        title={player.injuryDetail || 'INJURED / OUT'}
+                      >
+                        I
+                      </span>
+                    )}
+                    {player.injuryStatus === 'Q' && (
+                      <span
+                        className="absolute top-2.5 right-2.5 z-20 h-5 px-1.5 bg-[#ea580c] text-white font-pixel text-[9px] font-black rounded-2xs border border-[#c2410c] shadow-2xs tracking-wider pointer-events-none flex items-center justify-center leading-none"
+                        title={player.injuryDetail || 'QUESTIONABLE'}
+                      >
+                        Q
+                      </span>
+                    )}
 
-                    <div className="w-full flex items-center justify-between gap-1 mb-1">
-                      <div className="flex items-center gap-1.5">
-                        {sport === 'nfl' && player.teamCode ? (
-                          <PixelHelmet
-                            teamCode={player.teamCode}
-                            size={28}
-                            className="drop-shadow-xs"
-                          />
-                        ) : (
-                          <span className="px-1.5 py-0.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-bold rounded-2xs">
-                            {player.teamCode}
+                    {/* Grayscale container: when player is I or Q, entire player block (helmet, avatar, pts, buttons) is 100% grayscale */}
+                    <div
+                      className="w-full flex-1 flex flex-col items-center justify-between"
+                      style={isInjuredOrQuestionable ? { filter: 'grayscale(100%)' } : undefined}
+                    >
+                      {/* Status Ribbon (Ended Game or Invalid Position Warning) */}
+                      {isGameEnded ? (
+                        <div className="w-full mb-1 flex items-center justify-center">
+                          <span className="w-full text-center px-1 py-0.5 bg-[#44403c] text-[#f5f5f4] font-pixel text-[8px] font-bold rounded-2xs border border-[#292524]">
+                            🔒 GAME COMPLETED (FINAL)
                           </span>
-                        )}
-                        <span className="font-pixel text-[10px] font-bold text-[#5c3509] tracking-wider">
-                          {player.teamCode}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 font-pixel text-[9px] font-bold text-[#784610]">
-                        <span>#{player.uniformNumber || '—'}</span>
-                        <span className="opacity-70">•</span>
-                        <span className={!isPosAllowed ? 'text-[#b91c1c] font-black underline' : ''}>
-                          {player.position || 'STAR'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="my-1 sm:my-2 flex items-center justify-center">
-                      {(() => {
-                        const visualAvatar = getPlayerVisualAvatar(player, playerMatch);
-                        return (
-                          <PixelPlayerSprite
-                            avatar={visualAvatar}
-                            number={visualAvatar.number || player.uniformNumber}
-                            size="md"
-                            withShadow={false}
-                            sport={sport}
-                            animate={false}
-                            isOnFire={false}
-                          />
-                        );
-                      })()}
-                    </div>
-
-                    <div className="text-center leading-tight mb-1.5 w-full px-1">
-                      {firstName && (
-                        <div className="font-pixel text-[9px] sm:text-[10px] text-[#784610] uppercase truncate">
-                          {firstName}
                         </div>
-                      )}
-                      <div className="font-pixel text-xs sm:text-sm font-bold text-[#5c3509] uppercase truncate">
-                        {lastName || player.shortName}
-                      </div>
-                    </div>
-
-                    <div className="w-full mb-2 py-0.5 px-2 bg-[#ebd2a4] border border-[#c99a57] rounded-2xs text-center shadow-2xs">
-                      {scoringInfo.gameState === 'pre' ? (
-                        <div className="flex flex-col items-center">
-                          <span className="font-pixel text-xs sm:text-sm font-bold text-[#475569]">
-                            0 PTS
+                      ) : !isPosAllowed ? (
+                        <div className="w-full mb-1 flex items-center justify-center">
+                          <span className="w-full text-center px-1 py-0.5 bg-[#b91c1c] text-white font-pixel text-[8px] font-bold rounded-2xs border border-[#7f1d1d]">
+                            NEEDS {currentSlotDef.positionReq}
                           </span>
-                          {scoringInfo.hasHistoricalData && (
-                            <span className="font-pixel text-[8px] text-[#784610] font-bold">
-                              Last: {scoringInfo.historicalScore}p
+                        </div>
+                      ) : null}
+
+                      <div className="w-full flex items-center justify-between gap-1 mb-1">
+                        <div className="flex items-center gap-1.5">
+                          {sport === 'nfl' && player.teamCode ? (
+                            <PixelHelmet
+                              teamCode={player.teamCode}
+                              size={28}
+                              className="drop-shadow-xs"
+                            />
+                          ) : (
+                            <span className="px-1.5 py-0.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-bold rounded-2xs">
+                              {player.teamCode}
                             </span>
                           )}
-                        </div>
-                      ) : scoringInfo.gameState === 'in' ? (
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
-                            {scoringInfo.activeScore} PTS
-                          </span>
-                          <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
-                            LIVE
+                          <span className="font-pixel text-[10px] font-bold text-[#5c3509] tracking-wider">
+                            {player.teamCode}
                           </span>
                         </div>
+                        <div className="flex items-center gap-1.5 shrink-0 pr-7">
+                          <div className="flex items-center gap-1 font-pixel text-[9px] font-bold text-[#784610] h-5">
+                            <span>#{player.uniformNumber || '—'}</span>
+                            <span className="opacity-70">•</span>
+                            <span className={!isPosAllowed ? 'text-[#b91c1c] font-black underline' : ''}>
+                              {getPlayerDisplayDepth(player)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="my-1 sm:my-2 flex items-center justify-center">
+                        {(() => {
+                          const visualAvatar = getPlayerVisualAvatar(player, playerMatch);
+                          return (
+                            <PixelPlayerSprite
+                              avatar={visualAvatar}
+                              number={visualAvatar.number || player.uniformNumber}
+                              size="md"
+                              withShadow={false}
+                              sport={sport}
+                              animate={false}
+                              isOnFire={false}
+                              injuryStatus={player.injuryStatus}
+                            />
+                          );
+                        })()}
+                      </div>
+
+                      <div className="text-center leading-tight mb-1.5 w-full px-1">
+                        {firstName && (
+                          <div className="font-pixel text-[9px] sm:text-[10px] text-[#784610] uppercase truncate">
+                            {firstName}
+                          </div>
+                        )}
+                        <div className="font-pixel text-xs sm:text-sm font-bold text-[#5c3509] uppercase truncate">
+                          {lastName || player.shortName}
+                        </div>
+                      </div>
+
+                      <div className={`w-full mb-2 py-0.5 px-2 rounded-2xs text-center shadow-2xs border ${
+                        isInjuredOrQuestionable
+                          ? 'bg-[#d1d5db] border-[#9ca3af]'
+                          : 'bg-[#ebd2a4] border-[#c99a57]'
+                      }`}>
+                        {scoringInfo.gameState === 'pre' ? (
+                          <div className="flex flex-col items-center">
+                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#475569]">
+                              0 PTS
+                            </span>
+                            {scoringInfo.hasHistoricalData && (
+                              <span className="font-pixel text-[8px] text-[#784610] font-bold">
+                                Last: {scoringInfo.historicalScore}p
+                              </span>
+                            )}
+                          </div>
+                        ) : scoringInfo.gameState === 'in' ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
+                              {scoringInfo.activeScore} PTS
+                            </span>
+                            <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
+                              LIVE
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
+                              {scoringInfo.activeScore} PTS
+                            </span>
+                            <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
+                              FINAL
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {isGameEnded ? (
+                        <button
+                          type="button"
+                          disabled
+                          className="touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 bg-[#78716c] text-[#f5f5f4] border-2 border-[#44403c] font-pixel text-[10px] sm:text-xs rounded-xs cursor-not-allowed text-center flex items-center justify-center gap-1 font-bold opacity-80"
+                        >
+                          <span>🔒</span>
+                          <span>GAME ENDED</span>
+                        </button>
+                      ) : !isPosAllowed ? (
+                        <button
+                          type="button"
+                          disabled
+                          className="touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 bg-[#991b1b] text-[#fef2f2] border-2 border-[#7f1d1d] font-pixel text-[9px] sm:text-[10px] rounded-xs cursor-not-allowed text-center flex items-center justify-center gap-1 font-bold opacity-85"
+                        >
+                          <span>✕</span>
+                          <span>NEEDS {currentSlotDef.positionReq}</span>
+                        </button>
                       ) : (
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
-                            {scoringInfo.activeScore} PTS
-                          </span>
-                          <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
-                            FINAL
-                          </span>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (player.injuryStatus === 'I') {
+                              setPendingInjuredPlayer(player);
+                            } else {
+                              onSelectPlayer(player, activeSlot);
+                              onClose();
+                            }
+                          }}
+                          className={`touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 text-white border-2 font-pixel text-[10px] sm:text-xs rounded-xs cursor-pointer active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-1.5 font-bold ${
+                            player.injuryStatus === 'I'
+                              ? 'bg-[#dc2626] hover:bg-[#b91c1c] border-[#7f1d1d] shadow-[0_2px_0_0_#450a0a]'
+                              : 'bg-[#15803d] hover:bg-[#16a34a] border-[#052e16] shadow-[0_2px_0_0_#022c11]'
+                          }`}
+                        >
+                          <span>{player.injuryStatus === 'I' ? '⚠️' : '⭐'}</span>
+                          <span>{isCurrentSlot ? 'SELECTED' : isSelectedElsewhere ? 'SWAP' : player.injuryStatus === 'I' ? 'INJURED' : 'PICK'}</span>
+                        </button>
                       )}
                     </div>
-
-                    {isGameEnded ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 bg-[#78716c] text-[#f5f5f4] border-2 border-[#44403c] font-pixel text-[10px] sm:text-xs rounded-xs cursor-not-allowed text-center flex items-center justify-center gap-1 font-bold opacity-80"
-                      >
-                        <span>🔒</span>
-                        <span>GAME ENDED</span>
-                      </button>
-                    ) : !isPosAllowed ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 bg-[#991b1b] text-[#fef2f2] border-2 border-[#7f1d1d] font-pixel text-[9px] sm:text-[10px] rounded-xs cursor-not-allowed text-center flex items-center justify-center gap-1 font-bold opacity-85"
-                      >
-                        <span>✕</span>
-                        <span>NEEDS {currentSlotDef.positionReq}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectPlayer(player, activeSlot);
-                          onClose();
-                        }}
-                        className="touch-manipulation w-full shrink-0 min-h-[36px] py-1.5 px-2 bg-[#15803d] hover:bg-[#16a34a] text-white border-2 border-[#052e16] font-pixel text-[10px] sm:text-xs rounded-xs cursor-pointer shadow-[0_2px_0_0_#022c11] active:translate-y-0.5 transition-all text-center flex items-center justify-center gap-1.5 font-bold"
-                      >
-                        <span>⭐</span>
-                        <span>{isCurrentSlot ? 'SELECTED' : isSelectedElsewhere ? 'SWAP' : 'PICK'}</span>
-                      </button>
-                    )}
                   </div>
                 );
               })}
             </div>
           )}
         </div>
+
+        {/* Injury Warning Confirmation Modal */}
+        {pendingInjuredPlayer && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-100">
+            <div className="relative w-full max-w-sm bg-[#fae5b8] border-4 border-[#b91c1c] shadow-[0_8px_0_0_#450a0a] p-4 rounded-xs text-center flex flex-col gap-3">
+              <div className="flex items-center justify-center gap-2 text-[#b91c1c] font-pixel text-sm sm:text-base font-black uppercase">
+                <span className="text-xl">⚠️</span>
+                <span>INJURY REPORT ALERT</span>
+              </div>
+              <div className="bg-[#fef2f2] border-2 border-[#f87171] p-3 rounded-xs text-center">
+                <div className="flex items-center justify-center gap-2 mb-1.5">
+                  <span className="px-2 py-0.5 bg-[#dc2626] text-white font-pixel text-[10px] font-black rounded-2xs border border-[#991b1b] shadow-xs">
+                    I
+                  </span>
+                  <span className="font-pixel text-xs sm:text-sm font-bold text-[#7f1d1d] uppercase">
+                    {pendingInjuredPlayer.displayName}
+                  </span>
+                </div>
+                <div className="font-retro text-xs text-[#991b1b] font-bold">
+                  {pendingInjuredPlayer.injuryDetail || 'Player is listed as OUT / INJURED.'}
+                </div>
+                <div className="font-retro text-[11px] text-[#451a03] mt-2 bg-[#fed7aa] p-1.5 rounded-2xs border border-[#f97316]">
+                  Starting an injured star may result in 0 fantasy points!
+                </div>
+              </div>
+              <div className="flex gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingInjuredPlayer(null)}
+                  className="flex-1 py-2 px-3 bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#1e293b] border-2 border-[#64748b] font-pixel text-[10px] sm:text-xs rounded-xs font-bold cursor-pointer transition-all active:translate-y-0.5"
+                >
+                  CANCEL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const chosen = pendingInjuredPlayer;
+                    setPendingInjuredPlayer(null);
+                    onSelectPlayer(chosen, activeSlot);
+                    onClose();
+                  }}
+                  className="flex-1 py-2 px-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white border-2 border-[#7f1d1d] font-pixel text-[10px] sm:text-xs rounded-xs font-bold cursor-pointer transition-all active:translate-y-0.5 shadow-xs"
+                >
+                  START ANYWAY
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

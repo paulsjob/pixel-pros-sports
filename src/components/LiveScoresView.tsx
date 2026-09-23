@@ -4,6 +4,7 @@ import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { Activity, Flame, ChevronDown, ChevronUp, Wrench, Trophy } from 'lucide-react';
 import { formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
 import { getCurrentNFLWeek } from '../lib/espnSync';
+import { sortMatchesByKickoffAndStatus } from '../utils/teamData';
 
 interface LiveScoresViewProps {
   matches: Match[];
@@ -106,21 +107,13 @@ export const LiveScoresView: React.FC<LiveScoresViewProps> = ({
     .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))
     .slice(0, 20);
   const currentNFLWeek = getCurrentNFLWeek();
-  const safeMatches = (Array.isArray(matches) ? matches : [])
-    .filter((m) => {
+  const safeMatches = sortMatchesByKickoffAndStatus(
+    (Array.isArray(matches) ? matches : []).filter((m) => {
       // STRICT FILTER: No games apart from the week that we are on (no past weeks, no future weeks)
       if (m.sportId === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
       return true;
     })
-    .sort((a, b) => {
-      if (a.status === 'live' && b.status !== 'live') return -1;
-      if (b.status === 'live' && a.status !== 'live') return 1;
-      if (a.status === 'upcoming' && b.status === 'final') return -1;
-      if (b.status === 'upcoming' && a.status === 'final') return 1;
-      const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
-      const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
-      return dateA - dateB;
-    });
+  );
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-4 box-border space-y-4 sm:space-y-6 animate-in fade-in duration-150">

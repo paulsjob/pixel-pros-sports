@@ -1,7 +1,8 @@
 import { Match, Competitor, SportId } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS, DEFAULT_NFL_MATCHES } from '../utils/teamData';
+import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS, DEFAULT_NFL_MATCHES, sortMatchesByKickoffAndStatus } from '../utils/teamData';
 import { getNBATeamFullName, getNBATeamColors, DEFAULT_NBA_COMPETITORS } from '../utils/nbaTeamData';
+import { isRetiredPlayer, ROSTER_CACHE_VERSION } from '../data/nflRosterManifest';
 import { runPureDynamicDepthChartSync } from './espnDepthChartSync';
 
 function getSkinTone(_name?: string): string {
@@ -89,12 +90,12 @@ export function getCurrentNFLWeek(): number {
     const saved = localStorage.getItem('pixel_pros_current_nfl_week');
     if (saved) {
       const parsed = parseInt(saved, 10);
-      if (!isNaN(parsed) && parsed > 0) return parsed;
+      if (!isNaN(parsed) && parsed >= 3) return parsed;
     }
   } catch {
     // ignore
   }
-  return 2; // Default to active NFL Week 2
+  return 3; // Default to active NFL Week 3
 }
 
 export function setCurrentNFLWeek(weekNumber: number) {
@@ -147,16 +148,16 @@ function calculateNBAPoints(pts: number, threes: number, reb: number, ast: numbe
  * NOTE: Strictly enforces CURRENT WEEK ONLY for NFL — no past weeks, no future weeks.
  */
 export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResult> {
-  // Query ESPN scoreboard directly without hardcoding a stale week; ESPN authoritatively holds
-  // the current active week until the final game of that week (e.g. Monday Night Football) completes!
+  // Query ESPN scoreboard for the current active week
+  const activeWeek = getCurrentNFLWeek();
   const url = sport === 'nba'
     ? ESPN_NBA_SCOREBOARD
-    : ESPN_NFL_SCOREBOARD;
+    : `${ESPN_NFL_SCOREBOARD}?week=${activeWeek}`;
   const sportLabel = sport.toUpperCase();
 
   const proxyUrl = sport === 'nba'
     ? '/api/espn/scoreboard?sport=nba'
-    : '/api/espn/scoreboard?sport=nfl';
+    : `/api/espn/scoreboard?sport=nfl&week=${activeWeek}`;
 
   try {
     let resp: Response;
@@ -722,22 +723,18 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
       }
     }
 
-    // Sort matches so live games (e.g. DET @ BUF) are front and center!
-    parsedMatches.sort((a, b) => {
-      if (a.status === 'live' && b.status !== 'live') return -1;
-      if (b.status === 'live' && a.status !== 'live') return 1;
-      if (a.status === 'upcoming' && b.status === 'final') return -1;
-      if (b.status === 'upcoming' && a.status === 'final') return 1;
-      const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
-      const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
-      return dateA - dateB;
-    });
+    // Sort matches deterministically using standard kickoff order with tie-breakers
+    const sortedMatches = sortMatchesByKickoffAndStatus(parsedMatches);
+
+    // Filter out any retired players from competitor results
+    const cleanCompetitors = parsedCompetitors.filter((c) => !isRetiredPlayer(c.displayName));
 
     // Save into localStorage for instant offline access and fallback
     try {
-      localStorage.setItem(`pixel_pros_synced_matches_${sport}`, JSON.stringify(parsedMatches));
-      if (parsedCompetitors.length > 0) {
-        localStorage.setItem(`pixel_pros_synced_competitors_${sport}`, JSON.stringify(parsedCompetitors));
+      localStorage.setItem(`pixel_pros_synced_matches_${sport}`, JSON.stringify(sortedMatches));
+      if (cleanCompetitors.length > 0) {
+        localStorage.setItem(`pixel_pros_synced_competitors_${sport}`, JSON.stringify(cleanCompetitors));
+        localStorage.setItem('pixel_pros_roster_cache_version', ROSTER_CACHE_VERSION);
       }
       setLastESPNSyncTime(sport);
     } catch {

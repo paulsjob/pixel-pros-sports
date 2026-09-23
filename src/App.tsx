@@ -17,12 +17,22 @@ import {
   fetchAllActiveRooms,
   registerActiveRoom,
   registerActiveUser,
+  archiveRoom,
+  unarchiveRoom,
   ActiveRoomSummary,
   resolveSupabaseAnonKey,
   setCustomSupabaseKey,
   checkSupabaseConfigured,
 } from './lib/supabaseClient';
 import { MyTeamView } from './components/MyTeamView';
+
+export function getEffectiveRoomCodeForSlate(rCode: string, slateId?: string): string {
+  const base = (rCode || 'COUCH').trim().toUpperCase();
+  if (!slateId || slateId === 'SUPERSTARS' || slateId === 'ALL') {
+    return base;
+  }
+  return `${base}__${slateId.replace('@', '_')}`;
+}
 import { LeaderboardView } from './components/LeaderboardView';
 import { FamilySquadSwitcher } from './components/FamilySquadSwitcher';
 import { SimpleRulesView } from './components/SimpleRulesView';
@@ -34,9 +44,11 @@ import { PixelShieldIcon } from './components/PixelBadges';
 import { SportSwitcher } from './components/SportSwitcher';
 import { CommissionerModal } from './components/CommissionerModal';
 import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
-import { DEFAULT_NFL_MATCHES, getPlayerScoringDisplay } from './utils/teamData';
-import { DEFAULT_NBA_MATCHES } from './utils/nbaTeamData';
-import { Users, Trophy, HelpCircle, Share2, ShieldAlert, Plus } from 'lucide-react';
+import { executeCompleteWeeklyRescan, isWeeklyRescanDue } from './lib/rescanEngine';
+import { DEFAULT_NFL_MATCHES, DEFAULT_NFL_COMPETITORS, sortMatchesByKickoffAndStatus, getPlayerScoringDisplay } from './utils/teamData';
+import { DEFAULT_NBA_MATCHES, DEFAULT_NBA_COMPETITORS } from './utils/nbaTeamData';
+import { ROSTER_CACHE_VERSION } from './data/nflRosterManifest';
+import { Users, Trophy, HelpCircle, Share2, ShieldAlert, Plus, X } from 'lucide-react';
 
 export default function App() {
   const [currentSport, setCurrentSport] = useState<SportId>(() => {
@@ -89,13 +101,20 @@ export default function App() {
   const [roster, setRoster] = useState<Competitor[]>(() => {
     try {
       const sport = (localStorage.getItem('pixel_pros_sport') as SportId) || 'nfl';
-      const cached = localStorage.getItem(`pixel_pros_synced_competitors_${sport}`);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const version = localStorage.getItem('pixel_pros_roster_cache_version');
+      if (version === ROSTER_CACHE_VERSION) {
+        const cached = localStorage.getItem(`pixel_pros_synced_competitors_${sport}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return deduplicateCompetitors(parsed);
+        }
+      } else {
+        localStorage.removeItem('pixel_pros_synced_competitors_nfl');
+        localStorage.removeItem('pixel_pros_synced_competitors_nba');
+        localStorage.setItem('pixel_pros_roster_cache_version', ROSTER_CACHE_VERSION);
       }
     } catch {}
-    return [];
+    return currentSport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
   });
   const rosterRef = useRef<Competitor[]>([]);
   rosterRef.current = roster;
@@ -106,10 +125,10 @@ export default function App() {
       const cached = localStorage.getItem(`pixel_pros_synced_matches_${sport}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return sortMatchesByKickoffAndStatus(parsed);
       }
     } catch {}
-    return currentSport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES;
+    return sortMatchesByKickoffAndStatus(currentSport === 'nba' ? DEFAULT_NBA_MATCHES : DEFAULT_NFL_MATCHES);
   });
   const [roomRosters, setRoomRosters] = useState<UserRoster[]>([]);
 
@@ -149,6 +168,13 @@ export default function App() {
   const [availableRooms, setAvailableRooms] = useState<ActiveRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [activeSlateId, setActiveSlateId] = useState<string>('SUPERSTARS');
+  const activeSlateIdRef = useRef<string>(activeSlateId);
+  const [showArchivedInSwitcher, setShowArchivedInSwitcher] = useState<boolean>(false);
+
+  useEffect(() => {
+    activeSlateIdRef.current = activeSlateId;
+  }, [activeSlateId]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -174,32 +200,54 @@ export default function App() {
   }, [isRoomModalOpen, roomCode, currentSport, roomRosters]);
 
   const consolidatedCouches = useMemo(() => {
-    const map = new Map<string, { roomCode: string; sport: SportId; squadCount: number; squadNames: string[] }>();
+    const map = new Map<string, { roomCode: string; sport: SportId; squadCount: number; squadNames: string[]; isArchived: boolean }>();
 
     // 1. Include ALL available rooms stored on the database
     availableRooms.forEach((r) => {
-      const code = (r.roomCode || '').trim().toUpperCase();
+      const rawCode = (r.roomCode || '').trim().toUpperCase();
+      // Strip slate sub-code suffix so slates roll up to the league room
+      const code = rawCode.includes('__') ? rawCode.split('__')[0] : rawCode;
       if (!code) return;
-      map.set(code, {
-        roomCode: code,
-        sport: r.sport || currentSport,
-        squadCount: r.squadCount || 0,
-        squadNames: r.squadNames || [],
-      });
+
+      const localArchived = typeof localStorage !== 'undefined'
+        ? localStorage.getItem(`pixel_pros_room_archived_${code}_${r.sport || currentSport}`)
+        : null;
+      const isArchived = Boolean(r.isArchived || localArchived === 'true');
+
+      const existing = map.get(code);
+      if (existing) {
+        existing.squadCount = Math.max(existing.squadCount, r.squadCount || 0);
+        existing.squadNames = Array.from(new Set([...existing.squadNames, ...(r.squadNames || [])]));
+        if (isArchived) existing.isArchived = true;
+      } else {
+        map.set(code, {
+          roomCode: code,
+          sport: r.sport || currentSport,
+          squadCount: r.squadCount || 0,
+          squadNames: r.squadNames || [],
+          isArchived,
+        });
+      }
     });
 
     // 2. Ensure current room is always present with its current squads
-    const currentCode = (roomCode || '').trim().toUpperCase();
+    const rawCurrentCode = (roomCode || '').trim().toUpperCase();
+    const currentCode = rawCurrentCode.includes('__') ? rawCurrentCode.split('__')[0] : rawCurrentCode;
     if (currentCode) {
       const existing = map.get(currentCode);
       const activeSquads = roomRosters
         .filter((r) => !isGhostUser(r.user_name))
         .map((r) => r.user_name.toUpperCase());
+      const localArchived = typeof localStorage !== 'undefined'
+        ? localStorage.getItem(`pixel_pros_room_archived_${currentCode}_${currentSport}`)
+        : null;
+
       map.set(currentCode, {
         roomCode: currentCode,
         sport: currentSport,
         squadCount: Math.max(existing?.squadCount || 0, activeSquads.length),
         squadNames: Array.from(new Set([...(existing?.squadNames || []), ...activeSquads])),
+        isArchived: Boolean(existing?.isArchived || localArchived === 'true'),
       });
     }
 
@@ -211,6 +259,7 @@ export default function App() {
         sport: currentSport,
         squadCount: 0,
         squadNames: [],
+        isArchived: false,
       });
     }
 
@@ -225,12 +274,21 @@ export default function App() {
     });
   }, [availableRooms, currentSport, roomCode, roomRosters]);
 
+  // Archived rooms should NOT show up in the main SWITCH ROOM box!
+  const activeCouches = useMemo(() => {
+    return consolidatedCouches.filter((c) => !c.isArchived);
+  }, [consolidatedCouches]);
+
+  const archivedCouches = useMemo(() => {
+    return consolidatedCouches.filter((c) => Boolean(c.isArchived));
+  }, [consolidatedCouches]);
+
   const previousRoom = useMemo(() => {
     const defaultCode = currentSport === 'nba' ? 'HOOPS' : 'COUCH';
-    const alt = consolidatedCouches.find((c) => c.roomCode.toUpperCase() !== roomCode.toUpperCase());
+    const alt = activeCouches.find((c) => c.roomCode.toUpperCase() !== roomCode.toUpperCase());
     if (alt) return alt.roomCode;
     return defaultCode;
-  }, [consolidatedCouches, roomCode, currentSport]);
+  }, [activeCouches, roomCode, currentSport]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -343,12 +401,15 @@ export default function App() {
       uName: string,
       slotsObj: SquadSlots,
       lockedFlag?: boolean,
-      targetSport?: SportId
+      targetSport?: SportId,
+      slateIdOverride?: string
     ) => {
       const activeSport = targetSport || currentSport;
-      const normalizedRoom = (rCode || (activeSport === 'nba' ? 'HOOPS' : 'COUCH')).trim().toUpperCase();
+      const baseRoom = (rCode || (activeSport === 'nba' ? 'HOOPS' : 'COUCH')).trim().toUpperCase();
       const cleanName = (uName || '').trim().toUpperCase();
       if (!cleanName) return;
+
+      const effectiveRoom = getEffectiveRoomCodeForSlate(baseRoom, slateIdOverride || activeSlateId);
 
       const s1 = slotsObj.star1?.id || '';
       const s2 = slotsObj.star2?.id || '';
@@ -359,11 +420,11 @@ export default function App() {
       const rawLocked = typeof lockedFlag === 'boolean' ? lockedFlag : isLocked;
       const guardedLocked = hasThreeDistinct && Boolean(rawLocked);
 
-      setSquadLockState(normalizedRoom, cleanName, guardedLocked, activeSport);
-      localStorage.setItem(`pixel_pros_roster_${activeSport}_${normalizedRoom}_${cleanName}`, JSON.stringify([s1, s2, s3]));
+      setSquadLockState(effectiveRoom, cleanName, guardedLocked, activeSport);
+      localStorage.setItem(`pixel_pros_roster_${activeSport}_${effectiveRoom}_${cleanName}`, JSON.stringify([s1, s2, s3]));
 
       const result = await upsertUserRoster(
-        normalizedRoom,
+        effectiveRoom,
         cleanName,
         s1,
         s2,
@@ -377,11 +438,102 @@ export default function App() {
         showToast('Failed to sync squad to room!');
       }
 
-      const updated = await fetchRoomRosters(normalizedRoom, activeSport);
-      setRoomRosters(updated);
+      // Immediately reflect the updated roster in local roomRosters state
+      setRoomRosters((prev) => {
+        const next = prev.filter(
+          (r) => !((r.room_code || '').toUpperCase() === effectiveRoom && (r.user_name || '').toUpperCase() === cleanName)
+        );
+        next.push({
+          id: `roster_${Date.now()}`,
+          room_code: effectiveRoom,
+          user_name: cleanName,
+          sport: activeSport,
+          star_1_id: s1,
+          star_2_id: s2,
+          star_3_id: s3,
+          is_locked: guardedLocked,
+          device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
+          updated_at: new Date().toISOString(),
+        });
+        return next;
+      });
+
+      const updated = await fetchRoomRosters(baseRoom, activeSport);
+      if (effectiveRoom !== baseRoom) {
+        try {
+          const gameRosters = await fetchRoomRosters(effectiveRoom, activeSport);
+          setRoomRosters((prev) => {
+            const map = new Map<string, UserRoster>();
+            for (const r of updated) map.set(`${r.room_code}__${r.user_name}`, r);
+            for (const r of gameRosters) map.set(`${r.room_code}__${r.user_name}`, r);
+            for (const r of prev) {
+              const k = `${r.room_code}__${r.user_name}`;
+              if (!map.has(k)) map.set(k, r);
+            }
+            return Array.from(map.values());
+          });
+        } catch {
+          setRoomRosters(updated);
+        }
+      } else {
+        setRoomRosters(updated);
+      }
     },
-    [isLocked, currentSport]
+    [isLocked, currentSport, activeSlateId]
   );
+
+  const handleSelectSlate = (newSlate: string) => {
+    setActiveSlateId(newSlate);
+    const baseRoom = (roomCode || 'COUCH').toUpperCase();
+    const targetRoom = getEffectiveRoomCodeForSlate(baseRoom, newSlate);
+    const cleanUser = (userName || '').trim().toUpperCase();
+
+    if (!cleanUser) {
+      setSquadSlots({ star1: null, star2: null, star3: null });
+      setIsLocked(false);
+      return;
+    }
+
+    const dbRoster = roomRosters.find(
+      (r) => (r.room_code || '').toUpperCase() === targetRoom && (r.user_name || '').toUpperCase() === cleanUser
+    );
+
+    const masterList = rosterRef.current.length > 0 ? rosterRef.current : roster;
+    let s1: Competitor | null = null;
+    let s2: Competitor | null = null;
+    let s3: Competitor | null = null;
+    let initialLock = false;
+
+    if (dbRoster) {
+      s1 = masterList.find((a) => a.id === dbRoster.star_1_id) || null;
+      s2 = masterList.find((a) => a.id === dbRoster.star_2_id) || null;
+      s3 = masterList.find((a) => a.id === dbRoster.star_3_id) || null;
+      initialLock = Boolean(dbRoster.is_locked || dbRoster.device_id === 'LOCKED');
+    } else {
+      try {
+        const cached = localStorage.getItem(`pixel_pros_roster_${currentSport}_${targetRoom}_${cleanUser}`);
+        if (cached) {
+          const ids = JSON.parse(cached);
+          if (Array.isArray(ids)) {
+            s1 = masterList.find((a) => a.id === ids[0]) || null;
+            s2 = masterList.find((a) => a.id === ids[1]) || null;
+            s3 = masterList.find((a) => a.id === ids[2]) || null;
+          }
+        }
+      } catch {}
+    }
+
+    const filledCount = [s1, s2, s3].filter(Boolean).length;
+    const finalLock = filledCount === 3 && initialLock;
+
+    setSquadSlots({ star1: s1, star2: s2, star3: s3 });
+    setIsLocked(finalLock);
+    showToast(
+      newSlate === 'SUPERSTARS'
+        ? `Switched to ⭐ WEEKLY SUPERSTARS!`
+        : `Switched to Game Battle: ${newSlate}!`
+    );
+  };
 
   const handleSelectSquad = async (squadName: string) => {
     const cleanName = squadName.trim().toUpperCase();
@@ -390,15 +542,18 @@ export default function App() {
     setUserName(cleanName);
     localStorage.setItem(`pixel_pros_user_${currentSport}_${roomCode}`, cleanName);
 
+    const baseRoom = (roomCode || 'COUCH').toUpperCase();
+    const targetRoom = getEffectiveRoomCodeForSlate(baseRoom, activeSlateId);
+
     let existingRoster = roomRosters.find(
-      (r) => (r.room_code || '').toUpperCase() === roomCode && r.user_name.toUpperCase() === cleanName
+      (r) => (r.room_code || '').toUpperCase() === targetRoom && r.user_name.toUpperCase() === cleanName
     );
 
     if (!existingRoster) {
-      const freshRosters = await fetchRoomRosters(roomCode, currentSport);
+      const freshRosters = await fetchRoomRosters(baseRoom, currentSport);
       setRoomRosters(freshRosters);
       existingRoster = freshRosters.find(
-        (r) => (r.room_code || '').toUpperCase() === roomCode && r.user_name.toUpperCase() === cleanName
+        (r) => (r.room_code || '').toUpperCase() === targetRoom && r.user_name.toUpperCase() === cleanName
       );
     }
 
@@ -413,6 +568,19 @@ export default function App() {
       s2 = masterList.find((p) => p.id === existingRoster!.star_2_id) || null;
       s3 = masterList.find((p) => p.id === existingRoster!.star_3_id) || null;
       isLockedFromDb = Boolean(existingRoster.is_locked || existingRoster.device_id === 'LOCKED');
+    } else {
+      try {
+        const cached = localStorage.getItem(`pixel_pros_roster_${currentSport}_${targetRoom}_${cleanName}`);
+        if (cached) {
+          const ids = JSON.parse(cached);
+          if (Array.isArray(ids)) {
+            const masterList = rosterRef.current.length > 0 ? rosterRef.current : roster;
+            s1 = masterList.find((p) => p.id === ids[0]) || null;
+            s2 = masterList.find((p) => p.id === ids[1]) || null;
+            s3 = masterList.find((p) => p.id === ids[2]) || null;
+          }
+        }
+      } catch {}
     }
 
     const filledStars = [s1, s2, s3].filter(Boolean) as Competitor[];
@@ -422,7 +590,7 @@ export default function App() {
 
     setSquadSlots({ star1: s1, star2: s2, star3: s3 });
     setIsLocked(squadLocked);
-    setSquadLockState(roomCode, cleanName, squadLocked, currentSport);
+    setSquadLockState(targetRoom, cleanName, squadLocked, currentSport);
     setCurrentTab('squad');
     showToast(`Switched active squad to "${cleanName}"`);
   };
@@ -566,8 +734,9 @@ export default function App() {
       const newCount = [next.star1, next.star2, next.star3].filter(Boolean).length;
       const willBeLocked = newCount === 3 && isLocked;
 
+      const targetRoom = getEffectiveRoomCodeForSlate(roomCode, activeSlateId);
       setIsLocked(willBeLocked);
-      setSquadLockState(roomCode, userName, willBeLocked, currentSport);
+      setSquadLockState(targetRoom, userName, willBeLocked, currentSport);
       syncLineupToSupabase(roomCode, userName, next, willBeLocked);
       return next;
     });
@@ -578,10 +747,11 @@ export default function App() {
 
   const handleClearSlot = (slotKey: ActiveSlot) => {
     if (!userName) return;
+    const targetRoom = getEffectiveRoomCodeForSlate(roomCode, activeSlateId);
     setSquadSlots((prev) => {
       const next = { ...prev, [slotKey]: null };
       setIsLocked(false);
-      setSquadLockState(roomCode, userName, false, currentSport);
+      setSquadLockState(targetRoom, userName, false, currentSport);
       syncLineupToSupabase(roomCode, userName, next, false);
       return next;
     });
@@ -600,9 +770,10 @@ export default function App() {
       return;
     }
 
+    const targetRoom = getEffectiveRoomCodeForSlate(roomCode, activeSlateId);
     const nextLocked = !isLocked && filledCount === 3;
     setIsLocked(nextLocked);
-    setSquadLockState(roomCode, userName, nextLocked, currentSport);
+    setSquadLockState(targetRoom, userName, nextLocked, currentSport);
     syncLineupToSupabase(roomCode, userName, squadSlots, nextLocked);
 
     showToast(nextLocked ? `PICKS LOCKED for ${userName}!` : `PICKS UNLOCKED for ${userName}!`);
@@ -669,20 +840,52 @@ export default function App() {
         let initialLock = false;
 
         if (activeUserClean) {
-          const dbRoster = validRosters.find((r) => r.user_name.toUpperCase() === activeUserClean);
+          const targetRoom = getEffectiveRoomCodeForSlate(roomCode, activeSlateId);
+          let dbRoster = validRosters.find(
+            (r) => (r.room_code || '').toUpperCase() === targetRoom && r.user_name.toUpperCase() === activeUserClean
+          );
+          if (!dbRoster && targetRoom !== roomCode) {
+            try {
+              const gameRosters = await fetchRoomRosters(targetRoom, currentSport);
+              dbRoster = gameRosters.find(
+                (r) => (r.room_code || '').toUpperCase() === targetRoom && r.user_name.toUpperCase() === activeUserClean
+              );
+            } catch {}
+          }
           if (dbRoster) {
             s1 = (compData || []).find((a) => a.id === dbRoster.star_1_id) || null;
             s2 = (compData || []).find((a) => a.id === dbRoster.star_2_id) || null;
             s3 = (compData || []).find((a) => a.id === dbRoster.star_3_id) || null;
             initialLock = Boolean(dbRoster.is_locked || dbRoster.device_id === 'LOCKED');
+          } else {
+            // Check localStorage
+            try {
+              const cached = localStorage.getItem(`pixel_pros_roster_${currentSport}_${targetRoom}_${activeUserClean}`);
+              if (cached) {
+                const ids = JSON.parse(cached);
+                if (Array.isArray(ids)) {
+                  s1 = (compData || []).find((a) => a.id === ids[0]) || null;
+                  s2 = (compData || []).find((a) => a.id === ids[1]) || null;
+                  s3 = (compData || []).find((a) => a.id === ids[2]) || null;
+                }
+              }
+            } catch {}
           }
         }
 
         const filledCount = [s1, s2, s3].filter(Boolean).length;
         const finalLock = activeUserClean ? filledCount === 3 && initialLock : false;
 
-        setSquadSlots({ star1: s1, star2: s2, star3: s3 });
-        setIsLocked(finalLock);
+        setSquadSlots((prev) => {
+          if (s1 || s2 || s3) {
+            return { star1: s1, star2: s2, star3: s3 };
+          }
+          if (prev.star1 || prev.star2 || prev.star3) {
+            return prev;
+          }
+          return { star1: null, star2: null, star3: null };
+        });
+        setIsLocked((prev) => (s1 || s2 || s3 ? finalLock : prev));
       } catch (err) {
         console.warn('Room sync error:', err);
       }
@@ -692,7 +895,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [roomCode, currentSport, refreshTick]);
+  }, [roomCode, currentSport, refreshTick, activeSlateId]);
 
   useEffect(() => {
     const unsubscribeScores = subscribeToRealtimeScores(
@@ -742,6 +945,49 @@ export default function App() {
     };
   }, [currentSport]);
 
+  // Tuesday 4:00 AM EST Automated Rescan Handler
+  useEffect(() => {
+    // 1. Check if rescan is due on initial app mount
+    const lastRescan = localStorage.getItem('pixel_pros_last_tuesday_rescan');
+    if (isWeeklyRescanDue(lastRescan)) {
+      executeCompleteWeeklyRescan().then((res) => {
+        if (res.success) {
+          setIsLocked(false);
+          setRefreshTick((t) => t + 1);
+          showToast(`⚡ Tuesday 4:00 AM Rescan: Week ${res.activeWeek} is open for picks!`);
+        }
+      });
+    }
+
+    // 2. Custom event listener from client-side triggered rescan
+    const handleRescanEvent = (e: any) => {
+      setIsLocked(false);
+      setRefreshTick((t) => t + 1);
+      const wk = e.detail?.week || getCurrentNFLWeek();
+      showToast(`⚡ Tuesday 4:00 AM Rescan: Week ${wk} active! Locks reset.`);
+    };
+    window.addEventListener('pixel_pros_weekly_rescan_completed', handleRescanEvent);
+
+    // 3. SSE event listener from server-side Tuesday 4:00 AM automated scheduler
+    let sse: EventSource | null = null;
+    try {
+      sse = new EventSource('/api/events');
+      sse.addEventListener('tuesday_rescan_completed', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          setIsLocked(false);
+          setRefreshTick((t) => t + 1);
+          showToast(`⚡ Tuesday 4:00 AM Rescan: Week ${data.activeWeek} is active! Picks unlocked.`);
+        } catch {}
+      });
+    } catch {}
+
+    return () => {
+      window.removeEventListener('pixel_pros_weekly_rescan_completed', handleRescanEvent);
+      if (sse) sse.close();
+    };
+  }, []);
+
   useEffect(() => {
     const handleMatchesUpdate = (e: any) => {
       if (e.detail?.matches && (!e.detail?.sport || e.detail?.sport === currentSport)) {
@@ -751,15 +997,7 @@ export default function App() {
           if (currentSport === 'nfl' && m.week && m.week !== currentNFLWeek) return false;
           return true;
         });
-        const sorted = [...filtered].sort((a, b) => {
-          if (a.status === 'live' && b.status !== 'live') return -1;
-          if (b.status === 'live' && a.status !== 'live') return 1;
-          if (a.status === 'upcoming' && b.status === 'final') return -1;
-          if (b.status === 'upcoming' && a.status === 'final') return 1;
-          const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
-          const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
-          return dateA - dateB;
-        });
+        const sorted = sortMatchesByKickoffAndStatus(filtered);
         setMatches(sorted);
       }
     };
@@ -787,50 +1025,58 @@ export default function App() {
   useEffect(() => {
     const unsubscribeRoom = subscribeToRoomRosters(roomCode, currentSport, async () => {
       const fresh = await fetchRoomRosters(roomCode, currentSport);
-      setRoomRosters(fresh);
+      setRoomRosters((prev) => {
+        const map = new Map<string, UserRoster>();
+        for (const r of prev) map.set(`${r.room_code}__${r.user_name}`, r);
+        for (const r of fresh) map.set(`${r.room_code}__${r.user_name}`, r);
+        return Array.from(map.values());
+      });
 
-      const currentClean = (userNameRef.current || '').trim().toUpperCase();
-      if (currentClean) {
-        const remoteSquad = fresh.find((r) => r.user_name.toUpperCase() === currentClean);
-        if (remoteSquad) {
-          const currentRoster = rosterRef.current;
-          const remoteS1Id = remoteSquad.star_1_id || '';
-          const remoteS2Id = remoteSquad.star_2_id || '';
-          const remoteS3Id = remoteSquad.star_3_id || '';
+      // ONLY sync squadSlots from the roomCode remote squad if the user is actively viewing SUPERSTARS
+      // This prevents remote room events from clobbering the user's active game-slate picks!
+      if (activeSlateIdRef.current === 'SUPERSTARS') {
+        const currentClean = (userNameRef.current || '').trim().toUpperCase();
+        if (currentClean) {
+          const remoteSquad = fresh.find((r) => r.user_name.toUpperCase() === currentClean);
+          if (remoteSquad) {
+            const currentRoster = rosterRef.current;
+            const remoteS1Id = remoteSquad.star_1_id || '';
+            const remoteS2Id = remoteSquad.star_2_id || '';
+            const remoteS3Id = remoteSquad.star_3_id || '';
 
-          // Re-sync squadSlots: update IDs if remote changed, and always refresh player stats/scores
-          setSquadSlots((prev) => {
-            const curS1 = prev.star1?.id || '';
-            const curS2 = prev.star2?.id || '';
-            const curS3 = prev.star3?.id || '';
-            const hasChanged = curS1 !== remoteS1Id || curS2 !== remoteS2Id || curS3 !== remoteS3Id;
-            if (hasChanged) {
-              return {
-                star1: currentRoster.find((p) => p.id === remoteS1Id) || null,
-                star2: currentRoster.find((p) => p.id === remoteS2Id) || null,
-                star3: currentRoster.find((p) => p.id === remoteS3Id) || null,
-              };
-            }
-            const freshS1 = prev.star1 ? currentRoster.find((p) => p.id === prev.star1!.id) || prev.star1 : null;
-            const freshS2 = prev.star2 ? currentRoster.find((p) => p.id === prev.star2!.id) || prev.star2 : null;
-            const freshS3 = prev.star3 ? currentRoster.find((p) => p.id === prev.star3!.id) || prev.star3 : null;
-            if (freshS1 !== prev.star1 || freshS2 !== prev.star2 || freshS3 !== prev.star3) {
-              return { star1: freshS1, star2: freshS2, star3: freshS3 };
-            }
-            return prev;
-          });
+            // Re-sync squadSlots: update IDs if remote changed, and always refresh player stats/scores
+            setSquadSlots((prev) => {
+              const curS1 = prev.star1?.id || '';
+              const curS2 = prev.star2?.id || '';
+              const curS3 = prev.star3?.id || '';
+              const hasChanged = curS1 !== remoteS1Id || curS2 !== remoteS2Id || curS3 !== remoteS3Id;
+              if (hasChanged) {
+                return {
+                  star1: currentRoster.find((p) => p.id === remoteS1Id) || null,
+                  star2: currentRoster.find((p) => p.id === remoteS2Id) || null,
+                  star3: currentRoster.find((p) => p.id === remoteS3Id) || null,
+                };
+              }
+              const freshS1 = prev.star1 ? currentRoster.find((p) => p.id === prev.star1!.id) || prev.star1 : null;
+              const freshS2 = prev.star2 ? currentRoster.find((p) => p.id === prev.star2!.id) || prev.star2 : null;
+              const freshS3 = prev.star3 ? currentRoster.find((p) => p.id === prev.star3!.id) || prev.star3 : null;
+              if (freshS1 !== prev.star1 || freshS2 !== prev.star2 || freshS3 !== prev.star3) {
+                return { star1: freshS1, star2: freshS2, star3: freshS3 };
+              }
+              return prev;
+            });
 
-          const isRemoteLocked = Boolean(remoteSquad.is_locked || remoteSquad.device_id === 'LOCKED');
-          setIsLocked((prevLocked) => {
-            if (prevLocked !== isRemoteLocked) {
-              setSquadLockState(roomCode, currentClean, isRemoteLocked, currentSport);
-              return isRemoteLocked;
-            }
-            return prevLocked;
-          });
+            const isRemoteLocked = Boolean(remoteSquad.is_locked || remoteSquad.device_id === 'LOCKED');
+            setIsLocked((prevLocked) => {
+              if (prevLocked !== isRemoteLocked) {
+                setSquadLockState(roomCode, currentClean, isRemoteLocked, currentSport);
+                return isRemoteLocked;
+              }
+              return prevLocked;
+            });
+          }
         }
       }
-      showToast(`ROOM UPDATE in ${roomCode}!`);
     });
 
     return () => {
@@ -887,39 +1133,151 @@ export default function App() {
     squadSlots.star3?.id || '',
   ].filter(Boolean);
 
+  const currentEffectiveRoom = getEffectiveRoomCodeForSlate(roomCode, activeSlateId);
+
   const isCurrentSquadLocked =
     Boolean(userName) &&
     selectedPlayerIdsArray.length === 3 &&
-    Boolean(isLocked || getSquadLockState(roomCode, userName, currentSport));
+    Boolean(isLocked || getSquadLockState(currentEffectiveRoom, userName, currentSport));
 
-  const squadPillsData = roomRosters
-    .filter((r) => !isGhostUser(r.user_name) && (r.room_code || '').toUpperCase() === roomCode)
-    .map((r) => {
-      const s1 = roster.find((p) => p.id === r.star_1_id);
-      const s2 = roster.find((p) => p.id === r.star_2_id);
-      const s3 = roster.find((p) => p.id === r.star_3_id);
+  const squadPillsData = useMemo(() => {
+    const baseCode = (roomCode || 'COUCH').toUpperCase();
+    // Gather all members of this league room across base room and all game slates
+    const memberNames = Array.from(
+      new Set(
+        roomRosters
+          .filter(
+            (r) =>
+              !isGhostUser(r.user_name) &&
+              ((r.room_code || '').toUpperCase() === baseCode ||
+                (r.room_code || '').toUpperCase().startsWith(`${baseCode}__`))
+          )
+          .map((r) => r.user_name.toUpperCase())
+      )
+    );
+
+    if (userName && !memberNames.includes(userName.toUpperCase())) {
+      memberNames.push(userName.toUpperCase());
+    }
+
+    const pills = memberNames.map((uName) => {
+      const isCurrent = userName && uName === userName.toUpperCase();
+      if (isCurrent) {
+        return {
+          userName: uName,
+          isLocked: isCurrentSquadLocked,
+          starCount: filledStars.length,
+          totalScore: userTotalPoints,
+        };
+      }
+
+      const slateRoster = roomRosters.find(
+        (r) =>
+          (r.room_code || '').toUpperCase() === currentEffectiveRoom &&
+          r.user_name.toUpperCase() === uName
+      );
+
+      const s1 = slateRoster ? roster.find((p) => p.id === slateRoster.star_1_id) : null;
+      const s2 = slateRoster ? roster.find((p) => p.id === slateRoster.star_2_id) : null;
+      const s3 = slateRoster ? roster.find((p) => p.id === slateRoster.star_3_id) : null;
       const stars = [s1, s2, s3].filter(Boolean) as Competitor[];
-      const isCurrent = userName && r.user_name.toUpperCase() === userName;
-      const squadLocked = isCurrent
-        ? isCurrentSquadLocked
-        : stars.length === 3 && Boolean(r.is_locked || r.device_id === 'LOCKED' || getSquadLockState(roomCode, r.user_name, currentSport));
+      const squadLocked =
+        stars.length === 3 &&
+        Boolean(
+          slateRoster?.is_locked ||
+            slateRoster?.device_id === 'LOCKED' ||
+            getSquadLockState(currentEffectiveRoom, uName, currentSport)
+        );
 
       return {
-        userName: r.user_name.toUpperCase(),
+        userName: uName,
         isLocked: squadLocked,
         starCount: stars.length,
         totalScore: stars.reduce((sum, p) => sum + getPlayerLivePoints(p), 0),
       };
     });
 
-  if (userName && !squadPillsData.some((s) => s.userName === userName)) {
-    squadPillsData.unshift({
-      userName: userName,
-      isLocked: isCurrentSquadLocked,
-      starCount: filledStars.length,
-      totalScore: userTotalPoints,
+    return pills;
+  }, [
+    roomRosters,
+    roomCode,
+    userName,
+    currentEffectiveRoom,
+    isCurrentSquadLocked,
+    filledStars.length,
+    userTotalPoints,
+    roster,
+    currentSport,
+    getPlayerLivePoints,
+  ]);
+
+  const slatePicksStatus = useMemo(() => {
+    const statusMap: Record<string, { count: number; isLocked: boolean }> = {};
+    const baseCode = (roomCode || 'COUCH').toUpperCase();
+    const cleanUser = (userName || '').trim().toUpperCase();
+
+    if (!cleanUser) return statusMap;
+
+    // Superstars status
+    const superRoster = roomRosters.find(
+      (r) => (r.room_code || '').toUpperCase() === baseCode && r.user_name.toUpperCase() === cleanUser
+    );
+    if (activeSlateId === 'SUPERSTARS') {
+      statusMap['SUPERSTARS'] = {
+        count: filledStars.length,
+        isLocked: isCurrentSquadLocked,
+      };
+    } else {
+      const superPicks = [superRoster?.star_1_id, superRoster?.star_2_id, superRoster?.star_3_id].filter(Boolean);
+      statusMap['SUPERSTARS'] = {
+        count: superPicks.length,
+        isLocked: Boolean(
+          superRoster?.is_locked ||
+            superRoster?.device_id === 'LOCKED' ||
+            getSquadLockState(baseCode, cleanUser, currentSport)
+        ),
+      };
+    }
+
+    // Match slates status
+    matches.forEach((m) => {
+      const away = (m.awayTeamCode || m.away_team || '').toUpperCase();
+      const home = (m.homeTeamCode || m.home_team || '').toUpperCase();
+      const slateKey = `${away}@${home}`;
+      const effectiveR = `${baseCode}__${away}_${home}`;
+
+      if (activeSlateId === slateKey) {
+        statusMap[slateKey] = {
+          count: filledStars.length,
+          isLocked: isCurrentSquadLocked,
+        };
+      } else {
+        const slateRoster = roomRosters.find(
+          (r) => (r.room_code || '').toUpperCase() === effectiveR && r.user_name.toUpperCase() === cleanUser
+        );
+        const picks = [slateRoster?.star_1_id, slateRoster?.star_2_id, slateRoster?.star_3_id].filter(Boolean);
+        statusMap[slateKey] = {
+          count: picks.length,
+          isLocked: Boolean(
+            slateRoster?.is_locked ||
+              slateRoster?.device_id === 'LOCKED' ||
+              getSquadLockState(effectiveR, cleanUser, currentSport)
+          ),
+        };
+      }
     });
-  }
+
+    return statusMap;
+  }, [
+    roomRosters,
+    roomCode,
+    userName,
+    activeSlateId,
+    filledStars.length,
+    isCurrentSquadLocked,
+    currentSport,
+    matches,
+  ]);
 
   const maxSquadScore = squadPillsData.reduce((max, s) => Math.max(max, s.totalScore ?? 0), 0);
 
@@ -1124,7 +1482,7 @@ export default function App() {
         />
 
         {toastMessage && (
-          <div className="fixed bottom-4 left-4 right-4 md:bottom-auto md:top-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 pointer-events-none">
+          <div className="fixed top-14 left-4 right-4 md:top-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 pointer-events-none">
             <div className="bg-[#064e3b] text-[#fae5b8] px-4 py-2 border-2 border-[#10b981] rounded-xs font-pixel text-xs shadow-lg flex items-center justify-center gap-2">
               <span className="font-bold">{toastMessage}</span>
             </div>
@@ -1158,6 +1516,9 @@ export default function App() {
                 isLocked={isCurrentSquadLocked}
                 matches={matches}
                 sport={currentSport}
+                activeSlateId={activeSlateId}
+                onSelectSlate={handleSelectSlate}
+                slatePicksStatus={slatePicksStatus}
                 onCommitUserName={(name) => setUserName(name.toUpperCase())}
                 onCommitRoomCode={handleCommitRoomCode}
                 onSelectSlot={(slotKey) => setActiveSlot(slotKey)}
@@ -1201,20 +1562,46 @@ export default function App() {
         </footer>
 
         {isRulesModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85">
-            <div className="relative w-full max-w-lg bg-[#0b1021] border-4 border-[#1a264a] p-4 text-[#fae5b8]">
-              <div className="flex items-center justify-between border-b-2 border-[#1a264a] pb-2 mb-3">
-                <h2 className="font-pixel text-xs text-[#fae5b8] uppercase font-bold">
-                  {currentSport.toUpperCase()} SCORING RULES
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-xs overflow-y-auto"
+            onClick={() => setIsRulesModalOpen(false)}
+          >
+            <div
+              className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-[#0b1021] border-4 border-[#1a264a] p-3 sm:p-4 text-[#fae5b8] rounded-xs shadow-2xl my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Pinned Sticky Header with Prominent Close Button */}
+              <div className="flex items-center justify-between border-b-2 border-[#1a264a] pb-2 mb-2 shrink-0">
+                <h2 className="font-pixel text-xs sm:text-sm text-[#fae5b8] uppercase font-bold flex items-center gap-1.5">
+                  <span>📖</span>
+                  <span>{currentSport.toUpperCase()} SCORING RULES</span>
                 </h2>
                 <button
+                  type="button"
                   onClick={() => setIsRulesModalOpen(false)}
-                  className="px-2 py-1 bg-[#b91c1c] text-white font-pixel text-xs"
+                  className="touch-manipulation px-2.5 py-1 bg-[#b91c1c] hover:bg-[#dc2626] active:bg-[#991b1b] text-white font-pixel text-xs rounded-xs font-bold cursor-pointer border border-[#ef4444]/60 shadow-xs flex items-center gap-1"
+                  aria-label="Close rules"
                 >
-                  Close
+                  <X size={13} strokeWidth={3} />
+                  <span>CLOSE</span>
                 </button>
               </div>
-              <SimpleRulesView sport={currentSport} />
+
+              {/* Scrollable Rules Content */}
+              <div className="flex-1 overflow-y-auto pr-1">
+                <SimpleRulesView sport={currentSport} />
+              </div>
+
+              {/* Bottom Quick Dismiss for Mobile */}
+              <div className="pt-2 border-t border-[#1a264a] mt-2 shrink-0 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsRulesModalOpen(false)}
+                  className="touch-manipulation px-3 py-1 bg-[#1a2238] hover:bg-[#273552] text-[#93c5fd] font-pixel text-xs rounded-xs border border-[#3b82f6]/40 cursor-pointer"
+                >
+                  GOT IT (CLOSE)
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1229,6 +1616,7 @@ export default function App() {
             selectedPlayerIds={selectedPlayerIdsArray}
             matches={matches}
             sport={currentSport}
+            restrictToMatchPair={activeSlateId === 'SUPERSTARS' ? undefined : activeSlateId}
             onInspectPlayer={(player) => setDetailedPlayer(player)}
             onSelectPlayer={(player, targetSlot) => {
               handleAssignSlot(player, targetSlot);
@@ -1360,54 +1748,60 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-0.5">
-                    {consolidatedCouches.map((c) => {
-                      const isCurrent = (roomCode || '').toUpperCase() === c.roomCode.toUpperCase();
-                      const teamCountLabel = c.squadCount === 1 ? '1 Team' : `${c.squadCount} Teams`;
-                      const icon = c.sport === 'nba' ? '🏀' : '🛋️';
-                      const teamsPreview = c.squadNames && c.squadNames.length > 0 ? c.squadNames.join(', ') : 'No teams yet';
+                    {activeCouches.length === 0 ? (
+                      <div className="p-3 text-center text-[10px] font-retro text-[#784610] bg-[#ebd2a4]/50 border border-[#c99a57] rounded-xs">
+                        No active rooms found. Enter a code above to start one!
+                      </div>
+                    ) : (
+                      activeCouches.map((c) => {
+                        const isCurrent = (roomCode || '').toUpperCase() === c.roomCode.toUpperCase();
+                        const teamCountLabel = c.squadCount === 1 ? '1 Team' : `${c.squadCount} Teams`;
+                        const icon = c.sport === 'nba' ? '🏀' : '🛋️';
+                        const teamsPreview = c.squadNames && c.squadNames.length > 0 ? c.squadNames.join(', ') : 'No teams yet';
 
-                      return (
-                        <button
-                          key={c.roomCode}
-                          type="button"
-                          onClick={() => {
-                            setTempRoomCode(c.roomCode);
-                            handleCommitRoomCode(c.roomCode);
-                            setIsRoomModalOpen(false);
-                          }}
-                          className={`touch-manipulation p-2 font-pixel text-left rounded-xs border-2 transition-all flex items-center justify-between gap-2 cursor-pointer shadow-xs active:translate-y-0.5 ${
-                            isCurrent
-                              ? 'bg-[#12579b] text-white border-[#0a2e52] shadow-[0_2px_0_0_#0a2e52]'
-                              : 'bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-[#c99a57] hover:border-[#b48340]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-base">{icon}</span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-bold tracking-wider text-xs sm:text-sm">{c.roomCode}</span>
-                                {isCurrent && (
-                                  <span className="text-[8px] px-1 py-0.2 bg-[#f59e0b] text-[#0f172a] font-bold rounded-2xs uppercase">
-                                    CURRENT
-                                  </span>
-                                )}
-                              </div>
-                              <div className={`text-[9px] font-retro truncate ${isCurrent ? 'text-[#bfdbfe]' : 'text-[#784610]'}`}>
-                                {c.squadCount > 0 ? `Teams: ${teamsPreview}` : 'Ready for first squad'}
+                        return (
+                          <button
+                            key={c.roomCode}
+                            type="button"
+                            onClick={() => {
+                              setTempRoomCode(c.roomCode);
+                              handleCommitRoomCode(c.roomCode);
+                              setIsRoomModalOpen(false);
+                            }}
+                            className={`touch-manipulation p-2 font-pixel text-left rounded-xs border-2 transition-all flex items-center justify-between gap-2 cursor-pointer shadow-xs active:translate-y-0.5 ${
+                              isCurrent
+                                ? 'bg-[#12579b] text-white border-[#0a2e52] shadow-[0_2px_0_0_#0a2e52]'
+                                : 'bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-[#c99a57] hover:border-[#b48340]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-base">{icon}</span>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold tracking-wider text-xs sm:text-sm">{c.roomCode}</span>
+                                  {isCurrent && (
+                                    <span className="text-[8px] px-1 py-0.2 bg-[#f59e0b] text-[#0f172a] font-bold rounded-2xs uppercase">
+                                      CURRENT
+                                    </span>
+                                  )}
+                                </div>
+                                <div className={`text-[9px] font-retro truncate ${isCurrent ? 'text-[#bfdbfe]' : 'text-[#784610]'}`}>
+                                  {c.squadCount > 0 ? `Teams: ${teamsPreview}` : 'Ready for first squad'}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <span className={`text-[10px] font-bold font-retro block ${isCurrent ? 'text-[#fde047]' : 'text-[#12579b]'}`}>
-                              {teamCountLabel}
-                            </span>
-                            <span className={`text-[8px] uppercase ${isCurrent ? 'text-white/80' : 'text-[#8c532b]'}`}>
-                              {isCurrent ? 'Active' : 'Tap to Enter →'}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                            <div className="shrink-0 text-right">
+                              <span className={`text-[10px] font-bold font-retro block ${isCurrent ? 'text-[#fde047]' : 'text-[#12579b]'}`}>
+                                {teamCountLabel}
+                              </span>
+                              <span className={`text-[8px] uppercase ${isCurrent ? 'text-white/80' : 'text-[#8c532b]'}`}>
+                                {isCurrent ? 'Active' : 'Tap to Enter →'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -1415,6 +1809,75 @@ export default function App() {
                 <div className="p-2.5 bg-[#f4e0bc] border border-[#d4a86a] rounded-xs text-[11px] text-[#5c3509] font-retro leading-relaxed mb-3">
                   💡 <strong>TIP:</strong> Pick an active couch above or type a new code to start fresh!
                 </div>
+
+                {/* Out-of-the-way Archived Rooms Section */}
+                {archivedCouches.length > 0 && (
+                  <div className="mb-3.5 pt-2 border-t border-[#d4a86a]/60">
+                    <button
+                      type="button"
+                      onClick={() => setShowArchivedInSwitcher((prev) => !prev)}
+                      className="w-full flex items-center justify-between p-2 bg-[#ebd2a4]/70 hover:bg-[#ebd2a4] border border-[#c99a57] rounded-xs font-pixel text-[10px] text-[#784610] cursor-pointer transition-all"
+                    >
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <span>📁</span> ARCHIVED ROOMS ({archivedCouches.length})
+                      </span>
+                      <span className="text-[9px] font-bold text-[#12579b]">
+                        {showArchivedInSwitcher ? '▲ HIDE ARCHIVED' : '▼ SHOW ARCHIVED'}
+                      </span>
+                    </button>
+
+                    {showArchivedInSwitcher && (
+                      <div className="mt-2 flex flex-col gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                        {archivedCouches.map((c) => {
+                          const icon = c.sport === 'nba' ? '🏀' : '🛋️';
+                          return (
+                            <div
+                              key={c.roomCode}
+                              className="p-2 font-pixel rounded-xs border border-[#b38947] bg-[#d8c29a]/90 text-[#5c3509] flex items-center justify-between gap-2 shadow-xs"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{icon}</span>
+                                  <span className="font-bold tracking-wider text-xs">{c.roomCode}</span>
+                                  <span className="text-[8px] px-1 py-0.2 bg-[#78350f] text-[#fae5b8] font-bold rounded-2xs">
+                                    ARCHIVED
+                                  </span>
+                                </div>
+                                <div className="text-[9px] font-retro text-[#784610] truncate">
+                                  {c.squadCount > 0 ? `${c.squadCount} Squads: ${c.squadNames.join(', ')}` : 'Empty couch'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await unarchiveRoom(c.roomCode, c.sport);
+                                    showToast(`Restored room "${c.roomCode}"!`);
+                                    fetchAllActiveRooms(roomCode, currentSport).then((rooms) => setAvailableRooms(rooms));
+                                  }}
+                                  className="px-2 py-1 bg-[#12579b] hover:bg-[#1a6cb8] text-[#fae5b8] font-pixel text-[9px] font-bold rounded-xs cursor-pointer shadow-xs"
+                                >
+                                  RESTORE
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTempRoomCode(c.roomCode);
+                                    handleCommitRoomCode(c.roomCode);
+                                    setIsRoomModalOpen(false);
+                                  }}
+                                  className="px-2 py-1 bg-[#fae5b8] hover:bg-white text-[#5c3509] border border-[#c99a57] font-pixel text-[9px] font-bold rounded-xs cursor-pointer shadow-xs"
+                                >
+                                  VIEW →
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Commissioner Mode Link in Room Modal */}
                 <div className="mb-3 pt-2.5 border-t border-[#d4a86a] flex items-center justify-between">

@@ -4,7 +4,7 @@
  */
 
 import { Competitor, Match, SportId, ActiveSlot } from '../types';
-import { NFL_ROSTER_MANIFEST, validateTeamRoster } from '../data/nflRosterManifest';
+import { NFL_ROSTER_MANIFEST, validateTeamRoster, isRetiredPlayer } from '../data/nflRosterManifest';
 
 export interface TeamMeta {
   code: string;
@@ -335,14 +335,23 @@ export function buildManifestCompetitors(): Competitor[] {
 
     const teamFullName = getTeamFullName(teamCode);
     const colors = getTeamColors(teamCode);
+    const posCounts: Record<string, number> = {};
 
     for (const ath of athletes) {
+      if (isRetiredPlayer(ath.displayName)) {
+        continue;
+      }
       const compId = `nfl_${ath.athleteId}`;
       if (registeredIds.has(compId)) {
         console.warn(`[Manifest] Duplicate athleteId ignored: ${compId} (${ath.displayName})`);
         continue;
       }
       registeredIds.add(compId);
+
+      posCounts[ath.position] = (posCounts[ath.position] || 0) + 1;
+      const computedRank = posCounts[ath.position];
+      const depthRank = ath.depthRank || computedRank;
+      const depthOrder = ath.depthOrder || `${ath.position}${depthRank}`;
 
       const isPlaymaker = ath.position === 'QB';
       const isScorer = ath.position === 'WR' || ath.position === 'K';
@@ -359,6 +368,10 @@ export function buildManifestCompetitors(): Competitor[] {
         teamCode: teamCode,
         positionGeneric: posGeneric,
         position: ath.position,
+        depthRank: depthRank,
+        depthOrder: depthOrder,
+        injuryStatus: ath.injuryStatus || null,
+        injuryDetail: ath.injuryDetail || '',
         rating: 90,
         score: 0,
         stats: {
@@ -1186,9 +1199,61 @@ export const NBA_SLOT_DEFS: SlotDefinition[] = [
   { key: 'star3', label: 'STAR 3', positionReq: 'CENTER', positionFullName: 'BIG MAN / FLEX (C/PF)', allowedPositions: ['C', 'PF', 'F'] },
 ];
 
-export function isPositionAllowedForSlot(slot: ActiveSlot, position: string = '', sport: SportId = 'nfl'): boolean {
+export function isPositionAllowedForSlot(
+  slot: ActiveSlot,
+  positionOrPlayer: string | Competitor = '',
+  sport: SportId = 'nfl'
+): boolean {
   if (sport !== 'nfl') return true;
-  const pos = (position || '').toUpperCase().trim();
+
+  let pos = '';
+  let playerName = '';
+  let compId = '';
+
+  if (typeof positionOrPlayer === 'string') {
+    pos = positionOrPlayer.toUpperCase().trim();
+  } else if (positionOrPlayer && typeof positionOrPlayer === 'object') {
+    pos = (positionOrPlayer.position || '').toUpperCase().trim();
+    playerName = (positionOrPlayer.displayName || positionOrPlayer.shortName || '').toLowerCase().trim();
+    compId = (positionOrPlayer.athleteId || positionOrPlayer.id || '').toString().toLowerCase().trim();
+    if (!pos && positionOrPlayer.depthOrder) {
+      pos = positionOrPlayer.depthOrder.toUpperCase().trim();
+    }
+  }
+
+  // If position is missing, generic ('STAR', 'ATHLETE'), or raw depth ('QB1'), resolve it
+  if (!pos || pos === 'STAR' || pos === 'ATHLETE' || pos === 'PLAYER') {
+    if (compId) {
+      const cleanCompId = compId.replace(/^nfl_/, '');
+      for (const teamAthletes of Object.values(NFL_ROSTER_MANIFEST)) {
+        const found = teamAthletes.find(
+          (a) => String(a.athleteId) === cleanCompId || a.displayName.toLowerCase() === playerName
+        );
+        if (found && found.position) {
+          pos = found.position.toUpperCase();
+          break;
+        }
+      }
+    } else if (playerName) {
+      // Look up in NFL_ROSTER_MANIFEST by name
+      for (const teamAthletes of Object.values(NFL_ROSTER_MANIFEST)) {
+        const found = teamAthletes.find(
+          (a) => a.displayName.toLowerCase() === playerName || a.shortName.toLowerCase() === playerName
+        );
+        if (found && found.position) {
+          pos = found.position.toUpperCase();
+          break;
+        }
+      }
+    }
+  }
+
+  // Normalize prefixes like 'QB1', 'RB2', 'WR3'
+  if (pos.startsWith('QB')) pos = 'QB';
+  else if (pos.startsWith('RB') || pos === 'FB') pos = 'RB';
+  else if (pos.startsWith('WR')) pos = 'WR';
+  else if (pos.startsWith('TE')) pos = 'TE';
+
   if (slot === 'star1') return pos === 'QB';
   if (slot === 'star2') return pos === 'RB';
   if (slot === 'star3') return pos === 'WR' || pos === 'TE';
@@ -1298,18 +1363,17 @@ export function getPlayerScoringDisplay(
     : 'SCHEDULED';
 
   if (gameState === 'pre') {
-    // If the game hasn't started yet, but the player has confirmed points/stats (e.g. from an earlier game or manual test), preserve them
-    const hasActualPoints = reliableActiveScore > 0;
+    // Upcoming game: active score is 0. Prior game performance is preserved strictly in historicalScore!
     return {
-      gameState: hasActualPoints ? 'post' : 'pre',
-      activeScore: reliableActiveScore,
-      activeStatsLine: hasActualPoints ? fullStatsLine : (sport === 'nba' ? '0 3PM · 0 REB · 0 AST' : '0 TD · 0 YDS'),
+      gameState: 'pre',
+      activeScore: 0,
+      activeStatsLine: sport === 'nba' ? '0 3PM · 0 REB · 0 AST' : '0 TD · 0 YDS',
       historicalScore,
       historicalStats,
-      hasHistoricalData: historicalScore > 0 || hasActualPoints,
-      contextBadgeText: hasActualPoints ? 'FINAL' : contextText,
+      hasHistoricalData: historicalScore > 0,
+      contextBadgeText: contextText,
       isLive: false,
-      isFinal: hasActualPoints,
+      isFinal: false,
     };
   }
 
@@ -1421,5 +1485,62 @@ export function resolvePlayerInPool(
   if (byName) return byName;
 
   return undefined;
+}
+
+/**
+ * Robust check if an NFL/NBA game has concluded (final or completed)
+ */
+export function isMatchEnded(m?: Match | any | null): boolean {
+  if (!m) return false;
+  const status = String(m.status || '').toLowerCase();
+  const state = String(m.status?.type?.state || '').toLowerCase();
+  const qTime = String(m.quarter_time || m.quarterTime || m.periodLabel || '').toLowerCase();
+  const isCompleted = Boolean(m.completed || m.isFinal);
+  return (
+    status === 'final' ||
+    status === 'post' ||
+    state === 'post' ||
+    state === 'final' ||
+    isCompleted ||
+    qTime.includes('final')
+  );
+}
+
+/**
+ * Sorts matches strictly by kickoff time, placing:
+ * 1. Live games at the very front
+ * 2. Upcoming games ordered chronologically by kickoff time (earliest first)
+ * 3. Completed/final games pushed to the very end of the list
+ */
+export function sortMatchesByKickoffAndStatus(matches: Match[]): Match[] {
+  return [...matches].sort((a, b) => {
+    const aEnded = isMatchEnded(a);
+    const bEnded = isMatchEnded(b);
+
+    // 1. Live games always at the very top
+    const aLive = a.status === 'live';
+    const bLive = b.status === 'live';
+    if (aLive && !bLive) return -1;
+    if (bLive && !aLive) return 1;
+
+    // 2. Completed / Final games ALWAYS move to the end of the list
+    if (!aEnded && bEnded) return -1;
+    if (aEnded && !bEnded) return 1;
+
+    // 3. Among upcoming or among completed games, order chronologically by kickoff time
+    const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
+    const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
+    if (dateA !== dateB) {
+      return dateA - dateB;
+    }
+
+    const awayA = (a.awayTeamCode || a.away_team || '').trim().toUpperCase();
+    const awayB = (b.awayTeamCode || b.away_team || '').trim().toUpperCase();
+    const homeA = (a.homeTeamCode || a.home_team || '').trim().toUpperCase();
+    const homeB = (b.homeTeamCode || b.home_team || '').trim().toUpperCase();
+    const pairA = `${awayA}@${homeA}`;
+    const pairB = `${awayB}@${homeB}`;
+    return pairA.localeCompare(pairB);
+  });
 }
 

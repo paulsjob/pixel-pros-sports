@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getTeamColors } from '../utils/teamData';
 
 interface PixelHelmetProps {
   teamCode?: string;
@@ -96,21 +97,61 @@ export const PixelHelmet: React.FC<PixelHelmetProps> = ({
 
   if (!normalized) return null;
 
+  const colors = getTeamColors(normalized);
+
+  if (hasError) {
+    // Authentic SVG Football Helmet fallback styled with the team's official colors
+    return (
+      <svg
+        width={pixelSize}
+        height={pixelSize}
+        viewBox="0 0 32 32"
+        className={`select-none shrink-0 inline-block drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] ${className}`}
+        aria-label={alt || `${normalized} Helmet`}
+      >
+        {/* Helmet Outer Shell */}
+        <path
+          d="M 6 18 C 6 10 11 5 20 5 C 27 5 29 10 29 17 C 29 23 26 26 21 26 L 12 26 C 8 26 6 22 6 18 Z"
+          fill={colors.helmet}
+          stroke="#000000"
+          strokeWidth="1.5"
+        />
+        {/* Authentic Team Stripe */}
+        <path
+          d="M 12 5.5 C 17 5.5 22 7.5 25 11"
+          fill="none"
+          stroke={colors.stripe || '#ffffff'}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        {/* Facemask Visor & Bars */}
+        <path
+          d="M 21 16 L 28 17 M 21 19 L 27 21 M 21 23 L 26 24"
+          fill="none"
+          stroke="#94a3b8"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        {/* Earhole */}
+        <circle cx="15" cy="18" r="2" fill="#1e293b" />
+      </svg>
+    );
+  }
+
   return (
     <img
-      src={hasError ? '/helmets/KC.png' : `/helmets/${normalized}.png`}
+      src={`/helmets/${normalized}.png`}
       alt={alt || `${normalized} Helmet`}
       width={pixelSize}
       height={pixelSize}
-      onError={() => {
-        if (!hasError) setHasError(true);
-      }}
+      onError={() => setHasError(true)}
       style={{
         width: `${pixelSize}px`,
         height: `${pixelSize}px`,
+        objectFit: 'contain',
         imageRendering: 'pixelated',
       }}
-      className={`select-none shrink-0 inline-block drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] ${className}`}
+      className={`select-none shrink-0 inline-block drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)] ${className}`}
       loading="lazy"
     />
   );

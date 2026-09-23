@@ -1,4 +1,221 @@
 {
-  "rosters": [],
-  "locks": {}
+  "rosters": [
+    {
+      "id": "rost_1790106911889_a8wzf",
+      "room_code": "NYG_LAR",
+      "user_name": "PAUL_JR",
+      "sport": "nfl",
+      "star_1_id": "nfl_12483",
+      "star_2_id": "nfl_4696981",
+      "star_3_id": "nfl_16800",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-22T19:55:11.889Z"
+    },
+    {
+      "id": "rost_1790108186040_yjhe7",
+      "room_code": "NE_JAX",
+      "user_name": "PAUL_JR",
+      "sport": "nfl",
+      "star_1_id": "",
+      "star_2_id": "",
+      "star_3_id": "nfl_4426502",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-22T21:43:32.128Z"
+    },
+    {
+      "id": "rost_1790113554133_oawvk",
+      "room_code": "THE_BOYS",
+      "user_name": "PC",
+      "sport": "nfl",
+      "star_1_id": "nfl_4426338",
+      "star_2_id": "nfl_4567048",
+      "star_3_id": "nfl_4430878",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-22T23:19:00.654Z"
+    },
+    {
+      "id": "rost_1790123708226_94irn",
+      "room_code": "THE_BOYS__ARI_SF",
+      "user_name": "PC",
+      "sport": "nfl",
+      "star_1_id": "nfl_4361741",
+      "star_2_id": "nfl_4870808",
+      "star_3_id": "nfl_3040151",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-23T00:36:32.548Z"
+    },
+    {
+      "id": "rost_1790123804588_dns8d",
+      "room_code": "THE_BOYS__ATL_GB",
+      "user_name": "PC",
+      "sport": "nfl",
+      "star_1_id": "nfl_4426338",
+      "star_2_id": "nfl_4567048",
+      "star_3_id": "nfl_4430878",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-23T00:44:03.331Z"
+    },
+    {
+      "id": "rost_1790123871413_fu2jr",
+      "room_code": "THE_BOYS__CAR_CLE",
+      "user_name": "PC",
+      "sport": "nfl",
+      "star_1_id": "nfl_4685720",
+      "star_2_id": "nfl_3128720",
+      "star_3_id": "nfl_4430034",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-23T00:38:38.922Z"
+    },
+    {
+      "id": "rost_1790124249095_hbjai",
+      "room_code": "THE_BOYS__BAL_DAL",
+      "user_name": "PC",
+      "sport": "nfl",
+      "star_1_id": "nfl_11520",
+      "star_2_id": "nfl_3043078",
+      "star_3_id": "nfl_4696882",
+      "is_locked": false,
+      "device_id": "UNLOCKED",
+      "updated_at": "2026-09-23T11:11:03.005Z"
+    },
+    {
+      "id": "rost_1790163447556_dtww3",
+      "room_code": "NYG_LAR__NE_JAX",
+      "user_name": "PAUL_JR",
+      "sport": "nfl",
+      "star_1_id": "nfl_4431452",
+      "star_2_id": "nfl_4569173",
+      "star_3_id": "nfl_3915417",
+      "is_locked": true,
+      "device_id": "LOCKED",
+      "updated_at": "2026-09-23T11:37:45.582Z"
+    },
+    {
+      "id": "rost_1790163496114_7m6m4",
+      "room_code": "NYG_LAR__TEN_NYG",
+      "user_name": "PAUL_JR",
+      "sport": "nfl",
+      "star_1_id": "nfl_4688380",
+      "star_2_id": "nfl_3916148",
+      "star_3_id": "nfl_4871023",
+      "is_locked": true,
+      "device_id": "LOCKED",
+      "updated_at": "2026-09-23T11:38:39.856Z"
+    }
+  ],
+  "locks": {
+    "NYG_LAR_PAUL_JR_nfl": false,
+    "NE_JAX_PAUL_JR_nfl": false,
+    "THE_BOYS_PC_nfl": false,
+    "THE_BOYS__ARI_SF_PC_nfl": false,
+    "THE_BOYS__ATL_GB_PC_nfl": false,
+    "THE_BOYS__CAR_CLE_PC_nfl": false,
+    "THE_BOYS__BAL_DAL_PC_nfl": false,
+    "NYG_LAR__NE_JAX_PAUL_JR_nfl": true,
+    "NYG_LAR__TEN_NYG_PAUL_JR_nfl": true
+  },
+  "rooms": {
+    "NYG_LAR_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T11:31:07.987Z"
+    },
+    "CAR_ATL_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T20:10:30.524Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:37:45.752Z"
+    },
+    "NE_JAX_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:43:32.128Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T22:11:32.721Z"
+    },
+    "A1_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:37:43.605Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:39:15.774Z"
+    },
+    "COUCH_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:37:46.587Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:37:46.587Z"
+    },
+    "KC_IND_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:37:51.722Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:37:51.722Z"
+    },
+    "MIN_CHI_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:37:52.706Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:37:52.706Z"
+    },
+    "PHI_TEN_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:37:57.175Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:37:57.175Z"
+    },
+    "PIT_NE_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:38:00.150Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:38:00.150Z"
+    },
+    "WSH_DAL_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-22T21:38:00.862Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-22T21:38:00.862Z"
+    },
+    "THE_BOYS_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T10:53:11.209Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-23T11:31:03.062Z"
+    },
+    "THE_BOYS__ARI_SF_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T00:36:32.548Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-23T10:53:07.680Z"
+    },
+    "THE_BOYS__ATL_GB_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T00:44:03.331Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-23T10:53:07.680Z"
+    },
+    "THE_BOYS__CAR_CLE_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T00:38:38.922Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-23T10:53:07.680Z"
+    },
+    "THE_BOYS__BAL_DAL_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T11:11:03.005Z",
+      "isArchived": true,
+      "archivedAt": "2026-09-23T11:31:03.062Z"
+    },
+    "NYG_LAR__NE_JAX_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T11:37:45.582Z"
+    },
+    "NYG_LAR__TEN_NYG_nfl": {
+      "sport": "nfl",
+      "createdAt": "2026-09-23T11:38:39.856Z"
+    }
+  }
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users } from 'lucide-react';
+import { Users, Archive, ArchiveRestore } from 'lucide-react';
+import { archiveRoom } from '../lib/supabaseClient';
 
 interface RoomSetupBarProps {
   userName: string;
@@ -19,6 +20,7 @@ export const RoomSetupBar: React.FC<RoomSetupBarProps> = ({
   // Local state prevents keystroke Supabase network spam
   const [localName, setLocalName] = useState(userName);
   const [localRoom, setLocalRoom] = useState(roomCode);
+  const [isArchived, setIsArchived] = useState(false);
 
   useEffect(() => {
     setLocalName(userName);
@@ -26,7 +28,40 @@ export const RoomSetupBar: React.FC<RoomSetupBarProps> = ({
 
   useEffect(() => {
     setLocalRoom(roomCode);
+    // Check archive status of active room
+    fetch('/api/rooms')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.rooms)) {
+          const match = data.rooms.find(
+            (r: any) => (r.roomCode || '').toUpperCase() === roomCode.toUpperCase()
+          );
+          setIsArchived(Boolean(match?.isArchived));
+        }
+      })
+      .catch(() => {});
   }, [roomCode]);
+
+  useEffect(() => {
+    const handleArchiveUpdate = (e: any) => {
+      const detail = e.detail;
+      if (detail?.all || (detail?.roomCode && detail.roomCode === roomCode.toUpperCase())) {
+        if (detail.all) {
+          setIsArchived(roomCode.toUpperCase() !== 'COUCH' && roomCode.toUpperCase() !== 'HOOPS');
+        } else if (detail.isArchived !== undefined) {
+          setIsArchived(detail.isArchived);
+        }
+      }
+    };
+    window.addEventListener('pixel_pros_room_archive_update', handleArchiveUpdate);
+    return () => window.removeEventListener('pixel_pros_room_archive_update', handleArchiveUpdate);
+  }, [roomCode]);
+
+  const handleToggleArchive = async () => {
+    const nextState = !isArchived;
+    setIsArchived(nextState);
+    await archiveRoom(roomCode, 'nfl', nextState);
+  };
 
   const handleNameBlurOrEnter = () => {
     const trimmed = localName.trim();
@@ -118,6 +153,33 @@ export const RoomSetupBar: React.FC<RoomSetupBarProps> = ({
                   JOIN
                 </button>
               )}
+              {/* Archive Toggle Button */}
+              <button
+                type="button"
+                onClick={handleToggleArchive}
+                className={`touch-manipulation px-1.5 py-1 font-pixel text-[9px] rounded-2xs cursor-pointer shadow-xs active:translate-y-0.5 shrink-0 flex items-center gap-1 border transition-colors ${
+                  isArchived
+                    ? 'bg-[#451a03] hover:bg-[#78350f] text-[#fde68a] border-[#b45309]'
+                    : 'bg-[#1a2238] hover:bg-[#273552] text-slate-400 hover:text-slate-200 border-[#273552]'
+                }`}
+                title={
+                  isArchived
+                    ? 'This room is ARCHIVED. Click to unarchive.'
+                    : 'Archive this room to clear it from the active board.'
+                }
+              >
+                {isArchived ? (
+                  <>
+                    <ArchiveRestore size={11} className="text-[#f59e0b]" />
+                    <span>ARCHIVED</span>
+                  </>
+                ) : (
+                  <>
+                    <Archive size={11} className="text-slate-400" />
+                    <span>ARCHIVE</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

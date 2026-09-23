@@ -78,7 +78,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
     Number(baseStats.ast ?? baseStats.assists ?? 0) > 0
   );
 
-  const statsToUse = (!hasNonZeroStats && preGameDefaultStats) ? preGameDefaultStats : baseStats;
+  const statsToUse: Record<string, any> = (!hasNonZeroStats && preGameDefaultStats) ? preGameDefaultStats : (baseStats as Record<string, any>);
 
   // NFL Stats
   const passYds = Number(
@@ -157,9 +157,27 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               <PixelHelmet teamCode={selectedPlayer.teamCode} size={28} className="shrink-0" />
             )}
             <div className="min-w-0 flex-1">
-              <h2 className="font-pixel text-sm sm:text-base text-[#5c3509] tracking-wide uppercase font-bold truncate">
-                {selectedPlayer.displayName}
-              </h2>
+              <div className="flex items-center gap-1.5">
+                <h2 className="font-pixel text-sm sm:text-base text-[#5c3509] tracking-wide uppercase font-bold truncate">
+                  {selectedPlayer.displayName}
+                </h2>
+                {selectedPlayer.injuryStatus === 'I' && (
+                  <span
+                    className="px-1.5 py-0.5 bg-[#dc2626] text-white font-pixel text-[9px] font-black rounded-2xs border border-[#991b1b] shadow-2xs tracking-wider shrink-0"
+                    title="INJURED / OUT"
+                  >
+                    I
+                  </span>
+                )}
+                {selectedPlayer.injuryStatus === 'Q' && (
+                  <span
+                    className="px-1.5 py-0.5 bg-[#ea580c] text-white font-pixel text-[9px] font-black rounded-2xs border border-[#c2410c] shadow-2xs tracking-wider shrink-0"
+                    title="QUESTIONABLE"
+                  >
+                    Q
+                  </span>
+                )}
+              </div>
               <div className="text-[10px] sm:text-[11px] font-retro text-[#784610] flex items-center gap-1.5 truncate">
                 <span className="font-pixel text-[9px] text-[#12579b] font-bold">
                   {selectedPlayer.teamCode}
@@ -168,7 +186,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
                 <span className="font-pixel text-[9px] text-[#451a03]">#{selectedPlayer.uniformNumber}</span>
                 <span>•</span>
                 <span className="font-pixel text-[9px] text-[#5c3509] font-bold">
-                  {selectedPlayer.position || 'STAR'}
+                  {selectedPlayer.depthOrder || (selectedPlayer.depthRank ? `${selectedPlayer.position}${selectedPlayer.depthRank}` : selectedPlayer.position) || 'STAR'}
                 </span>
                 <span>•</span>
                 {scoringInfo.gameState === 'pre' ? (
@@ -198,6 +216,27 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           </button>
         </div>
 
+        {/* Injury Report Alert Banner */}
+        {selectedPlayer.injuryStatus && (
+          <div className={`mt-2 px-2.5 py-1.5 rounded-xs border-2 flex items-center justify-between gap-2 shrink-0 ${
+            selectedPlayer.injuryStatus === 'I'
+              ? 'bg-[#fef2f2] border-[#f87171] text-[#991b1b]'
+              : 'bg-[#fffbeb] border-[#fde047] text-[#92400e]'
+          }`}>
+            <div className="flex items-center gap-1.5 text-xs font-pixel font-bold">
+              <span className={`px-1.5 py-0.5 text-white rounded-2xs text-[9px] font-black ${
+                selectedPlayer.injuryStatus === 'I' ? 'bg-[#dc2626]' : 'bg-[#ea580c]'
+              }`}>
+                {selectedPlayer.injuryStatus}
+              </span>
+              <span>{selectedPlayer.injuryStatus === 'I' ? 'INJURY STATUS: OUT' : 'INJURY STATUS: QUESTIONABLE'}</span>
+            </div>
+            <span className="font-retro text-[11px] font-bold truncate">
+              {selectedPlayer.injuryDetail || (selectedPlayer.injuryStatus === 'I' ? 'Player is Out / Inactive' : 'Questionable for game')}
+            </span>
+          </div>
+        )}
+
         {/* Presentation: Sprite + Live / Last Game Score */}
         <div className="grid grid-cols-2 gap-2 mt-2 shrink-0">
           <div className="bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs flex flex-col items-center justify-center p-1.5 sm:p-2 min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
@@ -209,6 +248,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               animate={true}
               sport={sport}
               isOnFire={isOnFire}
+              injuryStatus={selectedPlayer.injuryStatus}
             />
             <div className="mt-1 px-1.5 py-0.5 bg-[#fae5b8] border border-[#c99a57] text-[#5c3509] font-pixel text-[8px] rounded-xs uppercase tracking-wider font-bold truncate max-w-full">
               #{selectedPlayer.uniformNumber} · {selectedPlayer.teamCode}

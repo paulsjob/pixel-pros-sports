@@ -30,6 +30,10 @@ export interface Competitor {
   teamCode: string;
   positionGeneric: 'OFFENSE' | 'DEFENSE' | 'SCORER' | 'PLAYMAKER' | string;
   position?: string;
+  depthRank?: number;
+  depthOrder?: string;
+  injuryStatus?: 'I' | 'Q' | null;
+  injuryDetail?: string;
   rating: number;
   stats: {
     pass_yds?: number;

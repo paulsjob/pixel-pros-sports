@@ -32,7 +32,7 @@ interface StoredRoster {
 interface ServerDB {
   rosters: StoredRoster[];
   locks: Record<string, boolean>; // key: `${room}_${user}_${sport}`
-  rooms?: Record<string, { sport: 'nfl' | 'nba'; createdAt: string }>;
+  rooms?: Record<string, { sport: 'nfl' | 'nba'; createdAt: string; isArchived?: boolean; archivedAt?: string | null }>;
 }
 
 function ensureDataDir(): void {
@@ -185,7 +185,8 @@ app.get('/api/rosters', (req: Request, res: Response) => {
   const results = dbState.rosters.filter((r) => {
     const rRoom = (r.room_code || '').trim().toUpperCase();
     const rSport = (r.sport || 'nfl').trim().toLowerCase();
-    return rRoom === roomCode && (sport ? rSport === sport : true);
+    const isRoomMatch = rRoom === roomCode || rRoom.startsWith(`${roomCode}__`);
+    return isRoomMatch && (sport ? rSport === sport : true);
   });
 
   res.json({ success: true, rosters: results });
@@ -495,15 +496,89 @@ app.get('/api/rooms', (req: Request, res: Response) => {
 
   const summaries = Array.from(roomMap.entries()).map(([key, val]) => {
     const roomCode = key.split('_')[0];
+    const meta = dbState.rooms?.[key];
     return {
       roomCode,
       sport: val.sport,
       squadCount: val.squads.size,
       squadNames: Array.from(val.squads),
+      isArchived: Boolean(meta?.isArchived),
+      archivedAt: meta?.archivedAt,
     };
   });
 
   res.json({ success: true, rooms: summaries });
+});
+
+// Archive or Unarchive a Room
+app.post('/api/rooms/archive', (req: Request, res: Response) => {
+  const { room_code, sport = 'nfl', is_archived = true } = req.body;
+  const cleanCode = (room_code || '').trim().toUpperCase();
+  const cleanSport: 'nfl' | 'nba' = (sport || '').toString().toLowerCase() === 'nba' ? 'nba' : 'nfl';
+  if (!cleanCode) {
+    res.status(400).json({ error: 'room_code is required' });
+    return;
+  }
+  const key = `${cleanCode}_${cleanSport}`;
+  if (!dbState.rooms) dbState.rooms = {};
+  if (!dbState.rooms[key]) {
+    dbState.rooms[key] = {
+      sport: cleanSport,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  dbState.rooms[key].isArchived = Boolean(is_archived);
+  if (is_archived) {
+    dbState.rooms[key].archivedAt = new Date().toISOString();
+  } else {
+    delete dbState.rooms[key].archivedAt;
+  }
+  saveDatabase(dbState);
+  res.json({ success: true, roomCode: cleanCode, sport: cleanSport, isArchived: Boolean(is_archived) });
+});
+
+// Auto-archive all completed/past week rooms
+app.post('/api/rooms/auto-archive-completed', (req: Request, res: Response) => {
+  let archivedCount = 0;
+  if (!dbState.rooms) dbState.rooms = {};
+
+  // Check all existing room records
+  Object.entries(dbState.rooms).forEach(([key, meta]) => {
+    const [code] = key.split('_');
+    if (code !== 'COUCH' && code !== 'HOOPS' && !meta.isArchived) {
+      meta.isArchived = true;
+      meta.archivedAt = new Date().toISOString();
+      archivedCount++;
+    }
+  });
+
+  // Also verify all rooms derived from rosters
+  const roomKeys = new Set(
+    dbState.rosters.map(
+      (r) => `${(r.room_code || 'COUCH').toUpperCase()}_${(r.sport || 'nfl').toLowerCase()}`
+    )
+  );
+  roomKeys.forEach((k) => {
+    const [code, sp] = k.split('_');
+    if (code !== 'COUCH' && code !== 'HOOPS') {
+      if (!dbState.rooms[k]) {
+        dbState.rooms[k] = {
+          sport: sp as any,
+          createdAt: new Date().toISOString(),
+          isArchived: true,
+          archivedAt: new Date().toISOString(),
+        };
+        archivedCount++;
+      } else if (!dbState.rooms[k].isArchived) {
+        dbState.rooms[k].isArchived = true;
+        dbState.rooms[k].archivedAt = new Date().toISOString();
+        archivedCount++;
+      }
+    }
+  });
+
+  saveDatabase(dbState);
+  res.json({ success: true, archivedCount });
 });
 
 // -------------------------------------------------------------
@@ -522,7 +597,9 @@ app.get('/api/espn/scoreboard', async (req: Request, res: Response) => {
     const params = new URLSearchParams();
     if (sport === 'nfl') {
       params.set('seasontype', seasonType);
-      if (week) params.set('week', week);
+      // If client requests a week, use it; otherwise use the current active week
+      const targetWeek = week || String(weeklyRescanState.lastRescanWeek || 3);
+      params.set('week', targetWeek);
     }
     const fullUrl = `${baseUrl}?${params.toString()}`;
     const resp = await fetch(fullUrl, { headers: { Accept: 'application/json' } });
@@ -530,7 +607,31 @@ app.get('/api/espn/scoreboard', async (req: Request, res: Response) => {
       res.status(resp.status).json({ error: `ESPN returned ${resp.status}` });
       return;
     }
-    const data = await resp.json();
+    let data = await resp.json();
+
+    // If all games in returned data are completed and no explicit week was forced, auto-advance to next week
+    if (sport === 'nfl' && !week && Array.isArray(data.events) && data.events.length > 0) {
+      const allDone = data.events.every(
+        (ev: any) => ev.status?.type?.state === 'post' || ev.status?.type?.completed
+      );
+      if (allDone) {
+        const nextWeekNum = (data.week?.number || weeklyRescanState.lastRescanWeek || 2) + 1;
+        try {
+          const nextUrl = `${baseUrl}?seasontype=${seasonType}&week=${nextWeekNum}`;
+          const nextResp = await fetch(nextUrl, { headers: { Accept: 'application/json' } });
+          if (nextResp.ok) {
+            const nextData = await nextResp.json();
+            if (nextData.events && nextData.events.length > 0) {
+              data = nextData;
+              weeklyRescanState.lastRescanWeek = nextWeekNum;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to proxy ESPN scoreboard' });
@@ -596,6 +697,214 @@ app.get('/api/espn/roster', async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to proxy ESPN roster' });
   }
+});
+
+// ESPN Live Injuries Proxy
+app.get('/api/espn/injuries', async (req: Request, res: Response) => {
+  try {
+    const url = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries';
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      res.status(resp.status).json({ error: `ESPN returned ${resp.status}` });
+      return;
+    }
+    const data = await resp.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to proxy ESPN injuries' });
+  }
+});
+
+// -------------------------------------------------------------
+// Tuesday 4:00 AM EST Weekly Automated Rescan Engine
+// -------------------------------------------------------------
+function getEasternParts(d = new Date()): Record<string, string> {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const map: Record<string, string> = {};
+  parts.forEach((p) => {
+    map[p.type] = p.value;
+  });
+  return map;
+}
+
+function easternToDate(year: string, month: string, day: string, hour = '04', min = '00', sec = '00'): Date {
+  const dateStr = `${year}-${month}-${day}T${hour}:${min}:${sec}`;
+  const estDate = new Date(new Date(dateStr + 'Z').toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const diff = new Date(dateStr + 'Z').getTime() - estDate.getTime();
+  return new Date(new Date(dateStr + 'Z').getTime() + diff);
+}
+
+function getLastTuesday4AMEST(now = new Date()): Date {
+  const p = getEasternParts(now);
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayIndex = dayNames.indexOf(p.weekday);
+  const hour = parseInt(p.hour, 10);
+
+  let daysSinceTuesday = (dayIndex - 2 + 7) % 7;
+  if (daysSinceTuesday === 0 && hour < 4) {
+    daysSinceTuesday = 7;
+  }
+
+  const targetDate = new Date(now.getTime() - daysSinceTuesday * 86400000);
+  const tp = getEasternParts(targetDate);
+  return easternToDate(tp.year, tp.month, tp.day, '04', '00', '00');
+}
+
+function getNextTuesday4AMEST(now = new Date()): Date {
+  const last = getLastTuesday4AMEST(now);
+  return new Date(last.getTime() + 7 * 86400000);
+}
+
+// Rescan State
+interface WeeklyRescanState {
+  lastRescanTimestamp: string;
+  lastRescanWeek: number;
+  inProgress: boolean;
+}
+
+let weeklyRescanState: WeeklyRescanState = {
+  lastRescanTimestamp: '',
+  lastRescanWeek: 3,
+  inProgress: false,
+};
+
+async function executeWeeklyTuesdayRescan(isForced = false): Promise<{ success: boolean; week: number; message: string }> {
+  if (weeklyRescanState.inProgress) {
+    return { success: false, week: weeklyRescanState.lastRescanWeek, message: 'Rescan already in progress' };
+  }
+  weeklyRescanState.inProgress = true;
+  console.log(`[Weekly Rescan] Initiating Tuesday 4:00 AM EST full data rescan (forced: ${isForced})...`);
+
+  try {
+    // 1. Fetch fresh scoreboard from ESPN to determine the new week
+    let newWeek = weeklyRescanState.lastRescanWeek || 3;
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${newWeek}`);
+      if (res.ok) {
+        const data = await res.json();
+        const allCompleted = Array.isArray(data.events) && data.events.length > 0 &&
+          data.events.every((ev: any) => ev.status?.type?.state === 'post' || ev.status?.type?.completed);
+        if (allCompleted) {
+          newWeek = (data.week?.number || newWeek) + 1;
+        } else {
+          newWeek = data.week?.number || newWeek;
+        }
+      }
+    } catch {
+      // fallback
+    }
+
+    // 2. Sync games to Supabase matches table
+    await syncESPNToSupabase();
+
+    // 3. Reset lock states on rosters for the fresh week so family members can make new picks
+    for (const k of Object.keys(dbState.locks)) {
+      if (k.endsWith('_nfl')) {
+        dbState.locks[k] = false;
+      }
+    }
+    dbState.rosters.forEach((r) => {
+      if ((r.sport || 'nfl').toLowerCase() === 'nfl') {
+        r.is_locked = false;
+        r.device_id = 'UNLOCKED';
+      }
+    });
+
+    // 4. Auto-archive past-week/completed rooms to reduce board clutter
+    if (!dbState.rooms) dbState.rooms = {};
+    Object.entries(dbState.rooms).forEach(([key, meta]) => {
+      const [code] = key.split('_');
+      if (code !== 'COUCH' && code !== 'HOOPS' && !meta.isArchived) {
+        meta.isArchived = true;
+        meta.archivedAt = new Date().toISOString();
+      }
+    });
+
+    saveDatabase(dbState);
+
+    // 4. Update status and broadcast to all connected clients
+    weeklyRescanState.lastRescanTimestamp = new Date().toISOString();
+    weeklyRescanState.lastRescanWeek = newWeek;
+    weeklyRescanState.inProgress = false;
+
+    console.log(`[Weekly Rescan] ✓ Tuesday 4:00 AM EST rescan complete for Week ${newWeek}! Squad locks cleared.`);
+
+    // Broadcast SSE to all connected clients so they refresh with fresh picks & week
+    const payload = JSON.stringify({
+      type: 'weekly_rescan_completed',
+      week: newWeek,
+      timestamp: weeklyRescanState.lastRescanTimestamp,
+      message: `Week ${newWeek} slate is active! Ready for new squad picks.`,
+    });
+    for (const client of sseClients.values()) {
+      try {
+        client.res.write(`data: ${payload}\n\n`);
+      } catch {
+        // ignore
+      }
+    }
+
+    return {
+      success: true,
+      week: newWeek,
+      message: `Successfully executed Tuesday 4:00 AM EST rescan for NFL Week ${newWeek}`,
+    };
+  } catch (err: any) {
+    weeklyRescanState.inProgress = false;
+    console.error('[Weekly Rescan] Rescan error:', err.message);
+    return { success: false, week: weeklyRescanState.lastRescanWeek, message: err.message };
+  }
+}
+
+// Automated timer check for Tuesday 4:00 AM EST
+function checkTuesday4AMSchedule(): void {
+  const now = new Date();
+  const lastTue4AM = getLastTuesday4AMEST(now);
+  const lastRescanDate = weeklyRescanState.lastRescanTimestamp
+    ? new Date(weeklyRescanState.lastRescanTimestamp)
+    : null;
+
+  // If last rescan was before this week's Tuesday 4:00 AM EST, trigger automatic rescan!
+  if (!lastRescanDate || lastRescanDate.getTime() < lastTue4AM.getTime()) {
+    console.log(`[Weekly Rescan] Tuesday 4:00 AM EST threshold passed! Triggering automatic weekly rescan...`);
+    executeWeeklyTuesdayRescan(false);
+  }
+}
+
+// Rescan status endpoint
+app.get('/api/espn/rescan-status', (req: Request, res: Response) => {
+  const now = new Date();
+  const nextTue4AM = getNextTuesday4AMEST(now);
+  const lastTue4AM = getLastTuesday4AMEST(now);
+  const msUntilNext = Math.max(0, nextTue4AM.getTime() - now.getTime());
+  const hoursUntil = Math.floor(msUntilNext / (1000 * 60 * 60));
+  const minsUntil = Math.floor((msUntilNext % (1000 * 60 * 60)) / (1000 * 60));
+
+  res.json({
+    success: true,
+    lastRescanTimestamp: weeklyRescanState.lastRescanTimestamp || lastTue4AM.toISOString(),
+    lastRescanWeek: weeklyRescanState.lastRescanWeek,
+    nextScheduledTuesday4AM: nextTue4AM.toISOString(),
+    nextScheduledFormatted: nextTue4AM.toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'full', timeStyle: 'short' }) + ' EST',
+    countdown: `${hoursUntil}h ${minsUntil}m`,
+    inProgress: weeklyRescanState.inProgress,
+  });
+});
+
+// Force rescan endpoint (Commissioner button or test)
+app.post('/api/espn/rescan-weekly', async (req: Request, res: Response) => {
+  const result = await executeWeeklyTuesdayRescan(true);
+  res.json(result);
 });
 
 app.post('/api/espn/sync', async (req: Request, res: Response) => {
@@ -681,6 +990,9 @@ async function startServer() {
     // Run initial ESPN sync and set periodic interval
     syncESPNToSupabase();
     setInterval(syncESPNToSupabase, 180000);
+    // Check Tuesday 4:00 AM EST schedule every minute
+    checkTuesday4AMSchedule();
+    setInterval(checkTuesday4AMSchedule, 60000);
   });
 }
 

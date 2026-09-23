@@ -1,7 +1,8 @@
 import { Competitor, SportId } from '../types';
 import { getTeamColors, getTeamFullName, normalizeTeamCode } from '../utils/teamData';
-import { NFL_ROSTER_MANIFEST } from '../data/nflRosterManifest';
+import { NFL_ROSTER_MANIFEST, isRetiredPlayer, ROSTER_CACHE_VERSION } from '../data/nflRosterManifest';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { fetchLiveNFLInjuries, getCachedNFLInjuries, InjuryReportItem } from './rescanEngine';
 
 export interface DynamicDepthChartResult {
   success: boolean;
@@ -164,6 +165,14 @@ export async function runPureDynamicDepthChartSync(
       })
     );
 
+    // Fetch live ESPN injury report across all NFL teams
+    let liveInjuries = getCachedNFLInjuries();
+    try {
+      liveInjuries = await fetchLiveNFLInjuries();
+    } catch {
+      // ignore
+    }
+
     // Helper to select active athletes by rank with injury fallback
     function pickActiveAthletes(athletes: any[], targetCount: number): any[] {
       if (!Array.isArray(athletes)) return [];
@@ -200,10 +209,11 @@ export async function runPureDynamicDepthChartSync(
       const teamColors = getTeamColors(teamAbbr);
       const teamFullName = getTeamFullName(teamAbbr);
 
-      const addAthlete = (athlete: any, positionAbbr: 'QB' | 'RB' | 'WR' | 'TE') => {
+      const addAthlete = (athlete: any, positionAbbr: 'QB' | 'RB' | 'WR' | 'TE', explicitRank?: number) => {
         if (!athlete || !athlete.id) return;
-        const athleteId = String(athlete.id);
         const name = athlete.displayName || `${teamAbbr} ${positionAbbr}`;
+        if (isRetiredPlayer(name)) return;
+        const athleteId = String(athlete.id);
         const rawJersey = jerseyMap.get(athleteId) || athlete.jersey || '';
         const uniformNumber = parseInt(rawJersey, 10) || 10;
         const shortName = (
@@ -213,6 +223,26 @@ export async function runPureDynamicDepthChartSync(
         )
           .toUpperCase()
           .replace(/[^A-Z]/g, '');
+
+        // Calculate depth rank (QB1, QB2, RB1, RB2, WR1, etc.)
+        const computedRank = explicitRank || (
+          positionAbbr === 'QB' ? qbCount + 1 :
+          positionAbbr === 'RB' ? rbCount + 1 :
+          positionAbbr === 'WR' ? wrCount + 1 :
+          positionAbbr === 'TE' ? teCount + 1 : 1
+        );
+        const depthRank = athlete.depthRank || computedRank;
+        const depthOrder = athlete.depthOrder || `${positionAbbr}${depthRank}`;
+
+        // Look up injury status in ESPN live injuries map
+        const normName = name.trim().toLowerCase();
+        const liveInj = liveInjuries.get(normName);
+        const injuryStatus: 'I' | 'Q' | null = liveInj
+          ? liveInj.status
+          : (athlete.injuryStatus || null);
+        const injuryDetail = liveInj
+          ? liveInj.detail
+          : (athlete.injuryDetail || '');
 
         // 1. Supabase database record strictly following spec (id, name, team, sport, position, score, stats, updated_at)
         dbUpsertRecords.push({
@@ -249,6 +279,10 @@ export async function runPureDynamicDepthChartSync(
           teamCode: teamAbbr,
           positionGeneric: positionAbbr === 'QB' ? 'PLAYMAKER' : 'OFFENSE',
           position: positionAbbr,
+          depthRank: depthRank,
+          depthOrder: depthOrder,
+          injuryStatus: injuryStatus,
+          injuryDetail: injuryDetail,
           rating: 90,
           score: 0,
           stats: {
@@ -357,7 +391,18 @@ export async function runPureDynamicDepthChartSync(
       if (!alreadyHasPlayers && NFL_ROSTER_MANIFEST[teamAbbr]) {
         const teamFullName = getTeamFullName(teamAbbr);
         const teamColors = getTeamColors(teamAbbr);
+        const posCounts: Record<string, number> = {};
+
         for (const ath of NFL_ROSTER_MANIFEST[teamAbbr]) {
+          posCounts[ath.position] = (posCounts[ath.position] || 0) + 1;
+          const rank = ath.depthRank || posCounts[ath.position];
+          const depthOrder = ath.depthOrder || `${ath.position}${rank}`;
+
+          const normName = ath.displayName.trim().toLowerCase();
+          const liveInj = liveInjuries.get(normName);
+          const injuryStatus = liveInj ? liveInj.status : (ath.injuryStatus || null);
+          const injuryDetail = liveInj ? liveInj.detail : (ath.injuryDetail || '');
+
           dynamicCompetitors.push({
             id: `nfl_${ath.athleteId}`,
             athleteId: ath.athleteId,
@@ -369,6 +414,10 @@ export async function runPureDynamicDepthChartSync(
             teamCode: teamAbbr,
             positionGeneric: ath.position === 'QB' ? 'PLAYMAKER' : 'OFFENSE',
             position: ath.position,
+            depthRank: rank,
+            depthOrder: depthOrder,
+            injuryStatus: injuryStatus,
+            injuryDetail: injuryDetail,
             rating: 90,
             score: 0,
             stats: {
@@ -420,6 +469,14 @@ export async function runPureDynamicDepthChartSync(
               }
               if (existing.last_game_score) dc.last_game_score = existing.last_game_score;
               if (existing.last_game_stats) dc.last_game_stats = existing.last_game_stats;
+              if (!dc.injuryStatus && existing.injuryStatus) {
+                dc.injuryStatus = existing.injuryStatus;
+                dc.injuryDetail = existing.injuryDetail;
+              }
+              if (!dc.depthRank && existing.depthRank) {
+                dc.depthRank = existing.depthRank;
+                dc.depthOrder = existing.depthOrder;
+              }
             }
           });
         }
@@ -462,6 +519,7 @@ export async function runPureDynamicDepthChartSync(
     // 3. Cache pure dynamic competitors into localStorage
     try {
       localStorage.setItem('pixel_pros_synced_competitors_nfl', JSON.stringify(dynamicCompetitors));
+      localStorage.setItem('pixel_pros_roster_cache_version', ROSTER_CACHE_VERSION);
     } catch (lsErr) {
       console.warn('[DepthChart Sync] LocalStorage write error:', lsErr);
     }

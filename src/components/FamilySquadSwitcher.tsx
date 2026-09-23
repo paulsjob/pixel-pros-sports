@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Plus, Lock, Check, X, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Plus, Lock, Check, X, ShieldAlert, ChevronLeft, ChevronRight, Home } from 'lucide-react';
 
 interface FamilySquadSwitcherProps {
   activeUserName: string;
@@ -177,16 +177,16 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
       {/* Mobile Portrait Dedicated 2-Row Layout (< 640px) */}
       <div className="sm:hidden w-full bg-[#080d1a] border-b-2 border-[#1a264a] px-2.5 py-1.5 box-border">
         {/* Sub-row 1: Room button & +SQUAD button */}
+        {/* Sub-row 1: House Room button on left, [+SQUAD] button on right */}
         <div className="flex items-center justify-between gap-2 w-full mb-1.5">
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={onOpenRoomModal}
-              className="touch-manipulation flex items-center gap-1 px-2 py-1 bg-[#15233d] active:bg-[#1f345b] border border-[#38bdf8]/60 text-[#fae5b8] rounded-xs font-pixel text-[10px] font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs"
+              className="touch-manipulation flex items-center gap-1.5 px-2.5 py-1 bg-[#15233d] active:bg-[#1f345b] border border-[#38bdf8]/60 text-[#fae5b8] rounded-xs font-pixel text-[10px] font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs"
               title="Click to switch room"
             >
-              <span className="text-xs">🛋️</span>
-              <span className="text-[#38bdf8] font-bold">ROOM:</span>
+              <Home size={12} className="text-[#38bdf8] shrink-0" />
               <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
               <span className="text-[9px] text-[#93c5fd]">✏️</span>
             </button>
@@ -304,7 +304,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
         <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full py-1.5 box-border">
           <div className="flex items-center justify-between gap-2.5 flex-nowrap w-full">
             
-            {/* Left: Interactive Room Code Button & SQUADS Label */}
+            {/* Left: House Icon + Room Code + Pencil (no ROOM:, no SQUADS: text per user request) */}
             <div className="flex items-center gap-2 shrink-0 select-none">
               <button
                 type="button"
@@ -313,15 +313,10 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
                 className="touch-manipulation flex items-center gap-1.5 px-2.5 py-1 bg-[#15233d] hover:bg-[#1f345b] border border-[#38bdf8]/60 hover:border-[#38bdf8] text-[#fae5b8] rounded-xs font-pixel text-[10px] sm:text-xs font-bold whitespace-nowrap active:scale-95 cursor-pointer shadow-xs transition-all"
                 title="Click to view and switch rooms"
               >
-                <span className="text-xs">🛋️</span>
-                <span className="text-[#38bdf8] font-bold">ROOM:</span>
+                <Home size={13} className="text-[#38bdf8] shrink-0" />
                 <span className="text-[#f59e0b] font-bold tracking-wider">{roomCode}</span>
                 <span className="text-[9px] text-[#93c5fd]">✏️</span>
               </button>
-
-              <span className="font-pixel text-xs text-[#38bdf8] whitespace-nowrap font-bold">
-                SQUADS:
-              </span>
             </div>
 
             {/* Center: Scrollable Squad Pills List with Visual Chevrons */}
@@ -434,7 +429,7 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
               </button>
             </div>
 
-            {/* Right Side: Pinned [+SQUAD] button & ● LIVE SYNC status dot */}
+            {/* Right Side: Pinned [+SQUAD] button (LIVE SYNC removed per user request) */}
             <div className="flex items-center gap-2 shrink-0 select-none pl-1">
               <button
                 type="button"
@@ -446,11 +441,6 @@ export const FamilySquadSwitcher: React.FC<FamilySquadSwitcherProps> = ({
                 <Plus size={12} strokeWidth={3} />
                 <span>SQUAD</span>
               </button>
-
-              <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#22c55e] whitespace-nowrap select-none">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse"></span>
-                <span className="hidden xs:inline sm:inline tracking-wider font-bold">LIVE SYNC</span>
-              </div>
             </div>
           </div>
         </div>

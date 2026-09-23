@@ -8,7 +8,9 @@ import {
   getTeamColors,
   getTeamFullName,
   getUniformNumber,
+  sortMatchesByKickoffAndStatus,
 } from '../utils/teamData';
+import { getStarterManifestDepth, isRetiredPlayer, ROSTER_CACHE_VERSION } from '../data/nflRosterManifest';
 import {
   DEFAULT_NBA_COMPETITORS,
   DEFAULT_NBA_MATCHES,
@@ -232,17 +234,27 @@ export function mapRowToCompetitor(row: any): Competitor {
   const stops = Number(statsObj.stops ?? statsObj.defensive_stops ?? 0);
   const totalScrimmageYards = passYds + rushYds + recYds;
   const teamColors = getTeamColors(rawTeam);
+  const manifestDepth = getStarterManifestDepth(rawName, rawTeam, row.athlete_id || rawId);
+  const rawDepthRank = Number(row.depth_rank || row.depthRank || 0);
+  const rawDepthOrder = String(row.depth_order || row.depthOrder || '').trim();
+  const depthRankVal = rawDepthRank > 0 ? rawDepthRank : manifestDepth?.depthRank || 1;
+  const depthOrderVal = rawDepthOrder ? rawDepthOrder : manifestDepth?.depthOrder || `${rawPos}${depthRankVal}`;
 
   return {
     id: rawId,
+    athleteId: String(row.athlete_id || row.athleteId || rawId).replace(/^nfl_/, ''),
     sportId: 'nfl',
     displayName: rawName,
     shortName,
     uniformNumber: uniformNum,
     teamName: getTeamFullName(rawTeam),
     teamCode: rawTeam,
-    positionGeneric: rawPos === 'K' ? 'SCORER' : 'OFFENSE',
+    positionGeneric: rawPos === 'K' ? 'SCORER' : rawPos === 'QB' ? 'PLAYMAKER' : 'OFFENSE',
     position: rawPos,
+    depthRank: depthRankVal,
+    depthOrder: depthOrderVal,
+    injuryStatus: (row.injury_status || row.injuryStatus || null) as any,
+    injuryDetail: row.injury_detail || row.injuryDetail || '',
     rating: rawScore > 30 ? 99 : rawScore > 15 ? 93 : 88,
     score: rawScore,
     stats: {
@@ -279,6 +291,7 @@ export function deduplicateCompetitors(competitors: Competitor[]): Competitor[] 
 
   for (const c of competitors) {
     if (!c) continue;
+    if (isRetiredPlayer(c.displayName)) continue;
 
     // Roster Accuracy Enforcement: Daniel Jones is on the Indianapolis Colts (IND)
     if (
@@ -308,6 +321,13 @@ export function deduplicateCompetitors(competitors: Competitor[]): Competitor[] 
 
 function getLocalSyncedCompetitors(sport: SportId): Competitor[] | null {
   try {
+    const version = localStorage.getItem('pixel_pros_roster_cache_version');
+    if (version !== ROSTER_CACHE_VERSION) {
+      localStorage.removeItem('pixel_pros_synced_competitors_nfl');
+      localStorage.removeItem('pixel_pros_synced_competitors_nba');
+      localStorage.setItem('pixel_pros_roster_cache_version', ROSTER_CACHE_VERSION);
+      return null;
+    }
     const raw = localStorage.getItem(`pixel_pros_synced_competitors_${sport}`);
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -320,9 +340,15 @@ function getLocalSyncedCompetitors(sport: SportId): Competitor[] | null {
         }
         for (const p of parsed) {
           if (!p) continue;
-          // Discard stale cached records where Daniel Jones was still on NYG
+          if (isRetiredPlayer(p.displayName)) continue;
+          const pNameLower = (p.displayName || '').toLowerCase();
+          // Purge stale player records from older seasons
+          if (pNameLower === 'jacoby brissett' && p.teamCode !== 'ARI') continue;
+          if (pNameLower === 'joe milton iii' && p.teamCode === 'NE') continue;
+          if (pNameLower === 'mac jones' && p.teamCode !== 'SF') continue;
+          if (pNameLower === 'c.j. beathard' && p.teamCode === 'JAX') continue;
           if (
-            (p.athleteId === '3917792' || (p.displayName || '').toLowerCase() === 'daniel jones') &&
+            (p.athleteId === '3917792' || pNameLower === 'daniel jones') &&
             p.teamCode !== 'IND'
           ) {
             continue;
@@ -337,8 +363,6 @@ function getLocalSyncedCompetitors(sport: SportId): Competitor[] | null {
               badges: p.badges ?? existing.badges,
               stats: { ...existing.stats, ...p.stats },
             });
-          } else {
-            map.set(key, p);
           }
         }
         return deduplicateCompetitors(Array.from(map.values()));
@@ -357,24 +381,15 @@ function getLocalSyncedMatches(sport: SportId): Match[] | null {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
         if (sport === 'nfl') {
-          const hasDetOrBuf = parsed.some(
-            (m) =>
-              m.homeTeamCode === 'BUF' ||
-              m.awayTeamCode === 'BUF' ||
-              m.home_team === 'BUF' ||
-              m.away_team === 'BUF' ||
-              m.homeTeamCode === 'DET' ||
-              m.awayTeamCode === 'DET'
-          );
-          const hasStaleDenKc = parsed.some(
-            (m) =>
-              (m.homeTeamCode === 'KC' && m.awayTeamCode === 'DEN') ||
-              (m.home_team === 'KC' && m.away_team === 'DEN')
-          );
-          if (!hasDetOrBuf || hasStaleDenKc) {
+          const curWeek = getCurrentNFLWeek();
+          // Filter to only matches belonging to the active NFL week
+          const currentWeekMatches = parsed.filter((m: any) => !m.week || m.week === curWeek);
+          // If the cached matches belong to a previous week, invalidate cache
+          if (currentWeekMatches.length === 0) {
             localStorage.removeItem(`pixel_pros_synced_matches_${sport}`);
             return null;
           }
+          return sortMatchesByKickoffAndStatus(currentWeekMatches);
         }
         return parsed;
       }
@@ -422,24 +437,45 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
 
     const mapped = filtered.map(mapRowToCompetitor);
     
-    // DYNAMIC ESPN DATA FIRST: Supabase rows contain real dynamic starters from ESPN depth charts.
-    // We treat Supabase rows as authoritative, and only use baseList for missing offline fallbacks.
+    // STRICT CANONICAL VALIDATION: Only canonical manifest players are accepted.
+    // Live scores and stats update their profiles, preventing phantom/stale players from polluting the roster.
     const baseList = sport === 'nba' ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+    const baseMap = new Map<string, Competitor>();
+    for (const b of baseList) {
+      const key = `${(b.displayName || '').trim().toLowerCase()}__${(b.teamCode || '').trim().toUpperCase()}`;
+      baseMap.set(key, b);
+    }
+
     const mergedMap = new Map<string, Competitor>();
 
     for (const s of mapped) {
+      if (isRetiredPlayer(s.displayName)) continue;
       const key = `${(s.displayName || '').trim().toLowerCase()}__${(s.teamCode || '').trim().toUpperCase()}`;
-      mergedMap.set(key, s);
+      if (sport === 'nfl') {
+        const canonical = baseMap.get(key);
+        if (canonical) {
+          mergedMap.set(key, {
+            ...canonical,
+            score: s.score ?? canonical.score,
+            rating: s.rating ?? canonical.rating,
+            badges: s.badges ?? canonical.badges,
+            stats: { ...canonical.stats, ...s.stats },
+            injuryStatus: s.injuryStatus ?? canonical.injuryStatus,
+            injuryDetail: s.injuryDetail ?? canonical.injuryDetail,
+          });
+        }
+      } else {
+        mergedMap.set(key, s);
+      }
     }
 
-    for (const b of baseList) {
-      const key = `${(b.displayName || '').trim().toLowerCase()}__${(b.teamCode || '').trim().toUpperCase()}`;
+    for (const [key, b] of baseMap.entries()) {
       if (!mergedMap.has(key)) {
         mergedMap.set(key, { ...b });
       }
     }
 
-    const mergedList = Array.from(mergedMap.values()).sort((a, b) => (b.score || 0) - (a.score || 0));
+    const mergedList = Array.from(mergedMap.values());
     return deduplicateCompetitors(mergedList);
   } catch (err) {
     console.warn(`Exception during ${sport} competitors fetch:`, err);
@@ -592,8 +628,8 @@ export async function fetchLiveMatches(sport: SportId = 'nfl'): Promise<Match[]>
       });
 
     if (sport === 'nfl') {
-      const currentWeekOnly = mappedMatches.filter((m) => !m.week || m.week === currentNFLWeek);
-      const baseList = currentWeekOnly.length > 0 ? currentWeekOnly : mappedMatches;
+      const currentWeekOnly = mappedMatches.filter((m) => m.week === currentNFLWeek);
+      const baseList = currentWeekOnly.length > 0 ? currentWeekOnly : DEFAULT_NFL_MATCHES;
 
       // Ensure all 16 NFL matchups covering all 32 teams are present
       const existingMatchPairs = new Set(
@@ -802,6 +838,8 @@ export interface ActiveRoomSummary {
   sport: SportId;
   squadCount: number;
   squadNames: string[];
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export async function fetchAllActiveRooms(
@@ -810,6 +848,7 @@ export async function fetchAllActiveRooms(
   currentRostersHint?: UserRoster[]
 ): Promise<ActiveRoomSummary[]> {
   const roomMap = new Map<string, { roomCode: string; sport: SportId; squads: Set<string> }>();
+  const archiveStatusMap = new Map<string, { isArchived: boolean; archivedAt?: string }>();
 
   // Ensure default rooms exist
   const defaultNfl = 'COUCH';
@@ -882,6 +921,9 @@ export async function fetchAllActiveRooms(
         const rSport: SportId = r.sport === 'nba' ? 'nba' : 'nfl';
         if (rCode) {
           registerSquad(rCode, null, rSport);
+          if (r.isArchived) {
+            archiveStatusMap.set(`${rCode}_${rSport}`, { isArchived: true, archivedAt: r.archivedAt });
+          }
           (r.squadNames || []).forEach((u) => {
             registerSquad(rCode, u, rSport);
           });
@@ -990,12 +1032,22 @@ export async function fetchAllActiveRooms(
   registerSquad('COUCH', null, 'nfl');
   registerSquad('HOOPS', null, 'nba');
 
-  return Array.from(roomMap.values()).map((val) => ({
-    roomCode: val.roomCode,
-    sport: val.sport,
-    squadCount: val.squads.size,
-    squadNames: Array.from(val.squads),
-  }));
+  return Array.from(roomMap.values()).map((val) => {
+    const key = `${val.roomCode}_${val.sport}`;
+    const localArchived =
+      typeof localStorage !== 'undefined'
+        ? localStorage.getItem(`pixel_pros_room_archived_${val.roomCode}_${val.sport}`)
+        : null;
+    const isArchived = Boolean(archiveStatusMap.get(key)?.isArchived || localArchived === 'true');
+    return {
+      roomCode: val.roomCode,
+      sport: val.sport,
+      squadCount: val.squads.size,
+      squadNames: Array.from(val.squads),
+      isArchived,
+      archivedAt: archiveStatusMap.get(key)?.archivedAt,
+    };
+  });
 }
 
 export interface MasterRoomSquadDetail {
@@ -1010,6 +1062,8 @@ export interface MasterRoomData {
   roomCode: string;
   sport: SportId;
   squads: MasterRoomSquadDetail[];
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export async function fetchAllRoomsWithDetails(
@@ -1017,7 +1071,24 @@ export async function fetchAllRoomsWithDetails(
   currentSportHint?: SportId,
   currentRostersHint?: UserRoster[]
 ): Promise<MasterRoomData[]> {
-  const roomMap = new Map<string, { roomCode: string; sport: SportId; squadMap: Map<string, MasterRoomSquadDetail> }>();
+  const roomMap = new Map<string, { roomCode: string; sport: SportId; squadMap: Map<string, MasterRoomSquadDetail>; isArchived?: boolean; archivedAt?: string }>();
+
+  // Fetch backend room metadata (including isArchived)
+  const roomMetaMap = new Map<string, { isArchived?: boolean; archivedAt?: string }>();
+  try {
+    const res = await apiFetch('/api/rooms');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.rooms)) {
+        data.rooms.forEach((r: any) => {
+          const k = `${String(r.roomCode).toUpperCase()}_${String(r.sport).toLowerCase()}`;
+          roomMetaMap.set(k, { isArchived: Boolean(r.isArchived), archivedAt: r.archivedAt });
+        });
+      }
+    }
+  } catch {
+    // fallback
+  }
 
   function registerSquadDetail(
     room: string,
@@ -1031,10 +1102,21 @@ export async function fetchAllRoomsWithDetails(
     const cleanRoom = (room || 'COUCH').trim().toUpperCase();
     const cleanSport: SportId = sport === 'nba' ? 'nba' : 'nfl';
     const key = `${cleanRoom}_${cleanSport}`;
+    const meta = roomMetaMap.get(key);
     if (!roomMap.has(key)) {
-      roomMap.set(key, { roomCode: cleanRoom, sport: cleanSport, squadMap: new Map() });
+      roomMap.set(key, {
+        roomCode: cleanRoom,
+        sport: cleanSport,
+        squadMap: new Map(),
+        isArchived: meta?.isArchived,
+        archivedAt: meta?.archivedAt,
+      });
     }
     const rm = roomMap.get(key)!;
+    if (meta?.isArchived !== undefined) {
+      rm.isArchived = meta.isArchived;
+      rm.archivedAt = meta.archivedAt;
+    }
     if (squadName) {
       const cleanUser = squadName.trim().toUpperCase();
       const locked = isLocked !== undefined ? isLocked : getSquadLockState(cleanRoom, cleanUser, cleanSport);
@@ -1166,6 +1248,8 @@ export async function fetchAllRoomsWithDetails(
       roomCode: val.roomCode,
       sport: val.sport,
       squads: Array.from(val.squadMap.values()),
+      isArchived: Boolean(val.isArchived),
+      archivedAt: val.archivedAt,
     }))
     .sort((a, b) => {
       if (currentRoomHint && a.roomCode === currentRoomHint.toUpperCase()) return -1;
@@ -1215,6 +1299,8 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
       if (!r || isGhostUser(r.user_name)) return;
       const userName = (r.user_name || '').trim().toUpperCase();
       if (!userName) return;
+      const rRoomCode = (r.room_code || cleanRoom).trim().toUpperCase();
+      const mapKey = `${rRoomCode}___${userName}`;
 
       const starIds = [r.star_1_id, r.star_2_id, r.star_3_id].filter(
         (id) => id && typeof id === 'string' && id.trim() !== ''
@@ -1224,18 +1310,18 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
       const isLocked = Boolean(
         r.is_locked === true ||
         r.device_id === 'LOCKED' ||
-        (hasThreeDistinct && getSquadLockState(cleanRoom, userName, sport))
+        (hasThreeDistinct && getSquadLockState(rRoomCode, userName, sport))
       );
 
-      const existing = rosterMap.get(userName);
+      const existing = rosterMap.get(mapKey);
       const entryTime = r.updated_at ? new Date(r.updated_at).getTime() : 0;
       const existingTime = existing?.updated_at ? new Date(existing.updated_at).getTime() : 0;
 
       if (!existing || entryTime >= existingTime) {
-        setSquadLockState(cleanRoom, userName, isLocked, sport);
-        rosterMap.set(userName, {
+        setSquadLockState(rRoomCode, userName, isLocked, sport);
+        rosterMap.set(mapKey, {
           id: r.id || existing?.id || `rost_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          room_code: cleanRoom,
+          room_code: rRoomCode,
           user_name: userName,
           sport: r.sport || sport,
           device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
@@ -1848,4 +1934,82 @@ export async function registerActiveUser(userName: string, sport: SportId = 'nfl
       // Table may not exist yet if user hasn't run the SQL script; silently ignore
     }
   }
+}
+
+export async function archiveRoom(
+  roomCode: string,
+  sport: SportId = 'nfl',
+  isArchived: boolean = true
+): Promise<{ success: boolean }> {
+  const cleanCode = (roomCode || '').trim().toUpperCase();
+  const cleanSport: SportId = sport === 'nba' ? 'nba' : 'nfl';
+  if (!cleanCode) return { success: false };
+
+  // Always update local cache immediately for zero-lag UI responsiveness
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(
+        `pixel_pros_room_archived_${cleanCode}_${cleanSport}`,
+        isArchived ? 'true' : 'false'
+      );
+    }
+  } catch {}
+
+  try {
+    const res = await apiFetch<{ success: boolean }>('/api/rooms/archive', {
+      method: 'POST',
+      body: JSON.stringify({ room_code: cleanCode, sport: cleanSport, is_archived: isArchived }),
+    });
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('pixel_pros_room_archive_update', {
+            detail: { roomCode: cleanCode, sport: cleanSport, isArchived },
+          })
+        );
+      }
+      return { success: true };
+    }
+  } catch (err) {
+    console.warn('Could not archive room:', err);
+  }
+
+  // Fallback: local update succeeded
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('pixel_pros_room_archive_update', {
+        detail: { roomCode: cleanCode, sport: cleanSport, isArchived },
+      })
+    );
+  }
+  return { success: true };
+}
+
+export async function unarchiveRoom(
+  roomCode: string,
+  sport: SportId = 'nfl'
+): Promise<{ success: boolean }> {
+  return archiveRoom(roomCode, sport, false);
+}
+
+export async function autoArchiveCompletedRooms(): Promise<{ success: boolean; archivedCount: number }> {
+  try {
+    const res = await apiFetch<{ success: boolean; archivedCount: number }>('/api/rooms/auto-archive-completed', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('pixel_pros_room_archive_update', {
+            detail: { all: true, count: res.archivedCount },
+          })
+        );
+      }
+      return { success: true, archivedCount: res.archivedCount || 0 };
+    }
+  } catch (err) {
+    console.warn('Could not auto-archive completed rooms:', err);
+  }
+  return { success: false, archivedCount: 0 };
 }
