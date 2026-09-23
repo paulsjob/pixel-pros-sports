@@ -454,12 +454,22 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
       if (sport === 'nfl') {
         const canonical = baseMap.get(key);
         if (canonical) {
+          const stats = { ...canonical.stats, ...s.stats };
+          const hasRealStats =
+            (stats.pass_yds || 0) > 0 ||
+            (stats.rush_yds || 0) > 0 ||
+            (stats.rec_yds || 0) > 0 ||
+            (stats.tds || 0) > 0 ||
+            (stats.fgs || 0) > 0 ||
+            (stats.stops || 0) > 0;
+          const verifiedScore = hasRealStats ? (s.score ?? canonical.score) : 0;
+
           mergedMap.set(key, {
             ...canonical,
-            score: s.score ?? canonical.score,
+            score: verifiedScore,
             rating: s.rating ?? canonical.rating,
             badges: s.badges ?? canonical.badges,
-            stats: { ...canonical.stats, ...s.stats },
+            stats,
             injuryStatus: s.injuryStatus ?? canonical.injuryStatus,
             injuryDetail: s.injuryDetail ?? canonical.injuryDetail,
           });

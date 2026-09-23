@@ -766,7 +766,7 @@ export default function App() {
 
     const filledCount = [squadSlots.star1, squadSlots.star2, squadSlots.star3].filter(Boolean).length;
     if (!isLocked && filledCount < 3) {
-      showToast(`Select all 3 Stars before locking! (${filledCount}/3 picked)`);
+      showToast('Select all 3 Stars before locking your squad!');
       return;
     }
 
@@ -998,17 +998,62 @@ export default function App() {
           return true;
         });
         const sorted = sortMatchesByKickoffAndStatus(filtered);
-        setMatches(sorted);
+        setMatches((prev) => {
+          if (prev.length === sorted.length) {
+            let changed = false;
+            for (let i = 0; i < sorted.length; i++) {
+              const p = prev[i];
+              const s = sorted[i];
+              if (
+                !p ||
+                p.id !== s.id ||
+                p.homeScore !== s.homeScore ||
+                p.awayScore !== s.awayScore ||
+                p.status !== s.status ||
+                p.quarter_time !== s.quarter_time
+              ) {
+                changed = true;
+                break;
+              }
+            }
+            if (!changed) return prev;
+          }
+          return sorted;
+        });
       }
     };
     const handleScoresUpdate = (e: any) => {
       if (e.detail?.competitors && (!e.detail?.sport || e.detail?.sport === currentSport)) {
         const fresh = deduplicateCompetitors(e.detail.competitors);
-        setRoster(fresh);
+        setRoster((prev) => {
+          if (prev.length === fresh.length) {
+            let changed = false;
+            for (let i = 0; i < fresh.length; i++) {
+              const p = prev[i];
+              const f = fresh[i];
+              if (!p || p.id !== f.id || p.score !== f.score || p.injuryStatus !== f.injuryStatus) {
+                changed = true;
+                break;
+              }
+            }
+            if (!changed) return prev;
+          }
+          return fresh;
+        });
         setSquadSlots((prev) => {
           const s1 = prev.star1 ? fresh.find((p) => p.id === prev.star1!.id) || prev.star1 : null;
           const s2 = prev.star2 ? fresh.find((p) => p.id === prev.star2!.id) || prev.star2 : null;
           const s3 = prev.star3 ? fresh.find((p) => p.id === prev.star3!.id) || prev.star3 : null;
+          if (
+            s1?.id === prev.star1?.id &&
+            s1?.score === prev.star1?.score &&
+            s2?.id === prev.star2?.id &&
+            s2?.score === prev.star2?.score &&
+            s3?.id === prev.star3?.id &&
+            s3?.score === prev.star3?.score
+          ) {
+            return prev;
+          }
           return { star1: s1, star2: s2, star3: s3 };
         });
       }
@@ -1029,7 +1074,28 @@ export default function App() {
         const map = new Map<string, UserRoster>();
         for (const r of prev) map.set(`${r.room_code}__${r.user_name}`, r);
         for (const r of fresh) map.set(`${r.room_code}__${r.user_name}`, r);
-        return Array.from(map.values());
+        const nextList = Array.from(map.values());
+        if (prev.length === nextList.length) {
+          let hasDiff = false;
+          for (let i = 0; i < nextList.length; i++) {
+            const a = prev[i];
+            const b = nextList[i];
+            if (
+              !a ||
+              a.room_code !== b.room_code ||
+              a.user_name !== b.user_name ||
+              a.star_1_id !== b.star_1_id ||
+              a.star_2_id !== b.star_2_id ||
+              a.star_3_id !== b.star_3_id ||
+              a.is_locked !== b.is_locked
+            ) {
+              hasDiff = true;
+              break;
+            }
+          }
+          if (!hasDiff) return prev;
+        }
+        return nextList;
       });
 
       // ONLY sync squadSlots from the roomCode remote squad if the user is actively viewing SUPERSTARS
@@ -1317,22 +1383,8 @@ export default function App() {
               </div>
 
               {/* Right: Pinned Room badge with edit pencil, compact Admin button & rules button. NEVER cut off! */}
+              {/* Mobile Right Controls: Admin + Scoring Rules */}
               <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  id="mobile-header-room-edit-button"
-                  onClick={() => {
-                    setTempRoomCode(roomCode);
-                    setIsRoomModalOpen(true);
-                  }}
-                  className="touch-manipulation flex items-center gap-1 px-1.5 py-0.5 bg-[#1a2238] hover:bg-[#232e4b] border border-[#3b82f6]/70 rounded-xs font-pixel text-[10px] text-[#fae5b8] shadow-xs active:scale-95 transition-all shrink-0 max-w-[105px]"
-                  title="View and Switch Database Rooms"
-                >
-                  <span className="text-xs select-none">{currentSport === 'nba' ? '🏀' : '🛋️'}</span>
-                  <span className="text-[#f59e0b] font-bold tracking-wider truncate">{roomCode}</span>
-                  <span className="text-[9px] text-[#93c5fd]">✏️</span>
-                </button>
-
                 <button
                   type="button"
                   id="mobile-admin-console-btn"
@@ -1616,7 +1668,7 @@ export default function App() {
             selectedPlayerIds={selectedPlayerIdsArray}
             matches={matches}
             sport={currentSport}
-            restrictToMatchPair={activeSlateId === 'SUPERSTARS' ? undefined : activeSlateId}
+            restrictToMatchPair={activeSlateId === 'SUPERSTARS' ? 'SUPERSTARS' : activeSlateId}
             onInspectPlayer={(player) => setDetailedPlayer(player)}
             onSelectPlayer={(player, targetSlot) => {
               handleAssignSlot(player, targetSlot);

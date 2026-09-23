@@ -4,6 +4,7 @@ import { getTeamFullName, getTeamColors, DEFAULT_NFL_COMPETITORS, DEFAULT_NFL_MA
 import { getNBATeamFullName, getNBATeamColors, DEFAULT_NBA_COMPETITORS } from '../utils/nbaTeamData';
 import { isRetiredPlayer, ROSTER_CACHE_VERSION } from '../data/nflRosterManifest';
 import { runPureDynamicDepthChartSync } from './espnDepthChartSync';
+import { lookupNFLAthleteLeagueStats } from '../data/nflLeagueStats';
 
 function getSkinTone(_name?: string): string {
   return '#d49b6a';
@@ -279,15 +280,11 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
       });
 
       // For each game, attempt to fetch full boxscore summary to extract actual in-game player statistics
-      // CRITICAL STATUS CHECK: Only extract player stats if the game is in-progress (live) or completed (final).
-      // When status === 'upcoming' (pre-game), no plays have occurred. ESPN's API returns season-long leaders
-      // or preview stats for upcoming matchups; parsing them erroneously awards players fantasy points before kickoff!
-      if (status === 'upcoming') {
-        continue;
-      }
-
+      // CRITICAL: Only extract boxscore stats if the game is in-progress (live) or completed (final).
+      // When status === 'upcoming' (pre-game), we skip boxscores but still parse competition leaders
+      // so that season-long passing/rushing/receiving yards are captured for player picker rankings!
       let fetchedBoxscore = false;
-      if (sport === 'nfl') {
+      if (sport === 'nfl' && status !== 'upcoming') {
         try {
           let sumRes: Response;
           try {
@@ -433,17 +430,22 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
             let fgs = 0;
             let stops = 0;
 
+            const valNum = Number(leaderItem.value || 0);
+            if (valNum > 0) yards = valNum;
+
             const ydsMatch = displayVal.match(/(\d+)\s*(?:YDS|yds|yards)/i);
-            if (ydsMatch) yards = parseInt(ydsMatch[1], 10);
+            if (ydsMatch) yards = Math.max(yards, parseInt(ydsMatch[1], 10));
 
-            const tdMatch = displayVal.match(/(\d+)\s*(?:TD|tds|td)/i);
-            if (tdMatch) tds = parseInt(tdMatch[1], 10);
+            if (status !== 'upcoming') {
+              const tdMatch = displayVal.match(/(\d+)\s*(?:TD|tds|td)/i);
+              if (tdMatch) tds = parseInt(tdMatch[1], 10);
 
-            if (catName.includes('kicking') || catName.includes('fieldgoal')) {
-              fgs = 1;
-            }
-            if (catName.includes('defensive') || catName.includes('sack') || catName.includes('tackle')) {
-              stops = 2;
+              if (catName.includes('kicking') || catName.includes('fieldgoal')) {
+                fgs = 1;
+              }
+              if (catName.includes('defensive') || catName.includes('sack') || catName.includes('tackle')) {
+                stops = 2;
+              }
             }
 
             if (!existing) {
@@ -465,7 +467,8 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
                 stops: 0,
                 total_yards: 0,
                 score: 0,
-              };
+                isUpcoming: status === 'upcoming',
+              } as any;
               liveAthletesMap.set(athKey, existing);
             } else {
               if (athTeam && (!existing.teamCode || existing.teamCode === 'PRO')) {
@@ -532,16 +535,20 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     for (const ath of liveAthletesMap.values()) {
       if (sport === 'nfl') {
         ath.total_yards = (ath.pass_yds || 0) + (ath.rush_yds || 0) + (ath.rec_yds || 0);
-        ath.score = calculateNFLPoints(
-          ath.tds || 0,
-          ath.fgs || 0,
-          ath.stops || 0,
-          ath.pass_yds || 0,
-          ath.rush_yds || 0,
-          ath.rec_yds || 0
-        );
+        if ((ath as any).isUpcoming) {
+          ath.score = 0;
+        } else {
+          ath.score = calculateNFLPoints(
+            ath.tds || 0,
+            ath.fgs || 0,
+            ath.stops || 0,
+            ath.pass_yds || 0,
+            ath.rush_yds || 0,
+            ath.rec_yds || 0
+          );
+        }
       } else {
-        ath.score = calculateNBAPoints(ath.pts || 0, ath.threes || 0, ath.reb || 0, ath.ast || 0, ath.stops || 0);
+        ath.score = (ath as any).isUpcoming ? 0 : calculateNBAPoints(ath.pts || 0, ath.threes || 0, ath.reb || 0, ath.ast || 0, ath.stops || 0);
       }
     }
 
@@ -564,38 +571,49 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
     }
     const finalCompetitorsMap = new Map<string, Competitor>();
 
-    // 1. Seed base competitors with clean 0 scores for today's slate
+    // 1. Seed base competitors preserving authentic season yardage stats
     for (const base of baseCompetitors) {
       const normName = (base.displayName || '').trim().toLowerCase();
+      const leagueStat = lookupNFLAthleteLeagueStats(base.displayName, base.athleteId);
+      const basePass = Math.max(base.stats?.pass_yds || 0, leagueStat?.pass_yds || 0);
+      const baseRush = Math.max(base.stats?.rush_yds || 0, leagueStat?.rush_yds || 0);
+      const baseRec = Math.max(base.stats?.rec_yds || 0, leagueStat?.rec_yds || 0);
+      const baseTotalYds = basePass + baseRush + baseRec;
+      const baseTds = Math.max(base.stats?.tds || 0, leagueStat?.tds || 0);
+
       finalCompetitorsMap.set(normName, {
         ...base,
         score: 0,
         stats: {
           ...base.stats,
-          pass_yds: 0,
-          passingYards: 0,
-          rush_yds: 0,
-          rushingYards: 0,
-          rec_yds: 0,
-          receivingYards: 0,
-          tds: 0,
-          touchdowns: 0,
+          pass_yds: basePass,
+          passingYards: basePass,
+          rush_yds: baseRush,
+          rushingYards: baseRush,
+          rec_yds: baseRec,
+          receivingYards: baseRec,
+          tds: baseTds,
+          touchdowns: baseTds,
           fgs: 0,
           stops: 0,
-          total_yards: 0,
-          primaryMetricValue: 0,
+          total_yards: baseTotalYds,
+          primaryMetricLabel: base.position === 'QB' ? 'Pass Yds' : base.position === 'RB' ? 'Rush Yds' : 'Rec Yds',
+          primaryMetricValue: base.position === 'QB' ? basePass : base.position === 'RB' ? baseRush : baseRec,
         },
       });
     }
 
-    // 2. Overlay live athlete data (updates ONLY stats and points, teamCode and uniformNumber are immutable!)
+    // 2. Overlay live athlete data (updates stats and points, teamCode and uniformNumber are immutable!)
     for (const live of liveAthletesMap.values()) {
       const normName = (live.displayName || '').trim().toLowerCase();
 
       if (finalCompetitorsMap.has(normName)) {
         const existing = finalCompetitorsMap.get(normName)!;
-        // IMMUTABLE TEAM & UNIFORM: Do NOT allow live stats engine to swap player's team or jersey!
         const finalScore = live.score;
+        const passYds = Math.max(existing.stats?.pass_yds || 0, live.pass_yds || 0);
+        const rushYds = Math.max(existing.stats?.rush_yds || 0, live.rush_yds || 0);
+        const recYds = Math.max(existing.stats?.rec_yds || 0, live.rec_yds || 0);
+        const primaryVal = existing.position === 'QB' ? passYds : existing.position === 'RB' ? rushYds : recYds;
 
         finalCompetitorsMap.set(normName, {
           ...existing,
@@ -606,18 +624,18 @@ export async function syncESPNData(sport: SportId = 'nfl'): Promise<ESPNSyncResu
             ...existing.stats,
             ...(sport === 'nfl'
               ? {
-                  pass_yds: live.pass_yds ?? 0,
-                  passingYards: live.pass_yds ?? 0,
-                  rush_yds: live.rush_yds ?? 0,
-                  rushingYards: live.rush_yds ?? 0,
-                  rec_yds: live.rec_yds ?? 0,
-                  receivingYards: live.rec_yds ?? 0,
-                  tds: live.tds ?? 0,
-                  touchdowns: live.tds ?? 0,
-                  fgs: live.fgs ?? 0,
-                  stops: live.stops ?? 0,
-                  total_yards: live.total_yards ?? 0,
-                  primaryMetricValue: live.tds ?? 0,
+                  pass_yds: passYds,
+                  passingYards: passYds,
+                  rush_yds: rushYds,
+                  rushingYards: rushYds,
+                  rec_yds: recYds,
+                  receivingYards: recYds,
+                  tds: Math.max(existing.stats?.tds ?? 0, live.tds ?? 0),
+                  touchdowns: Math.max(existing.stats?.tds ?? 0, live.tds ?? 0),
+                  fgs: live.fgs ?? existing.stats?.fgs ?? 0,
+                  stops: live.stops ?? existing.stats?.stops ?? 0,
+                  total_yards: passYds + rushYds + recYds,
+                  primaryMetricValue: primaryVal,
                 }
               : {
                   pts: live.pts ?? 0,

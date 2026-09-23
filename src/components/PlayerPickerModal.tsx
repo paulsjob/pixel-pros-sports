@@ -20,6 +20,37 @@ import {
 } from '../utils/teamData';
 import { isRetiredPlayer, getStarterManifestDepth } from '../data/nflRosterManifest';
 import { DEFAULT_NBA_MATCHES } from '../utils/nbaTeamData';
+import { lookupNFLAthleteLeagueStats } from '../data/nflLeagueStats';
+
+export function getPlayerPrimaryYardage(p: Competitor, sport: SportId = 'nfl'): number {
+  if (!p) return 0;
+  if (sport !== 'nfl') {
+    return Number((p as any).pts ?? (p as any).points ?? p.score ?? 0);
+  }
+  const pos = (p.position || '').toUpperCase();
+  const st = p.stats as any;
+  const leagueStat = lookupNFLAthleteLeagueStats(p.displayName, p.athleteId);
+
+  if (pos === 'QB') {
+    const val = st?.pass_yds ?? st?.passing_yards ?? st?.passingYards ?? (p as any).pass_yds ?? leagueStat?.pass_yds ?? 0;
+    return Number(val || 0);
+  }
+  if (pos === 'RB') {
+    const val = st?.rush_yds ?? st?.rushing_yards ?? st?.rushingYards ?? (p as any).rush_yds ?? leagueStat?.rush_yds ?? 0;
+    return Number(val || 0);
+  }
+  // WR, TE or other
+  const val = st?.rec_yds ?? st?.receiving_yards ?? st?.receivingYards ?? (p as any).rec_yds ?? leagueStat?.rec_yds ?? 0;
+  return Number(val || 0);
+}
+
+export function getPlayerYardageLabel(p: Competitor, sport: SportId = 'nfl'): string {
+  if (sport !== 'nfl') return 'PTS';
+  const pos = (p.position || '').toUpperCase();
+  if (pos === 'QB') return 'PASS YDS';
+  if (pos === 'RB') return 'RUSH YDS';
+  return 'REC YDS';
+}
 
 export function getPlayerDepthRank(p: Competitor): number {
   if (typeof p.depthRank === 'number' && p.depthRank > 0) return p.depthRank;
@@ -107,6 +138,8 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
   const [pendingInjuredPlayer, setPendingInjuredPlayer] = useState<Competitor | null>(null);
   const currentNFLWeek = getCurrentNFLWeek();
 
+  const isSuperstarsMode = restrictToMatchPair === 'SUPERSTARS' || (!isRestrictedToGame && selectedGameFilter === 'ALL');
+
   const slotDefs = sport === 'nba' ? NBA_SLOT_DEFS : NFL_SLOT_DEFS;
   const currentSlotDef = slotDefs.find((s) => s.key === activeSlot) || slotDefs[0];
 
@@ -114,6 +147,8 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
     setPositionFilter('ELIGIBLE');
     if (isRestrictedToGame && restrictToMatchPair) {
       setSelectedGameFilter(restrictToMatchPair);
+    } else {
+      setSelectedGameFilter('ALL');
     }
   }, [activeSlot, isOpen, isRestrictedToGame, restrictToMatchPair]);
 
@@ -415,19 +450,23 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
         return aEnded ? 1 : -1;
       }
 
-      const aTeam = normalizeCode(a.teamCode || (a as any).team || '');
-      const bTeam = normalizeCode(b.teamCode || (b as any).team || '');
-      const awayTeam = activeMatchObj
-        ? normalizeCode(activeMatchObj.awayTeamCode || activeMatchObj.away_team || '')
-        : selectedGameFilter.includes('@')
-        ? normalizeCode(selectedGameFilter.split('@')[0])
-        : '';
+      // 1. If user explicitly selected a specific matchup room (e.g. ATL@GB), group by that matchup's teams
+      const isMatchupSpecific = isRestrictedToGame || (selectedGameFilter && selectedGameFilter !== 'ALL');
+      if (isMatchupSpecific) {
+        const awayTeam = (isRestrictedToGame && activeMatchObj)
+          ? normalizeCode(activeMatchObj.awayTeamCode || activeMatchObj.away_team || '')
+          : (selectedGameFilter && selectedGameFilter.includes('@'))
+          ? normalizeCode(selectedGameFilter.split('@')[0])
+          : '';
 
-      // 1. Group by Team if specific matchup is selected (Away team first, then Home team)
-      if (awayTeam && aTeam !== bTeam) {
-        if (aTeam === awayTeam) return -1;
-        if (bTeam === awayTeam) return 1;
-        return aTeam.localeCompare(bTeam);
+        const aTeam = normalizeCode(a.teamCode || (a as any).team || '');
+        const bTeam = normalizeCode(b.teamCode || (b as any).team || '');
+
+        if (awayTeam && aTeam !== bTeam) {
+          if (aTeam === awayTeam) return -1;
+          if (bTeam === awayTeam) return 1;
+          return aTeam.localeCompare(bTeam);
+        }
       }
 
       // 2. Group by Position (QB -> RB -> WR -> TE)
@@ -437,37 +476,41 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
         return posA - posB;
       }
 
-      // 2.5 Depth Rank (QB1 before QB2 before QB3, RB1 before RB2, etc.)
-      // Guaranteed depth rank calculation ensures starters (Burrow, Mahomes, etc.) are always #1
+      // 3. STAT-BASED RANK ORDER (PRIMARY REQUIREMENT):
+      // QB: Ranked strictly by Passing Yards descending
+      // RB: Ranked strictly by Rushing Yards descending
+      // WR/TE: Ranked strictly by Receiving Yards descending
+      const yardsA = getPlayerPrimaryYardage(a, sport);
+      const yardsB = getPlayerPrimaryYardage(b, sport);
+      if (yardsA !== yardsB) {
+        return yardsB - yardsA; // Highest league yardage leads!
+      }
+
+      // 4. In-game live or final fantasy points descending
+      const scoreA = (a as any).current_score ?? a.score ?? 0;
+      const scoreB = (b as any).current_score ?? b.score ?? 0;
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA;
+      }
+
+      // 5. Depth Rank: starters (QB1, RB1, WR1) before backups (QB2, QB3)
       const rankA = getPlayerDepthRank(a);
       const rankB = getPlayerDepthRank(b);
       if (rankA !== rankB) {
         return rankA - rankB;
       }
 
-      // 3. Sort by Points / Last Points descending within same depth
-      const scoreA = (a as any).current_score ?? (a as any).last_game_score ?? a.score ?? 0;
-      const scoreB = (b as any).current_score ?? (b as any).last_game_score ?? b.score ?? 0;
-      if (scoreA !== scoreB) {
-        return scoreB - scoreA;
+      // 6. Overall player superstar rating tiebreaker (99 before 90)
+      const ratingA = a.rating || 90;
+      const ratingB = b.rating || 90;
+      if (ratingA !== ratingB) {
+        return ratingB - ratingA;
       }
 
-      // 4. Deterministic Match Kickoff Order (Earlier games first, e.g. Thursday ATL@GB)
-      const orderA = matchOrderMap.get(aTeam) ?? 999;
-      const orderB = matchOrderMap.get(bTeam) ?? 999;
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
-      // 5. Team Code Alphabetical tiebreaker
-      if (aTeam !== bTeam) {
-        return aTeam.localeCompare(bTeam);
-      }
-
-      // 6. Player Name Alphabetical tiebreaker (Guarantees zero jitter/jumping)
+      // 7. Deterministic Alphabetical Name tiebreaker (guarantees zero jitter / blipping)
       return (a.displayName || a.shortName || '').localeCompare(b.displayName || b.shortName || '');
     });
-  }, [allPlayers, selectedGameFilter, activeMatchObj, searchQuery, positionFilter, hideEndedGames, activeSlot, sport, activeMatches]);
+  }, [allPlayers, selectedGameFilter, activeMatchObj, searchQuery, positionFilter, hideEndedGames, activeSlot, sport, activeMatches, isRestrictedToGame]);
 
   const selectedPlayerNormKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -507,7 +550,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
           </button>
         </div>
 
-        {/* Dedicated Game Slate Banner OR 2-Row Matchup Carousel */}
+        {/* Dedicated Game Slate Banner OR Weekly Superstars Banner OR 2-Row Matchup Carousel */}
         {isRestrictedToGame ? (
           <div className="flex items-center justify-between p-2.5 bg-[#12579b] text-[#fae5b8] rounded-xs border-2 border-[#0a2d52] shadow-xs shrink-0">
             <div className="flex items-center gap-2">
@@ -524,6 +567,24 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
             </div>
             <span className="font-pixel text-[8px] bg-[#0a2d52] text-[#38bdf8] px-2 py-1 rounded-2xs border border-[#38bdf8]/40 font-bold whitespace-nowrap">
               GAME PICKS
+            </span>
+          </div>
+        ) : isSuperstarsMode ? (
+          <div className="flex items-center justify-between p-2.5 bg-[#12579b] text-[#fae5b8] rounded-xs border-2 border-[#0a2d52] shadow-xs shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-lg sm:text-xl">⭐</span>
+              <div>
+                <div className="font-pixel text-[11px] sm:text-xs font-bold text-white tracking-wider flex items-center gap-1.5">
+                  <span>WEEKLY SUPERSTARS • LEAGUE {currentSlotDef.positionReq} LEADERS</span>
+                  <span className="px-1.5 py-0.2 bg-[#fbbf24] text-[#78350f] text-[8px] rounded-2xs font-black">LEAGUE RANKED</span>
+                </div>
+                <div className="font-retro text-[9px] sm:text-[10px] text-[#fae5b8]/90">
+                  Ranked in order by NFL league {currentSlotDef.positionReq === 'QB' ? 'Passing Yards' : currentSlotDef.positionReq === 'RB' ? 'Rushing Yards' : 'Receiving Yards'}
+                </div>
+              </div>
+            </div>
+            <span className="font-pixel text-[8px] sm:text-[9px] bg-[#0a2d52] text-[#38bdf8] px-2 py-1 rounded-2xs border border-[#38bdf8]/40 font-bold whitespace-nowrap">
+              {currentSlotDef.positionReq === 'QB' ? 'PASS YDS' : currentSlotDef.positionReq === 'RB' ? 'RUSH YDS' : 'REC YDS'}
             </span>
           </div>
         ) : (
@@ -667,6 +728,8 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                 const isGameEnded = isPlayerGameEnded(player) || scoringInfo.gameState === 'post' || scoringInfo.isFinal;
 
                 const isInjuredOrQuestionable = player.injuryStatus === 'I' || player.injuryStatus === 'Q';
+                const primaryYards = getPlayerPrimaryYardage(player, sport);
+                const primaryUnit = getPlayerYardageLabel(player, sport);
 
                 return (
                   <div
@@ -687,6 +750,14 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                     }`}
                     title={`Tap to inspect stats for ${player.displayName}${player.injuryDetail ? ` (${player.injuryDetail})` : ''}`}
                   >
+                    {/* League Stat Rank Badge on Top Left Corner */}
+                    <span
+                      className="absolute top-2.5 left-2.5 z-20 h-5 px-1.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-black rounded-2xs border border-[#0a2d52] shadow-2xs tracking-wider pointer-events-none flex items-center justify-center leading-none"
+                      title={`League Rank #${index + 1}`}
+                    >
+                      #{index + 1}
+                    </span>
+
                     {/* Vibrant Un-Grayscaled Pop Badges on Top Right Corner (perfectly level with #11 • WR2) */}
                     {player.injuryStatus === 'I' && (
                       <span
@@ -726,7 +797,7 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                       ) : null}
 
                       <div className="w-full flex items-center justify-between gap-1 mb-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 pl-6 sm:pl-7">
                           {sport === 'nfl' && player.teamCode ? (
                             <PixelHelmet
                               teamCode={player.teamCode}
@@ -782,39 +853,54 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                         </div>
                       </div>
 
-                      <div className={`w-full mb-2 py-0.5 px-2 rounded-2xs text-center shadow-2xs border ${
+                      {/* Score & Yardage Display */}
+                      <div className={`w-full mb-2 py-1 px-2 rounded-2xs text-center shadow-2xs border ${
                         isInjuredOrQuestionable
                           ? 'bg-[#d1d5db] border-[#9ca3af]'
                           : 'bg-[#ebd2a4] border-[#c99a57]'
                       }`}>
                         {scoringInfo.gameState === 'pre' ? (
-                          <div className="flex flex-col items-center">
+                          <div className="flex flex-col items-center justify-center">
                             <span className="font-pixel text-xs sm:text-sm font-bold text-[#475569]">
                               0 PTS
                             </span>
-                            {scoringInfo.hasHistoricalData && (
-                              <span className="font-pixel text-[8px] text-[#784610] font-bold">
-                                Last: {scoringInfo.historicalScore}p
+                            {primaryYards > 0 && (
+                              <span className="font-pixel text-[9px] text-[#0a2d52] font-black bg-[#fae5b8] px-1.5 py-0.5 rounded-2xs border border-[#c99a57]/60 mt-0.5 tracking-tight">
+                                {primaryYards.toLocaleString()} {primaryUnit}
                               </span>
                             )}
                           </div>
                         ) : scoringInfo.gameState === 'in' ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
-                              {scoringInfo.activeScore} PTS
-                            </span>
-                            <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
-                              LIVE
-                            </span>
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
+                                {scoringInfo.activeScore} PTS
+                              </span>
+                              <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
+                                LIVE
+                              </span>
+                            </div>
+                            {primaryYards > 0 && (
+                              <span className="font-pixel text-[8px] text-[#0a2d52] font-black bg-[#fae5b8] px-1.5 py-0.2 rounded-2xs border border-[#c99a57]/60 mt-0.5 tracking-tight">
+                                {primaryYards.toLocaleString()} {primaryUnit}
+                              </span>
+                            )}
                           </div>
                         ) : (
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
-                              {scoringInfo.activeScore} PTS
-                            </span>
-                            <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
-                              FINAL
-                            </span>
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
+                                {scoringInfo.activeScore} PTS
+                              </span>
+                              <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
+                                FINAL
+                              </span>
+                            </div>
+                            {primaryYards > 0 && (
+                              <span className="font-pixel text-[8px] text-[#0a2d52] font-black bg-[#fae5b8] px-1.5 py-0.2 rounded-2xs border border-[#c99a57]/60 mt-0.5 tracking-tight">
+                                {primaryYards.toLocaleString()} {primaryUnit}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

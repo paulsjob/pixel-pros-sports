@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Competitor, Match, SportId, UserProfile, UserRoster } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { PixelShieldIcon } from './PixelBadges';
@@ -109,30 +109,50 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     }
   }, [leagueSlateFilter]);
 
-  const getPlayerLivePoints = (p: Competitor) => {
+  const getPlayerLivePoints = useCallback((p: Competitor) => {
     if (!p) return 0;
     const match = findMatchForPlayer(p, matches);
     const info = getPlayerScoringDisplay(p, match, sport);
-    // Lock in scoring: if player has a recorded score or computed stats, never wipe it to 0
-    return info.activeScore > 0 ? info.activeScore : (p.score || 0);
-  };
+    // CRITICAL: If the game has not kicked off yet (gameState === 'pre'), active fantasy points are strictly 0.
+    // Never fall back to stale or unverified mock scores from the database for unplayed games!
+    if (info.gameState === 'pre') return 0;
+    return info.activeScore > 0 ? info.activeScore : 0;
+  }, [matches, sport]);
 
-  // Top 20 NFL Competitors ordered by score DESC with duplicate ID filtering
-  const seenPlayerIds = new Set<string>();
-  const top20Players = safeNflPlayers
-    .filter((p) => {
-      if (!p || !p.id) return false;
-      if (seenPlayerIds.has(p.id)) return false;
-      seenPlayerIds.add(p.id);
-      return true;
-    })
-    .sort((a, b) => {
-      const scoreB = getPlayerLivePoints(b);
-      const scoreA = getPlayerLivePoints(a);
-      if (scoreB !== scoreA && (scoreB > 0 || scoreA > 0)) return scoreB - scoreA;
-      return (b.score || 0) - (a.score || 0);
-    })
-    .slice(0, 20);
+  // Top 20 NFL Competitors ordered by live score DESC with rock-solid deterministic secondary tiebreakers
+  const top20Players = useMemo(() => {
+    const seenPlayerIds = new Set<string>();
+    return safeNflPlayers
+      .filter((p) => {
+        if (!p || !p.id) return false;
+        if (seenPlayerIds.has(p.id)) return false;
+        seenPlayerIds.add(p.id);
+        return true;
+      })
+      .sort((a, b) => {
+        const scoreB = getPlayerLivePoints(b);
+        const scoreA = getPlayerLivePoints(a);
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
+        // Deterministic secondary sort: Marquee starters & superstar ratings first (99, 95, 90...)
+        const ratingDiff = (b.rating || 90) - (a.rating || 90);
+        if (ratingDiff !== 0) return ratingDiff;
+
+        // Depth rank: QB1 / RB1 / WR1 ahead of backups
+        const depthA = a.depthRank || 99;
+        const depthB = b.depthRank || 99;
+        if (depthA !== depthB) return depthA - depthB;
+
+        // Rock-solid alphabetical tiebreaker to prevent ANY sort blipping or jitter
+        return (a.displayName || '').localeCompare(b.displayName || '');
+      })
+      .slice(0, 20);
+  }, [safeNflPlayers, getPlayerLivePoints]);
+
+  const hasAnyLiveScoring = useMemo(() => {
+    return top20Players.some((p) => getPlayerLivePoints(p) > 0);
+  }, [top20Players, getPlayerLivePoints]);
 
   // Current active user roster entry for this room
   const currentUserRoster: UserRoster = {
@@ -352,7 +372,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div>
             <h2 className="font-pixel text-xs sm:text-sm text-[#5c3509] tracking-wider uppercase">
               {activeTier === 'family'
-                ? `LEAGUE ROOM "${roomCode.toUpperCase()}"`
+                ? 'HOUSEHOLD STANDINGS'
                 : sport === 'nba'
                 ? 'TOP NBA ATHLETES'
                 : 'TOP NFL ATHLETES'}
@@ -589,6 +609,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
         )}
 
+        {/* Pre-kickoff informational banner when games have not started yet */}
+        {activeTier === 'top_scores' && !hasAnyLiveScoring && (
+          <div className="mb-2.5 p-2.5 bg-[#faebd0] border-2 border-[#c99a57] rounded-xs text-center shadow-xs">
+            <div className="font-pixel text-[10px] sm:text-xs text-[#5c3509] font-bold flex items-center justify-center gap-1.5">
+              <span>⏱️</span>
+              <span>GAMES HAVE NOT KICKED OFF YET</span>
+            </div>
+            <div className="font-retro text-[10px] sm:text-[11px] text-[#784610] mt-0.5">
+              Showing marquee starters. Live athlete fantasy scores will update automatically in real-time as games kick off!
+            </div>
+          </div>
+        )}
+
         {/* 2-Column Table Column Headers */}
         <div className="flex items-center justify-between px-2.5 sm:px-3 py-1.5 mb-2 bg-[#d4a86a]/30 border border-[#d4a86a] rounded-xs font-pixel text-[10px] text-[#784610]">
           <span className="tracking-wider">{activeTier === 'family' ? 'RANK & SQUAD (TAP TO INSPECT)' : 'RANK & PLAYER'}</span>
@@ -673,10 +706,14 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                               <span>
                                 {entry.slatesCount} {entry.slatesCount === 1 ? 'game battle' : 'game battles'} • Superstars: {entry.superstarsScore.toFixed(1)}p
                               </span>
+                            ) : entry.isLocked ? (
+                              <span>🔒 Locked Lineup</span>
+                            ) : entry.stars.filter(Boolean).length === 3 ? (
+                              <span>3 Stars Picked</span>
+                            ) : entry.stars.filter(Boolean).length > 0 ? (
+                              <span>Lineup in Progress</span>
                             ) : (
-                              <span>
-                                {entry.stars.filter(Boolean).length}/3 stars picked
-                              </span>
+                              <span>No Picks Yet</span>
                             )}
                           </div>
 

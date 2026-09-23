@@ -260,19 +260,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               >
                 <Sparkles size={11} className={activeSlateId === 'SUPERSTARS' ? 'text-[#facc15]' : 'text-[#b45309]'} />
                 <span>SUPERSTARS</span>
-                {slatePicksStatus?.['SUPERSTARS'] && (
-                  <span
-                    className={`text-[8px] px-1 py-0.2 rounded-2xs font-bold shrink-0 ${
-                      slatePicksStatus['SUPERSTARS'].isLocked
-                        ? 'bg-[#0a2d52] text-[#38bdf8]'
-                        : (slatePicksStatus['SUPERSTARS'].filled ?? slatePicksStatus['SUPERSTARS'].count ?? 0) === 3
-                        ? 'bg-[#15803d] text-white'
-                        : 'bg-[#c99a57] text-[#451a03]'
-                    }`}
-                  >
-                    {slatePicksStatus['SUPERSTARS'].isLocked
-                      ? '🔒'
-                      : `${slatePicksStatus['SUPERSTARS'].filled ?? slatePicksStatus['SUPERSTARS'].count ?? 0}/3`}
+                {slatePicksStatus?.['SUPERSTARS']?.isLocked && (
+                  <span className="text-[8px] px-1 py-0.2 rounded-2xs font-bold shrink-0 bg-[#0a2d52] text-[#38bdf8]">
+                    🔒
                   </span>
                 )}
               </button>
@@ -306,17 +296,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                   >
                     {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />}
                     <span>{away}@{home}</span>
-                    {statusInfo && (
-                      <span
-                        className={`text-[8px] px-1 py-0.2 rounded-2xs font-bold shrink-0 ${
-                          statusInfo.isLocked
-                            ? 'bg-[#0a2d52] text-[#38bdf8]'
-                            : (statusInfo.filled ?? statusInfo.count ?? 0) === 3
-                            ? 'bg-[#15803d] text-white'
-                            : 'bg-[#c99a57] text-[#451a03]'
-                        }`}
-                      >
-                        {statusInfo.isLocked ? '🔒' : `${statusInfo.filled ?? statusInfo.count ?? 0}/3`}
+                    {statusInfo?.isLocked && (
+                      <span className="text-[8px] px-1 py-0.2 rounded-2xs font-bold shrink-0 bg-[#0a2d52] text-[#38bdf8]">
+                        🔒
                       </span>
                     )}
                   </button>
@@ -434,10 +416,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       onSelectSlot(key);
                     }
                   }}
-                  className={`touch-manipulation rounded-xs transition-all box-border min-h-0 ${
+                  className={`touch-manipulation rounded-xs transition-all box-border min-h-0 overflow-hidden ${
                     player
                       ? 'min-h-[70px] md:min-h-[310px] p-2 sm:p-3.5 md:p-4'
-                      : 'h-[62px] sm:h-[65px] md:h-auto md:min-h-[310px] p-1.5 md:p-4'
+                      : 'min-h-[56px] sm:min-h-[62px] md:min-h-[310px] p-1.5 md:p-4'
                   } flex flex-col justify-between ${
                     effectiveIsLocked && !player
                       ? 'bg-[#e4cb9c] border-3 border-[#94713a] cursor-not-allowed shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
@@ -719,8 +701,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     </>
                   ) : (
                     <>
-                      {/* Mobile Empty Slot - Comfortable ~68px touch target with clear slot & position */}
-                      <div className="md:hidden flex items-center justify-center h-full w-full min-h-[64px] border-2 border-dashed border-[#b45309] rounded-xs group-hover:border-[#12579b] group-hover:bg-[#f6ebd4] transition-all px-2 animate-pulse">
+                      {/* Mobile Empty Slot - Perfectly contained touch target within card */}
+                      <div className="md:hidden flex-1 flex items-center justify-center w-full py-2.5 px-2 border-2 border-dashed border-[#b45309] rounded-xs group-hover:border-[#12579b] group-hover:bg-[#f6ebd4] transition-all animate-pulse box-border">
                         <span className="font-pixel text-[10px] sm:text-xs text-[#b45309] group-hover:text-[#12579b] font-bold whitespace-nowrap text-center">
                           + TAP TO PICK {positionReq}{' '}
                           {currentSlate.isSuperstars
@@ -765,7 +747,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               </h3>
 
               <div className="mb-3 px-3 py-1 bg-[#1e293b]/90 border border-[#38bdf8]/40 rounded-xs text-center font-pixel text-[10px] sm:text-xs text-[#e0f2fe]">
-                {sport === 'nba' ? '🏀' : '🛋️'} ROOM [{roomCode}] • NEW ROOM
+                {sport === 'nba' ? '🏀' : '🎮'} NEW LEAGUE ROOM • READY TO PLAY
               </div>
 
               <p className="font-retro text-xs sm:text-sm text-[#93c5fd] text-center max-w-sm mb-4 leading-relaxed font-bold">
@@ -860,7 +842,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             <div className="w-full px-3 sm:px-5 py-2 sm:py-3 bg-[#0f172a] text-[#fae5b8] border-3 border-[#1e293b] shadow-[0_4px_0_0_#020617] rounded-xs flex items-center justify-between gap-2 sm:gap-4 box-border">
               <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
                 <span className="px-2 sm:px-2.5 py-1 bg-[#1e293b] border border-[#334155] rounded-2xs font-pixel text-[9px] sm:text-xs text-[#38bdf8] font-bold tracking-wider whitespace-nowrap">
-                  ⭐ 3/3 READY!
+                  ⭐ READY TO LOCK!
                 </span>
               </div>
               <button
@@ -880,8 +862,8 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               <span>🔒</span>
               <span>
                 {sport === 'nfl'
-                  ? `PICK 1 QB, 1 RB, 1 WR/TE TO LOCK (${distinctStarIds.size}/3)`
-                  : `PICK 3 DISTINCT STARS TO LOCK (${distinctStarIds.size}/3)`}
+                  ? 'PICK 1 QB, 1 RB, 1 WR/TE TO LOCK'
+                  : 'PICK 3 DISTINCT STARS TO LOCK'}
               </span>
             </button>
           )}
@@ -976,7 +958,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                             : 'bg-[#ea580c] text-white animate-pulse'
                         }`}
                       >
-                        {isLocked ? '🔒 3/3 LOCKED' : isDone ? '✅ 3/3 SET' : `${filled}/3 PICKS`}
+                        {isLocked ? '🔒 LOCKED' : isDone ? '✅ READY' : '⏳ NEEDS PICKS'}
                       </span>
                     </div>
                   </button>

@@ -5,6 +5,7 @@
 
 import { Competitor, Match, SportId, ActiveSlot } from '../types';
 import { NFL_ROSTER_MANIFEST, validateTeamRoster, isRetiredPlayer } from '../data/nflRosterManifest';
+import { lookupNFLAthleteLeagueStats } from '../data/nflLeagueStats';
 
 export interface TeamMeta {
   code: string;
@@ -372,19 +373,28 @@ export function buildManifestCompetitors(): Competitor[] {
         depthOrder: depthOrder,
         injuryStatus: ath.injuryStatus || null,
         injuryDetail: ath.injuryDetail || '',
-        rating: 90,
+        rating: ath.depthRank === 1 ? 95 : 85,
         score: 0,
-        stats: {
-          pass_yds: 0,
-          rush_yds: 0,
-          rec_yds: 0,
-          tds: 0,
-          fgs: 0,
-          stops: 0,
-          total_yards: 0,
-          primaryMetricLabel: 'Touchdowns',
-          primaryMetricValue: 0,
-        },
+        stats: (() => {
+          const lStat = lookupNFLAthleteLeagueStats(ath.displayName, ath.athleteId);
+          const pYards = lStat?.pass_yds || 0;
+          const rYards = lStat?.rush_yds || 0;
+          const rcYards = lStat?.rec_yds || 0;
+          const totalYds = pYards + rYards + rcYards;
+          const primaryLabel = ath.position === 'QB' ? 'Pass Yds' : ath.position === 'RB' ? 'Rush Yds' : 'Rec Yds';
+          const primaryVal = ath.position === 'QB' ? pYards : ath.position === 'RB' ? rYards : rcYards;
+          return {
+            pass_yds: pYards,
+            rush_yds: rYards,
+            rec_yds: rcYards,
+            tds: lStat?.tds || 0,
+            fgs: 0,
+            stops: 0,
+            total_yards: totalYds,
+            primaryMetricLabel: primaryLabel,
+            primaryMetricValue: primaryVal,
+          };
+        })(),
         badges: ['gold_star'],
         avatar: {
           helmetColor: colors.helmet,
