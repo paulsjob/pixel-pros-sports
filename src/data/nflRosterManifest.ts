@@ -328,9 +328,9 @@ export const NFL_ROSTER_MANIFEST: Record<string, ManifestAthlete[]> = {
     { athleteId: '4831959', displayName: 'Eli Raridon', shortName: 'ERARIDON', uniformNumber: 82, teamCode: 'NE', position: 'TE', skinTone: '#f8d9b6', depthRank: 2, depthOrder: 'TE2' },
   ],
   NO: [
-    { athleteId: '4360689', displayName: 'Tyler Shough', shortName: 'TSHOUGH', uniformNumber: 6, teamCode: 'NO', position: 'QB', skinTone: '#f8d9b6', depthRank: 1, depthOrder: 'QB1' },
-    { athleteId: '4426339', displayName: 'Spencer Rattler', shortName: 'SRATTLER', uniformNumber: 2, teamCode: 'NO', position: 'QB', skinTone: '#8d5524', depthRank: 2, depthOrder: 'QB2' },
-    { athleteId: '4361259', displayName: 'Zach Wilson', shortName: 'ZWILSON', uniformNumber: 11, teamCode: 'NO', position: 'QB', skinTone: '#f8d9b6', depthRank: 3, depthOrder: 'QB3' },
+    { athleteId: '16757', displayName: 'Derek Carr', shortName: 'DCARR', uniformNumber: 4, teamCode: 'NO', position: 'QB', skinTone: '#f8d9b6', depthRank: 1, depthOrder: 'QB1' },
+    { athleteId: '4360689', displayName: 'Tyler Shough', shortName: 'TSHOUGH', uniformNumber: 6, teamCode: 'NO', position: 'QB', skinTone: '#f8d9b6', depthRank: 2, depthOrder: 'QB2' },
+    { athleteId: '4426339', displayName: 'Spencer Rattler', shortName: 'SRATTLER', uniformNumber: 2, teamCode: 'NO', position: 'QB', skinTone: '#8d5524', depthRank: 3, depthOrder: 'QB3' },
     { athleteId: '4239996', displayName: 'Travis Etienne Jr.', shortName: 'TETIENNEJR', uniformNumber: 3, teamCode: 'NO', position: 'RB', skinTone: '#8d5524', depthRank: 1, depthOrder: 'RB1' },
     { athleteId: '3054850', displayName: 'Alvin Kamara', shortName: 'AKAMARA', uniformNumber: 41, teamCode: 'NO', position: 'RB', skinTone: '#8d5524', depthRank: 2, depthOrder: 'RB2' },
     { athleteId: '4599739', displayName: 'Kendre Miller', shortName: 'KMILLER', uniformNumber: 5, teamCode: 'NO', position: 'RB', skinTone: '#8d5524', depthRank: 3, depthOrder: 'RB3' },

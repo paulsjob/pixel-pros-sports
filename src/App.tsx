@@ -776,7 +776,56 @@ export default function App() {
     setSquadLockState(targetRoom, userName, nextLocked, currentSport);
     syncLineupToSupabase(roomCode, userName, squadSlots, nextLocked);
 
-    showToast(nextLocked ? `PICKS LOCKED for ${userName}!` : `PICKS UNLOCKED for ${userName}!`);
+    if (nextLocked) {
+      // Find list of all game slates in order
+      const matchSlates = matches
+        .map((m) => {
+          const away = (m.awayTeamCode || m.away_team || '').toUpperCase();
+          const home = (m.homeTeamCode || m.home_team || '').toUpperCase();
+          return away && home ? `${away}@${home}` : null;
+        })
+        .filter(Boolean) as string[];
+
+      const allSlates = ['SUPERSTARS', ...matchSlates];
+      const cleanUser = userName.trim().toUpperCase();
+
+      const isSlateLocked = (sId: string) => {
+        const effR = getEffectiveRoomCodeForSlate(roomCode, sId);
+        const r = roomRosters.find(
+          (roster) =>
+            (roster.room_code || '').toUpperCase() === effR.toUpperCase() &&
+            (roster.user_name || '').trim().toUpperCase() === cleanUser
+        );
+        return Boolean(
+          r?.is_locked ||
+            r?.device_id === 'LOCKED' ||
+            getSquadLockState(effR, cleanUser, currentSport)
+        );
+      };
+
+      const currentIndex = allSlates.indexOf(activeSlateId);
+      // Look for the next slate after current that is not locked
+      let nextSlate = allSlates.slice(currentIndex + 1).find((sId) => !isSlateLocked(sId));
+      // If not found, wrap around to look for any unlocked slate
+      if (!nextSlate) {
+        nextSlate = allSlates.find((sId) => sId !== activeSlateId && !isSlateLocked(sId));
+      }
+
+      const currentSlateLabel = activeSlateId === 'SUPERSTARS' ? 'SUPERSTARS' : activeSlateId;
+
+      if (nextSlate) {
+        const nextSlateLabel = nextSlate === 'SUPERSTARS' ? 'WEEKLY SUPERSTARS' : `GAME ${nextSlate.replace('@', ' @ ')}`;
+        showToast(`🔒 ${currentSlateLabel} LOCKED! Taking you to ${nextSlateLabel}...`);
+        setTimeout(() => {
+          setActiveSlateId(nextSlate!);
+          showToast(`🏈 Next Up: ${nextSlateLabel}! Pick your 3 Stars! ⭐`);
+        }, 450);
+      } else {
+        showToast(`🔒 ${currentSlateLabel} LOCKED! 🎉 ALL GAME SLATES COMPLETE!`);
+      }
+    } else {
+      showToast(`PICKS UNLOCKED for ${userName}!`);
+    }
   };
 
   useEffect(() => {

@@ -129,30 +129,23 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
     const container = slateScrollRef.current;
     const btn = activeSlateBtnRef.current;
     if (container && btn) {
-      const containerRect = container.getBoundingClientRect();
-      const btnRect = btn.getBoundingClientRect();
-      const currentScrollLeft = container.scrollLeft;
-      const targetScrollLeft =
-        currentScrollLeft + (btnRect.left - containerRect.left) - containerRect.width / 2 + btnRect.width / 2;
-      container.scrollTo({ left: Math.max(0, targetScrollLeft), behavior: 'smooth' });
+      const cRect = container.getBoundingClientRect();
+      const bRect = btn.getBoundingClientRect();
+      // Only scroll if the active button is not already fully visible in the carousel
+      const isOffLeft = bRect.left < cRect.left;
+      const isOffRight = bRect.right > cRect.right;
+      if (isOffLeft || isOffRight) {
+        const offset = isOffLeft
+          ? bRect.left - cRect.left - 16
+          : bRect.right - cRect.right + 16;
+        container.scrollBy({ left: offset, behavior: 'smooth' });
+      }
     }
   }, [activeSlateId]);
 
-  const handlePrevSlate = () => {
-    if (prevSlate && onSelectSlate) {
-      onSelectSlate(prevSlate.id);
-    }
-  };
-
-  const handleNextSlate = () => {
-    if (nextSlate && onSelectSlate) {
-      onSelectSlate(nextSlate.id);
-    }
-  };
-
   const handleScrollCarousel = (direction: 'left' | 'right') => {
     if (slateScrollRef.current) {
-      const scrollAmount = direction === 'left' ? -200 : 200;
+      const scrollAmount = direction === 'left' ? -180 : 180;
       slateScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
@@ -227,17 +220,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
         {/* Clean Slate Bar: Left Arrow, Full-Width Carousel, Right Arrow */}
         <div className="mb-2.5 sm:mb-3 p-1 sm:p-1.5 bg-[#ecd7ab]/90 border-2 border-[#c99a57] rounded-xs shadow-inner">
           <div className="flex items-center gap-1 w-full">
-            {/* Left Slate Arrow */}
+            {/* Left Slate Arrow: Scrolls button carousel left */}
             <button
               type="button"
-              onClick={() => {
-                handlePrevSlate();
-                handleScrollCarousel('left');
-              }}
-              disabled={currentSlateIndex === 0}
-              className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-2 border-[#c99a57] hover:border-[#b48340] rounded-xs font-pixel text-xs font-bold disabled:opacity-25 disabled:cursor-not-allowed shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
-              title="Previous Game Slate"
-              aria-label="Previous Game Slate"
+              onClick={() => handleScrollCarousel('left')}
+              className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-2 border-[#c99a57] hover:border-[#b48340] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
+              title="Scroll Games Left"
+              aria-label="Scroll Games Left"
             >
               <ChevronLeft size={18} className="text-[#5c3509]" />
             </button>
@@ -306,17 +295,13 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               })}
             </div>
 
-            {/* Right Slate Arrow */}
+            {/* Right Slate Arrow: Scrolls button carousel right */}
             <button
               type="button"
-              onClick={() => {
-                handleNextSlate();
-                handleScrollCarousel('right');
-              }}
-              disabled={currentSlateIndex === allSlates.length - 1}
-              className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-2 border-[#c99a57] hover:border-[#b48340] rounded-xs font-pixel text-xs font-bold disabled:opacity-25 disabled:cursor-not-allowed shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
-              title="Next Game Slate"
-              aria-label="Next Game Slate"
+              onClick={() => handleScrollCarousel('right')}
+              className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border-2 border-[#c99a57] hover:border-[#b48340] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
+              title="Scroll Games Right"
+              aria-label="Scroll Games Right"
             >
               <ChevronRight size={18} className="text-[#5c3509]" />
             </button>
@@ -839,18 +824,19 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               </button>
             </div>
           ) : isRosterValid ? (
-            <div className="w-full px-3 sm:px-5 py-2 sm:py-3 bg-[#0f172a] text-[#fae5b8] border-3 border-[#1e293b] shadow-[0_4px_0_0_#020617] rounded-xs flex items-center justify-between gap-2 sm:gap-4 box-border">
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
-                <span className="px-2 sm:px-2.5 py-1 bg-[#1e293b] border border-[#334155] rounded-2xs font-pixel text-[9px] sm:text-xs text-[#38bdf8] font-bold tracking-wider whitespace-nowrap">
-                  ⭐ READY TO LOCK!
+            <div className="w-full p-2 sm:px-4 sm:py-2.5 bg-[#0f172a] text-[#fae5b8] border-3 border-[#1e293b] shadow-[0_4px_0_0_#020617] rounded-xs flex items-center justify-between gap-2 box-border overflow-hidden">
+              <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                <span className="px-2 py-1 bg-[#1e293b] border border-[#334155] rounded-2xs font-pixel text-[10px] text-[#38bdf8] font-bold tracking-wider whitespace-nowrap">
+                  ⭐ READY!
                 </span>
               </div>
               <button
                 type="button"
                 onClick={onToggleLock}
-                className="touch-manipulation flex-1 sm:flex-initial px-3 sm:px-6 py-2 bg-[#facc15] hover:bg-[#fde047] text-[#451a03] font-pixel text-[10px] sm:text-xs border-2 border-[#ca8a04] rounded-xs cursor-pointer shadow-[0_2px_0_0_#854d0e] animate-pulse active:translate-y-0.5 whitespace-nowrap text-center font-bold tracking-wide"
+                className="touch-manipulation w-full sm:w-auto sm:flex-1 py-2 sm:py-2.5 px-3 sm:px-6 bg-[#facc15] hover:bg-[#fde047] text-[#451a03] font-pixel text-xs sm:text-sm border-2 border-[#ca8a04] rounded-xs cursor-pointer shadow-[0_2px_0_0_#854d0e] active:translate-y-0.5 whitespace-nowrap text-center font-bold tracking-wider flex items-center justify-center gap-2"
               >
-                ⚡ LOCK SQUAD ⚡
+                <span>⚡</span>
+                <span>LOCK SQUAD & NEXT GAME →</span>
               </button>
             </div>
           ) : (

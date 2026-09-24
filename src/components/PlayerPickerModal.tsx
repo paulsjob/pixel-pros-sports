@@ -570,22 +570,13 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
             </span>
           </div>
         ) : isSuperstarsMode ? (
-          <div className="flex items-center justify-between p-2.5 bg-[#12579b] text-[#fae5b8] rounded-xs border-2 border-[#0a2d52] shadow-xs shrink-0">
+          <div className="flex items-center justify-between p-2 sm:p-2.5 bg-[#12579b] text-[#fae5b8] rounded-xs border-2 border-[#0a2d52] shadow-xs shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-lg sm:text-xl">⭐</span>
-              <div>
-                <div className="font-pixel text-[11px] sm:text-xs font-bold text-white tracking-wider flex items-center gap-1.5">
-                  <span>WEEKLY SUPERSTARS • LEAGUE {currentSlotDef.positionReq} LEADERS</span>
-                  <span className="px-1.5 py-0.2 bg-[#fbbf24] text-[#78350f] text-[8px] rounded-2xs font-black">LEAGUE RANKED</span>
-                </div>
-                <div className="font-retro text-[9px] sm:text-[10px] text-[#fae5b8]/90">
-                  Ranked in order by NFL league {currentSlotDef.positionReq === 'QB' ? 'Passing Yards' : currentSlotDef.positionReq === 'RB' ? 'Rushing Yards' : 'Receiving Yards'}
-                </div>
+              <span className="text-lg">⭐</span>
+              <div className="font-pixel text-xs sm:text-sm font-bold text-white tracking-wider">
+                {currentSlotDef.positionReq} WEEKLY SUPERSTARS
               </div>
             </div>
-            <span className="font-pixel text-[8px] sm:text-[9px] bg-[#0a2d52] text-[#38bdf8] px-2 py-1 rounded-2xs border border-[#38bdf8]/40 font-bold whitespace-nowrap">
-              {currentSlotDef.positionReq === 'QB' ? 'PASS YDS' : currentSlotDef.positionReq === 'RB' ? 'RUSH YDS' : 'REC YDS'}
-            </span>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5 p-2 bg-[#ecd7ab]/90 rounded-xs border-2 border-[#c99a57] shadow-inner shrink-0">
@@ -750,33 +741,6 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                     }`}
                     title={`Tap to inspect stats for ${player.displayName}${player.injuryDetail ? ` (${player.injuryDetail})` : ''}`}
                   >
-                    {/* League Stat Rank Badge on Top Left Corner */}
-                    <span
-                      className="absolute top-2.5 left-2.5 z-20 h-5 px-1.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-black rounded-2xs border border-[#0a2d52] shadow-2xs tracking-wider pointer-events-none flex items-center justify-center leading-none"
-                      title={`League Rank #${index + 1}`}
-                    >
-                      #{index + 1}
-                    </span>
-
-                    {/* Vibrant Un-Grayscaled Pop Badges on Top Right Corner (perfectly level with #11 • WR2) */}
-                    {player.injuryStatus === 'I' && (
-                      <span
-                        className="absolute top-2.5 right-2.5 z-20 h-5 px-1.5 bg-[#dc2626] text-white font-pixel text-[9px] font-black rounded-2xs border border-[#991b1b] shadow-2xs tracking-wider pointer-events-none flex items-center justify-center leading-none"
-                        title={player.injuryDetail || 'INJURED / OUT'}
-                      >
-                        I
-                      </span>
-                    )}
-                    {player.injuryStatus === 'Q' && (
-                      <span
-                        className="absolute top-2.5 right-2.5 z-20 h-5 px-1.5 bg-[#ea580c] text-white font-pixel text-[9px] font-black rounded-2xs border border-[#c2410c] shadow-2xs tracking-wider pointer-events-none flex items-center justify-center leading-none"
-                        title={player.injuryDetail || 'QUESTIONABLE'}
-                      >
-                        Q
-                      </span>
-                    )}
-
-                    {/* Grayscale container: when player is I or Q, entire player block (helmet, avatar, pts, buttons) is 100% grayscale */}
                     <div
                       className="w-full flex-1 flex flex-col items-center justify-between"
                       style={isInjuredOrQuestionable ? { filter: 'grayscale(100%)' } : undefined}
@@ -796,24 +760,31 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                         </div>
                       ) : null}
 
+                      {/* Header Row: Rank Badge + Helmet + Team on Left; #Number • Pos + Injury on Right */}
                       <div className="w-full flex items-center justify-between gap-1 mb-1">
-                        <div className="flex items-center gap-1.5 pl-6 sm:pl-7">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span
+                            className="h-5 px-1.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-black rounded-2xs border border-[#0a2d52] shadow-2xs tracking-wider shrink-0 flex items-center justify-center leading-none"
+                            title={`Rank #${index + 1}`}
+                          >
+                            #{index + 1}
+                          </span>
                           {sport === 'nfl' && player.teamCode ? (
                             <PixelHelmet
                               teamCode={player.teamCode}
-                              size={28}
-                              className="drop-shadow-xs"
+                              size={24}
+                              className="drop-shadow-xs shrink-0"
                             />
                           ) : (
-                            <span className="px-1.5 py-0.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-bold rounded-2xs">
+                            <span className="px-1.5 py-0.5 bg-[#12579b] text-[#fae5b8] font-pixel text-[9px] font-bold rounded-2xs shrink-0">
                               {player.teamCode}
                             </span>
                           )}
-                          <span className="font-pixel text-[10px] font-bold text-[#5c3509] tracking-wider">
+                          <span className="font-pixel text-[10px] font-bold text-[#5c3509] tracking-wider truncate">
                             {player.teamCode}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0 pr-7">
+                        <div className="flex items-center gap-1 shrink-0">
                           <div className="flex items-center gap-1 font-pixel text-[9px] font-bold text-[#784610] h-5">
                             <span>#{player.uniformNumber || '—'}</span>
                             <span className="opacity-70">•</span>
@@ -821,6 +792,22 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                               {getPlayerDisplayDepth(player)}
                             </span>
                           </div>
+                          {player.injuryStatus === 'I' && (
+                            <span
+                              className="h-4 px-1 bg-[#dc2626] text-white font-pixel text-[8px] font-black rounded-2xs border border-[#991b1b] shadow-2xs flex items-center justify-center"
+                              title={player.injuryDetail || 'INJURED / OUT'}
+                            >
+                              I
+                            </span>
+                          )}
+                          {player.injuryStatus === 'Q' && (
+                            <span
+                              className="h-4 px-1 bg-[#ea580c] text-white font-pixel text-[8px] font-black rounded-2xs border border-[#c2410c] shadow-2xs flex items-center justify-center"
+                              title={player.injuryDetail || 'QUESTIONABLE'}
+                            >
+                              Q
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -853,54 +840,35 @@ export const PlayerPickerModal: React.FC<PlayerPickerModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Score & Yardage Display */}
+                      {/* Clean Score Display (Whole Numbers, No Yardage Clutter) */}
                       <div className={`w-full mb-2 py-1 px-2 rounded-2xs text-center shadow-2xs border ${
                         isInjuredOrQuestionable
                           ? 'bg-[#d1d5db] border-[#9ca3af]'
                           : 'bg-[#ebd2a4] border-[#c99a57]'
                       }`}>
                         {scoringInfo.gameState === 'pre' ? (
-                          <div className="flex flex-col items-center justify-center">
+                          <div className="flex items-center justify-center">
                             <span className="font-pixel text-xs sm:text-sm font-bold text-[#475569]">
                               0 PTS
                             </span>
-                            {primaryYards > 0 && (
-                              <span className="font-pixel text-[9px] text-[#0a2d52] font-black bg-[#fae5b8] px-1.5 py-0.5 rounded-2xs border border-[#c99a57]/60 mt-0.5 tracking-tight">
-                                {primaryYards.toLocaleString()} {primaryUnit}
-                              </span>
-                            )}
                           </div>
                         ) : scoringInfo.gameState === 'in' ? (
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
-                                {scoringInfo.activeScore} PTS
-                              </span>
-                              <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
-                                LIVE
-                              </span>
-                            </div>
-                            {primaryYards > 0 && (
-                              <span className="font-pixel text-[8px] text-[#0a2d52] font-black bg-[#fae5b8] px-1.5 py-0.2 rounded-2xs border border-[#c99a57]/60 mt-0.5 tracking-tight">
-                                {primaryYards.toLocaleString()} {primaryUnit}
-                              </span>
-                            )}
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#b91c1c] animate-pulse">
+                              {Math.round(scoringInfo.activeScore)} PTS
+                            </span>
+                            <span className="font-pixel text-[8px] text-white bg-[#b91c1c] px-1 py-0.5 rounded-2xs">
+                              LIVE
+                            </span>
                           </div>
                         ) : (
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
-                                {scoringInfo.activeScore} PTS
-                              </span>
-                              <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
-                                FINAL
-                              </span>
-                            </div>
-                            {primaryYards > 0 && (
-                              <span className="font-pixel text-[8px] text-[#0a2d52] font-black bg-[#fae5b8] px-1.5 py-0.2 rounded-2xs border border-[#c99a57]/60 mt-0.5 tracking-tight">
-                                {primaryYards.toLocaleString()} {primaryUnit}
-                              </span>
-                            )}
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-pixel text-xs sm:text-sm font-bold text-[#12579b]">
+                              {Math.round(scoringInfo.activeScore)} PTS
+                            </span>
+                            <span className="font-pixel text-[8px] text-[#93c5fd] bg-[#12579b] px-1 py-0.5 rounded-2xs">
+                              FINAL
+                            </span>
                           </div>
                         )}
                       </div>

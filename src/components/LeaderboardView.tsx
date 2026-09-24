@@ -84,30 +84,17 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     return list;
   }, [sortedMatches]);
 
-  const currentStandingSlateIdx = Math.max(0, standingsSlateOptions.indexOf(leagueSlateFilter));
-  const handlePrevStandingSlate = () => {
-    if (currentStandingSlateIdx > 0) {
-      setLeagueSlateFilter(standingsSlateOptions[currentStandingSlateIdx - 1]);
-    }
-  };
-  const handleNextStandingSlate = () => {
-    if (currentStandingSlateIdx < standingsSlateOptions.length - 1) {
-      setLeagueSlateFilter(standingsSlateOptions[currentStandingSlateIdx + 1]);
+  const handleScrollStandingSlate = (direction: 'left' | 'right') => {
+    if (standingSlateScrollRef.current) {
+      standingSlateScrollRef.current.scrollBy({
+        left: direction === 'left' ? -180 : 180,
+        behavior: 'smooth',
+      });
     }
   };
 
   const standingSlateScrollRef = useRef<HTMLDivElement>(null);
   const activeStandingSlateBtnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (activeStandingSlateBtnRef.current && standingSlateScrollRef.current) {
-      activeStandingSlateBtnRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
-    }
-  }, [leagueSlateFilter]);
 
   const getPlayerLivePoints = useCallback((p: Competitor) => {
     if (!p) return 0;
@@ -415,11 +402,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {familyListWithDynamicTotals[1].userName}
                     </div>
                     <div className="font-pixel text-xs sm:text-sm text-[#facc15] font-bold">
-                      {familyListWithDynamicTotals[1].totalScore.toFixed(1)}p
+                      {Math.round(familyListWithDynamicTotals[1].totalScore)}p
                     </div>
                   </div>
                   <div className="text-[8px] font-retro text-[#94a3b8]">
-                    -{Math.max(0, familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore).toFixed(1)}p
+                    {Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore) > 0
+                      ? `-${Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore)}p`
+                      : 'TIED'}
                   </div>
                 </div>
               )}
@@ -441,7 +430,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {familyListWithDynamicTotals[0].userName}
                     </div>
                     <div className="font-pixel text-sm sm:text-base text-[#fde047] font-bold">
-                      {familyListWithDynamicTotals[0].totalScore.toFixed(1)}p
+                      {Math.round(familyListWithDynamicTotals[0].totalScore)}p
                     </div>
                   </div>
                   <div className="text-[8px] font-pixel text-[#fef08a] bg-[#713f12] px-1 py-0.2 rounded-2xs">
@@ -464,11 +453,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {familyListWithDynamicTotals[2].userName}
                     </div>
                     <div className="font-pixel text-xs sm:text-sm text-[#facc15] font-bold">
-                      {familyListWithDynamicTotals[2].totalScore.toFixed(1)}p
+                      {Math.round(familyListWithDynamicTotals[2].totalScore)}p
                     </div>
                   </div>
                   <div className="text-[8px] font-retro text-[#cbd5e1]">
-                    -{Math.max(0, familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore).toFixed(1)}p
+                    {Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore) > 0
+                      ? `-${Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore)}p`
+                      : 'TIED'}
                   </div>
                 </div>
               ) : (
@@ -480,58 +471,17 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
         )}
 
-        {/* League Slate Scope Carousel + Sort Filter */}
+        {/* League Slate Scope Carousel */}
         {activeTier === 'family' && (
-          <div className="mb-3 p-1.5 bg-[#ecd7ab]/90 border-2 border-[#c99a57] rounded-xs shadow-inner">
-            <div className="flex items-center justify-between pb-1 mb-1 border-b border-[#c99a57]/40 text-[9px] font-pixel text-[#5c3509]">
-              <div className="flex items-center gap-1 font-bold">
-                <span>🏆</span>
-                <span>
-                  {leagueSlateFilter === 'MEGA_TOTAL'
-                    ? 'WEEKLY TOTAL (ALL GAMES)'
-                    : leagueSlateFilter === 'SUPERSTARS'
-                    ? 'WEEKLY SUPERSTARS'
-                    : `GAME: ${leagueSlateFilter}`}
-                </span>
-              </div>
-
-              {/* Sort Filter Buttons */}
-              <div className="flex items-center gap-1 text-[8px] sm:text-[9px]">
-                <span className="text-[#784610] font-bold">SORT:</span>
-                <button
-                  type="button"
-                  onClick={() => setSortBy('score')}
-                  className={`touch-manipulation px-1.5 py-0.5 rounded-2xs border font-bold cursor-pointer ${
-                    sortBy === 'score'
-                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52]'
-                      : 'bg-[#fae5b8] text-[#5c3509] border-[#c99a57]'
-                  }`}
-                >
-                  🔥 PTS
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortBy('slates')}
-                  className={`touch-manipulation px-1.5 py-0.5 rounded-2xs border font-bold cursor-pointer ${
-                    sortBy === 'slates'
-                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52]'
-                      : 'bg-[#fae5b8] text-[#5c3509] border-[#c99a57]'
-                  }`}
-                >
-                  🎯 SLATES
-                </button>
-              </div>
-            </div>
-
+          <div className="mb-2.5 p-1.5 bg-[#ecd7ab]/90 border-2 border-[#c99a57] rounded-xs shadow-inner">
             <div className="relative flex items-center gap-1 w-full">
-              {/* Left Arrow Button */}
+              {/* Left Arrow: scrolls buttons only */}
               <button
                 type="button"
-                onClick={handlePrevStandingSlate}
-                disabled={currentStandingSlateIdx === 0}
-                className="touch-manipulation p-1 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
-                title="Previous Standings Slate"
-                aria-label="Previous Standings Slate"
+                onClick={() => handleScrollStandingSlate('left')}
+                className="touch-manipulation p-1 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
+                title="Scroll Left"
+                aria-label="Scroll Left"
               >
                 <ChevronLeft size={14} className="text-[#5c3509]" />
               </button>
@@ -594,14 +544,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 })}
               </div>
 
-              {/* Right Arrow Button */}
+              {/* Right Arrow: scrolls buttons only */}
               <button
                 type="button"
-                onClick={handleNextStandingSlate}
-                disabled={currentStandingSlateIdx === standingsSlateOptions.length - 1}
-                className="touch-manipulation p-1 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
-                title="Next Standings Slate"
-                aria-label="Next Standings Slate"
+                onClick={() => handleScrollStandingSlate('right')}
+                className="touch-manipulation p-1 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
+                title="Scroll Right"
+                aria-label="Scroll Right"
               >
                 <ChevronRight size={14} className="text-[#5c3509]" />
               </button>
@@ -611,20 +560,17 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
         {/* Pre-kickoff informational banner when games have not started yet */}
         {activeTier === 'top_scores' && !hasAnyLiveScoring && (
-          <div className="mb-2.5 p-2.5 bg-[#faebd0] border-2 border-[#c99a57] rounded-xs text-center shadow-xs">
+          <div className="mb-2 p-1.5 bg-[#faebd0] border border-[#c99a57] rounded-xs text-center shadow-2xs">
             <div className="font-pixel text-[10px] sm:text-xs text-[#5c3509] font-bold flex items-center justify-center gap-1.5">
               <span>⏱️</span>
-              <span>GAMES HAVE NOT KICKED OFF YET</span>
-            </div>
-            <div className="font-retro text-[10px] sm:text-[11px] text-[#784610] mt-0.5">
-              Showing marquee starters. Live athlete fantasy scores will update automatically in real-time as games kick off!
+              <span>WAIT UNTIL KICKOFF!</span>
             </div>
           </div>
         )}
 
         {/* 2-Column Table Column Headers */}
-        <div className="flex items-center justify-between px-2.5 sm:px-3 py-1.5 mb-2 bg-[#d4a86a]/30 border border-[#d4a86a] rounded-xs font-pixel text-[10px] text-[#784610]">
-          <span className="tracking-wider">{activeTier === 'family' ? 'RANK & SQUAD (TAP TO INSPECT)' : 'RANK & PLAYER'}</span>
+        <div className="flex items-center justify-between px-2.5 sm:px-3 py-1 mb-1.5 bg-[#d4a86a]/30 border border-[#d4a86a] rounded-xs font-pixel text-[10px] text-[#784610]">
+          <span className="tracking-wider">{activeTier === 'family' ? 'SQUAD' : 'PLAYER'}</span>
           <span className="tracking-wider text-right">PTS</span>
         </div>
 
@@ -656,124 +602,82 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     {/* Main Row: Click to toggle expand */}
                     <div
                       onClick={() => setExpandedSquadName((prev) => (prev === entry.userName ? null : entry.userName))}
-                      className="w-full flex items-center justify-between p-2.5 sm:p-3 cursor-pointer select-none"
+                      className="w-full p-2 sm:p-2.5 cursor-pointer select-none"
                     >
-                      {/* Column 1: Rank Badge + Helmet + Name + Badges */}
-                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 pr-2">
-                        {/* Rank Badge */}
-                        <span
-                          className={`font-pixel text-[10px] sm:text-xs px-2 py-0.5 border rounded-xs shrink-0 font-bold ${getRankBadge(
-                            displayRank
-                          )}`}
-                        >
-                          #{displayRank}
-                        </span>
+                      {/* Top Line: Rank + Helmet + Squad Name on Left; Score + Chevron on Right */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {/* Rank Badge */}
+                          <span
+                            className={`font-pixel text-[10px] sm:text-xs px-1.5 py-0.5 border rounded-xs shrink-0 font-bold ${getRankBadge(
+                              displayRank
+                            )}`}
+                          >
+                            #{displayRank}
+                          </span>
 
-                        {/* Real PNG Helmet / Icon */}
-                        <div className="shrink-0">
-                          {sport === 'nfl' ? (
-                            <PixelHelmet
-                              teamCode={entry.stars.find((s) => s?.teamCode)?.teamCode || 'KC'}
-                              size={24}
-                              className="shrink-0"
-                            />
-                          ) : (
-                            <span className="text-xl select-none">🏀</span>
-                          )}
-                        </div>
+                          {/* Helmet / Ball */}
+                          <div className="shrink-0">
+                            {sport === 'nfl' ? (
+                              <PixelHelmet
+                                teamCode={entry.stars.find((s) => s?.teamCode)?.teamCode || 'KC'}
+                                size={22}
+                                className="shrink-0"
+                              />
+                            ) : (
+                              <span className="text-base select-none">🏀</span>
+                            )}
+                          </div>
 
-                        {/* Name + Badges */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Name + You / Locked Badges */}
+                          <div className="flex items-center gap-1.5 min-w-0 truncate">
                             <span className="font-pixel text-xs sm:text-sm tracking-wide truncate font-bold">
                               {entry.userName}
                             </span>
                             {isUser && (
-                              <span className="font-pixel text-[9px] px-1.5 py-0.2 bg-[#fde047] text-[#78350f] border border-[#b45309] rounded-2xs shrink-0 font-bold">
+                              <span className="font-pixel text-[8px] px-1 py-0.2 bg-[#fde047] text-[#78350f] border border-[#b45309] rounded-2xs shrink-0 font-bold">
                                 YOU
                               </span>
                             )}
                             {entry.isLocked && (
-                              <span className="font-pixel text-[8px] sm:text-[9px] px-1.5 py-0.2 bg-[#166534] text-[#bbf7d0] border border-[#14532d] rounded-2xs shrink-0 flex items-center gap-0.5 font-bold">
-                                <span>🔒</span>
-                                <span>LOCKED</span>
+                              <span className="text-xs shrink-0" title="Locked Lineup">
+                                🔒
                               </span>
                             )}
                           </div>
+                        </div>
 
-                          <div className="font-retro text-[9px] sm:text-[10px] opacity-90 font-bold mt-0.5">
-                            {leagueSlateFilter === 'MEGA_TOTAL' ? (
-                              <span>
-                                {entry.slatesCount} {entry.slatesCount === 1 ? 'game battle' : 'game battles'} • Superstars: {entry.superstarsScore.toFixed(1)}p
-                              </span>
-                            ) : entry.isLocked ? (
-                              <span>🔒 Locked Lineup</span>
-                            ) : entry.stars.filter(Boolean).length === 3 ? (
-                              <span>3 Stars Picked</span>
-                            ) : entry.stars.filter(Boolean).length > 0 ? (
-                              <span>Lineup in Progress</span>
-                            ) : (
-                              <span>No Picks Yet</span>
-                            )}
+                        {/* Right: Total Points + Chevron */}
+                        <div className="shrink-0 flex items-center gap-1.5 ml-1">
+                          <div
+                            className={`px-2 py-0.5 font-pixel text-xs sm:text-sm font-bold border rounded-xs shadow-xs text-right whitespace-nowrap ${
+                              isUser
+                                ? 'bg-[#38bdf8] text-[#080d1a] border-[#0284c7]'
+                                : 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52]'
+                            }`}
+                          >
+                            {Math.round(entry.totalScore)} PTS
                           </div>
-
-                          {/* 3 Mini Star Badges */}
-                          <div className="flex items-center gap-1 mt-1 flex-wrap">
-                            {[0, 1, 2].map((sIdx) => {
-                              const star = entry.stars[sIdx];
-                              if (!star) {
-                                return (
-                                  <span
-                                    key={sIdx}
-                                    className={`font-pixel text-[8px] px-1.5 py-0.5 rounded-2xs border ${
-                                      isUser
-                                        ? 'bg-[#0f3d6b] text-[#93c5fd] border-[#38bdf8]/30'
-                                        : 'bg-[#fae5b8] text-[#784610] border-[#d4a86a]'
-                                    }`}
-                                  >
-                                    ★ EMPTY
-                                  </span>
-                                );
-                              }
-
-                              return (
-                                <span
-                                  key={sIdx}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenPlayerDetail && onOpenPlayerDetail(star);
-                                  }}
-                                  className={`font-pixel text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-2xs border cursor-pointer hover:underline transition-all whitespace-nowrap inline-flex items-center gap-1 ${
-                                    star.injuryStatus === 'I' || star.injuryStatus === 'Q'
-                                      ? 'bg-[#d8d9dc] text-[#374151] border-[#9ca3af]'
-                                      : isUser
-                                      ? 'bg-[#0a2d52] text-[#fae5b8] border-[#38bdf8]/50 hover:bg-[#0c3764]'
-                                      : 'bg-[#fae5b8] text-[#5c3509] border-[#c99a57] hover:bg-[#fff7ed]'
-                                  }`}
-                                  title={`${star.displayName} (${star.teamCode})`}
-                                >
-                                  <span>★ {formatPlayerInitialLastName(star.displayName)} ({getPlayerLivePoints(star)}p)</span>
-                                </span>
-                              );
-                            })}
+                          <div className="text-current opacity-70">
+                            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                           </div>
                         </div>
                       </div>
 
-                      {/* Column 2: Total Points Right-Aligned + Expand Chevron */}
-                      <div className="shrink-0 flex items-center gap-1.5 ml-2">
-                        <div
-                          className={`px-2.5 py-1 font-pixel text-xs sm:text-sm font-bold border rounded-xs shadow-xs text-right whitespace-nowrap ${
-                            isUser
-                              ? 'bg-[#38bdf8] text-[#080d1a] border-[#0284c7]'
-                              : 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52]'
-                          }`}
-                        >
-                          {entry.totalScore ? `${entry.totalScore.toLocaleString()} PTS` : '0 PTS'}
-                        </div>
-                        <div className="text-current opacity-70">
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </div>
+                      {/* Bottom Line: Clean, single-line stars summary (no multi-line button clutter) */}
+                      <div className="mt-1 pl-6 sm:pl-7 flex items-center min-w-0">
+                        {entry.stars.filter(Boolean).length > 0 ? (
+                          <div className="font-pixel text-[8px] sm:text-[9px] truncate opacity-90 tracking-tight">
+                            ★ {entry.stars
+                              .filter(Boolean)
+                              .map((s) => `${formatPlayerInitialLastName(s!.displayName)} (${Math.round(getPlayerLivePoints(s!))}p)`)
+                              .join(' • ')}
+                          </div>
+                        ) : (
+                          <div className="font-pixel text-[8px] sm:text-[9px] opacity-60">
+                            No picks yet
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -852,7 +756,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                                   title={`Tap to jump to ${sb.label} standings`}
                                 >
                                   <span>{sb.label}:</span>
-                                  <span className="text-[#12579b]">{sb.points.toFixed(1)}p</span>
+                                  <span className="text-[#12579b]">{Math.round(sb.points)}p</span>
                                 </button>
                               ))}
                             </div>
