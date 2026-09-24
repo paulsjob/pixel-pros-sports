@@ -871,11 +871,12 @@ export async function fetchAllActiveRooms(
     user?: string | null,
     sport?: SportId | string | null
   ) => {
-    const rCode = (room || '').trim().toUpperCase();
+    const rawCode = (room || '').trim().toUpperCase();
     const uName = (user || '').trim().toUpperCase();
     const sSport: SportId = (sport || 'nfl').toString().toLowerCase() === 'nba' ? 'nba' : 'nfl';
-    if (!rCode) return;
+    if (!rawCode) return;
 
+    const rCode = rawCode.split('__')[0];
     const mapKey = `${rCode}_${sSport}`;
     if (!roomMap.has(mapKey)) {
       roomMap.set(mapKey, { roomCode: rCode, sport: sSport, squads: new Set() });
@@ -1086,15 +1087,12 @@ export async function fetchAllRoomsWithDetails(
   // Fetch backend room metadata (including isArchived)
   const roomMetaMap = new Map<string, { isArchived?: boolean; archivedAt?: string }>();
   try {
-    const res = await apiFetch('/api/rooms');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.rooms)) {
-        data.rooms.forEach((r: any) => {
-          const k = `${String(r.roomCode).toUpperCase()}_${String(r.sport).toLowerCase()}`;
-          roomMetaMap.set(k, { isArchived: Boolean(r.isArchived), archivedAt: r.archivedAt });
-        });
-      }
+    const res = await apiFetch<{ success: boolean; rooms?: any[] }>('/api/rooms');
+    if (res && res.rooms && Array.isArray(res.rooms)) {
+      res.rooms.forEach((r: any) => {
+        const k = `${String(r.roomCode).toUpperCase()}_${String(r.sport).toLowerCase()}`;
+        roomMetaMap.set(k, { isArchived: Boolean(r.isArchived), archivedAt: r.archivedAt });
+      });
     }
   } catch {
     // fallback
@@ -1319,7 +1317,8 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
       const hasThreeDistinct = starIds.length === 3 && distinctStars.size === 3;
       const isLocked = Boolean(
         r.is_locked === true ||
-        r.device_id === 'LOCKED' ||
+        r.is_locked === 'true' ||
+        String(r.device_id).toUpperCase() === 'LOCKED' ||
         (hasThreeDistinct && getSquadLockState(rRoomCode, userName, sport))
       );
 
@@ -1355,14 +1354,14 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
     }
   } catch {}
 
-  // 2. Supabase (if configured)
+  // 2. Supabase (if configured) - queries both base room and all game slates!
   if (checkSupabaseConfigured()) {
     try {
       const client = getSupabaseClient();
       const { data, error } = await client
         .from('user_rosters')
         .select('*')
-        .eq('room_code', cleanRoom)
+        .or(`room_code.eq.${cleanRoom},room_code.like.${cleanRoom}__%`)
         .not('user_name', 'is', null);
 
       if (!error && data && Array.isArray(data)) {
@@ -1777,11 +1776,11 @@ export function subscribeToRoomRosters(
       const client = getSupabaseClient();
       const { data } = await client
         .from('user_rosters')
-        .select('user_name, star_1_id, star_2_id, star_3_id')
-        .eq('room_code', clean);
+        .select('room_code, user_name, star_1_id, star_2_id, star_3_id, is_locked')
+        .or(`room_code.eq.${clean},room_code.like.${clean}__%`);
       if (data && Array.isArray(data)) {
         const snapshot = JSON.stringify(
-          data.map((r: any) => `${r.user_name}:${r.star_1_id}:${r.star_2_id}:${r.star_3_id}`)
+          data.map((r: any) => `${r.room_code}:${r.user_name}:${r.star_1_id}:${r.star_2_id}:${r.star_3_id}:${r.is_locked}`)
         );
         if (lastSbRosterSnapshot && snapshot !== lastSbRosterSnapshot) {
           lastSbRosterSnapshot = snapshot;

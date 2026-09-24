@@ -535,6 +535,20 @@ export default function App() {
     );
   };
 
+  const handleSwitchToBoard = () => {
+    setCurrentTab('couch');
+    fetchRoomRosters(roomCode, currentSport).then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        setRoomRosters((prev) => {
+          const map = new Map<string, UserRoster>();
+          for (const r of prev) map.set(`${r.room_code}__${r.user_name}`, r);
+          for (const r of fresh) map.set(`${r.room_code}__${r.user_name}`, r);
+          return Array.from(map.values());
+        });
+      }
+    });
+  };
+
   const handleSelectSquad = async (squadName: string) => {
     const cleanName = squadName.trim().toUpperCase();
     if (!cleanName) return;
@@ -1474,7 +1488,7 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setCurrentTab('couch')}
+                onClick={handleSwitchToBoard}
                 className={`touch-manipulation py-1.5 flex items-center justify-center gap-1.5 font-pixel text-[10px] rounded-xs border-2 cursor-pointer transition-all active:scale-[0.98] ${
                   currentTab === 'couch'
                     ? 'bg-[#12579b] text-[#fae5b8] border-[#38bdf8] font-bold shadow-xs'
@@ -1521,7 +1535,7 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setCurrentTab('couch')}
+                onClick={handleSwitchToBoard}
                 className={`touch-manipulation px-1.5 py-0.5 sm:px-2 sm:py-1 flex items-center justify-center gap-1 font-pixel text-[9px] sm:text-[10px] md:text-xs border-2 cursor-pointer transition-all ${
                   currentTab === 'couch'
                     ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'

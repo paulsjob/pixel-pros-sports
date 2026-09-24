@@ -6,7 +6,7 @@ import { PixelHelmet } from './PixelHelmet';
 import { Users, Sparkles, ChevronLeft, ChevronRight, Trophy, ChevronDown, ChevronUp, Flame, CheckCircle2, ArrowRight } from 'lucide-react';
 import { splitPlayerFirstLastName, formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
 import { getDeviceId } from '../lib/deviceIdentity';
-import { isGhostUser } from '../lib/supabaseClient';
+import { isGhostUser, getSquadLockState } from '../lib/supabaseClient';
 import {
   getPlayerScoringDisplay,
   resolvePlayerInPool,
@@ -63,7 +63,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const [activeTier, setActiveTier] = useState<'family' | 'top_scores'>('family');
   const [leagueSlateFilter, setLeagueSlateFilter] = useState<string>('MEGA_TOTAL');
   const [sortBy, setSortBy] = useState<'score' | 'slates'>('score');
-  const [expandedSquadName, setExpandedSquadName] = useState<string | null>(null);
+  const [expandedSquadName, setExpandedSquadName] = useState<string | null>(userName ? userName.trim().toUpperCase() : null);
 
   const safeNflPlayers = Array.isArray(nflCompetitors) ? nflCompetitors : [];
   const safeRoomRosters = Array.isArray(roomRosters) ? roomRosters : [];
@@ -142,15 +142,33 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   }, [top20Players, getPlayerLivePoints]);
 
   // Current active user roster entry for this room
-  const currentUserRoster: UserRoster = {
-    room_code: cleanRoom,
-    user_name: activeNormalizedName,
-    star_1_id: user.selectedPlayerIds?.[0] || '',
-    star_2_id: user.selectedPlayerIds?.[1] || '',
-    star_3_id: user.selectedPlayerIds?.[2] || '',
-    is_locked: (user as any).isLocked || false,
-    updated_at: new Date().toISOString(),
-  };
+  const currentUserRoster: UserRoster = useMemo(() => {
+    let s1 = user.selectedPlayerIds?.[0] || '';
+    let s2 = user.selectedPlayerIds?.[1] || '';
+    let s3 = user.selectedPlayerIds?.[2] || '';
+    if (!s1 && !s2 && !s3 && activeNormalizedName) {
+      try {
+        const cached = localStorage.getItem(`pixel_pros_roster_${sport}_${cleanRoom}_${activeNormalizedName}`);
+        if (cached) {
+          const ids = JSON.parse(cached);
+          if (Array.isArray(ids)) {
+            s1 = ids[0] || '';
+            s2 = ids[1] || '';
+            s3 = ids[2] || '';
+          }
+        }
+      } catch {}
+    }
+    return {
+      room_code: cleanRoom,
+      user_name: activeNormalizedName,
+      star_1_id: s1,
+      star_2_id: s2,
+      star_3_id: s3,
+      is_locked: (user as any).isLocked || false,
+      updated_at: new Date().toISOString(),
+    };
+  }, [user.selectedPlayerIds, (user as any).isLocked, cleanRoom, activeNormalizedName, sport]);
 
   const familyListWithDynamicTotals = useMemo(() => {
     // 1. Gather all unique user names in this room across ALL slates
@@ -247,16 +265,32 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           slatesCount = superstarPlayers.length > 0 ? 1 : 0;
         }
 
+        // Determine best 3 stars to display for the summary row in MEGA_TOTAL
+        let displayStars: (Competitor | null)[] = [star1, star2, star3];
+        let displaySlateName = '⭐ SUPERSTARS';
+        if (superstarPlayers.length === 0 && slateBreakdowns.length > 0) {
+          const firstWithPicks = slateBreakdowns.find((b) => b.stars.filter(Boolean).length > 0);
+          if (firstWithPicks) {
+            displayStars = firstWithPicks.stars;
+            displaySlateName = firstWithPicks.label;
+          }
+        }
+
         return {
           userName: entryName,
           isYou: isUser,
-          isLocked: false,
-          starPlayers: superstarPlayers,
+          isLocked: Boolean(
+            superstarRoster?.is_locked ||
+            superstarRoster?.device_id === 'LOCKED' ||
+            getSquadLockState(cleanRoom, entryName, sport)
+          ),
+          starPlayers: displayStars.filter(Boolean) as Competitor[],
           totalScore,
-          slatesCount: Math.max(slatesCount, 1),
+          slatesCount: Math.max(slatesCount, slateBreakdowns.length, 1),
           superstarsScore,
-          stars: [star1, star2, star3],
+          stars: displayStars,
           slateBreakdowns,
+          displaySlateName,
         };
       }
 
@@ -273,22 +307,47 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             (r.user_name || '').trim().toUpperCase() === entryName
         ) || (isUser && leagueSlateFilter === 'SUPERSTARS' ? currentUserRoster : null);
 
-      const star1 = rosterEntry ? resolvePlayerInPool(rosterEntry.star_1_id, safeNflPlayers, sport) : null;
-      const star2 = rosterEntry ? resolvePlayerInPool(rosterEntry.star_2_id, safeNflPlayers, sport) : null;
-      const star3 = rosterEntry ? resolvePlayerInPool(rosterEntry.star_3_id, safeNflPlayers, sport) : null;
+      let star1Id = rosterEntry?.star_1_id;
+      let star2Id = rosterEntry?.star_2_id;
+      let star3Id = rosterEntry?.star_3_id;
+
+      if (isUser && (!star1Id && !star2Id && !star3Id)) {
+        try {
+          const cached = localStorage.getItem(`pixel_pros_roster_${sport}_${targetRoomCode}_${entryName}`);
+          if (cached) {
+            const ids = JSON.parse(cached);
+            if (Array.isArray(ids)) {
+              star1Id = ids[0];
+              star2Id = ids[1];
+              star3Id = ids[2];
+            }
+          }
+        } catch {}
+      }
+
+      const star1 = resolvePlayerInPool(star1Id, safeNflPlayers, sport) || null;
+      const star2 = resolvePlayerInPool(star2Id, safeNflPlayers, sport) || null;
+      const star3 = resolvePlayerInPool(star3Id, safeNflPlayers, sport) || null;
       const starPlayers = [star1, star2, star3].filter(Boolean) as Competitor[];
       const sumPoints = starPlayers.reduce((sum, p) => sum + getPlayerLivePoints(p), 0);
+
+      const isLocked = Boolean(
+        rosterEntry?.is_locked ||
+        rosterEntry?.device_id === 'LOCKED' ||
+        getSquadLockState(targetRoomCode, entryName, sport)
+      );
 
       return {
         userName: entryName,
         isYou: isUser,
-        isLocked: Boolean(rosterEntry?.is_locked || rosterEntry?.device_id === 'LOCKED'),
+        isLocked,
         starPlayers,
         totalScore: sumPoints,
         slatesCount: 1,
         superstarsScore: sumPoints,
         stars: [star1, star2, star3],
         slateBreakdowns: [],
+        displaySlateName: leagueSlateFilter,
       };
     }).sort((a, b) => {
       if (sortBy === 'slates') {
@@ -296,7 +355,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       }
       return b.totalScore - a.totalScore;
     });
-  }, [safeRoomRosters, cleanRoom, activeNormalizedName, leagueSlateFilter, safeNflPlayers, sport, currentUserRoster, sortBy]);
+  }, [safeRoomRosters, cleanRoom, activeNormalizedName, leagueSlateFilter, safeNflPlayers, sport, currentUserRoster, sortBy, getPlayerLivePoints]);
 
   // Helper for rank medal styling
   const getRankBadge = (rankNumber: number) => {
@@ -664,18 +723,41 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Bottom Line: Clean, single-line stars summary (no multi-line button clutter) */}
-                      <div className="mt-1 pl-6 sm:pl-7 flex items-center min-w-0">
+                      {/* Bottom Line: Clean, prominent stars summary badges */}
+                      <div className="mt-1.5 pl-6 sm:pl-7 flex flex-wrap items-center gap-1.5">
                         {entry.stars.filter(Boolean).length > 0 ? (
-                          <div className="font-pixel text-[8px] sm:text-[9px] truncate opacity-90 tracking-tight">
-                            ★ {entry.stars
-                              .filter(Boolean)
-                              .map((s) => `${formatPlayerInitialLastName(s!.displayName)} (${Math.round(getPlayerLivePoints(s!))}p)`)
-                              .join(' • ')}
-                          </div>
+                          <>
+                            {entry.stars.filter(Boolean).map((s) => {
+                              const pts = Math.round(getPlayerLivePoints(s!));
+                              return (
+                                <span
+                                  key={s!.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenPlayerDetail && onOpenPlayerDetail(s!);
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-xs font-pixel text-[9px] sm:text-[10px] border font-bold cursor-pointer transition-colors ${
+                                    isUser
+                                      ? 'bg-[#0f4370] hover:bg-[#1a5b94] text-[#fae5b8] border-[#38bdf8]/60'
+                                      : 'bg-[#faebd0] hover:bg-white text-[#5c3509] border-[#c99a57]'
+                                  }`}
+                                >
+                                  <span className="text-[#facc15]">★</span>
+                                  <span>{formatPlayerInitialLastName(s!.displayName)}</span>
+                                  <span className="opacity-75 text-[8px]">({s!.teamCode}·{s!.position})</span>
+                                  <span className={isUser ? 'text-[#38bdf8]' : 'text-[#12579b]'}>{pts}p</span>
+                                </span>
+                              );
+                            })}
+                            {leagueSlateFilter === 'MEGA_TOTAL' && (entry.slateBreakdowns?.length || 0) > 1 && (
+                              <span className="text-[8px] font-pixel opacity-75 self-center">
+                                +{(entry.slateBreakdowns?.length || 1) - 1} more game{((entry.slateBreakdowns?.length || 1) - 1) > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </>
                         ) : (
-                          <div className="font-pixel text-[8px] sm:text-[9px] opacity-60">
-                            No picks yet
+                          <div className="font-pixel text-[9px] opacity-60 italic">
+                            No picks yet for {leagueSlateFilter === 'MEGA_TOTAL' ? 'this room' : leagueSlateFilter}
                           </div>
                         )}
                       </div>

@@ -641,27 +641,14 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                           ) : null}
                         </div>
 
-                        {/* Middle Stat Section: Subtle Historical Chip for Pre-Game vs Live Stat Line */}
-                        {scoringInfo?.gameState === 'pre' ? (
-                          <div className="w-full flex flex-col items-center gap-1 mt-1">
-                            {scoringInfo.hasHistoricalData && (
-                              <div className="w-full py-1 px-2 bg-[#fae5b8] border border-[#c99a57] rounded-xs text-center shadow-2xs">
-                                <span className="font-pixel text-[9px] sm:text-[10px] text-[#784610] font-bold">
-                                  LAST GAME: {scoringInfo.historicalScore} PTS ({scoringInfo.historicalStats})
-                                </span>
-                              </div>
-                            )}
-                            <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] font-bold whitespace-nowrap">
-                              0 TD · 0 YDS
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="w-full text-center mt-1.5">
-                            <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] font-bold whitespace-nowrap">
-                              {statsLine}
-                            </span>
-                          </div>
-                        )}
+                        {/* Middle Stat Section: Clean Single Line (Zero Bloat, No False Last-Game Rows) */}
+                        <div className="w-full text-center mt-1.5">
+                          <span className="font-pixel text-[10px] sm:text-[11px] text-[#5c3509] font-bold whitespace-nowrap">
+                            {scoringInfo?.gameState === 'pre'
+                              ? (sport === 'nba' ? '0 3PM · 0 REB · 0 AST' : '0 TD · 0 YDS')
+                              : statsLine}
+                          </span>
+                        </div>
 
                         <div className="w-full mt-2 text-center">
                           {scoringInfo?.gameState === 'pre' ? (

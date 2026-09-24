@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +16,18 @@ app.use(express.json());
 // Persistent Database Storage File
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'pixel_pros_db.json');
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://sqntjgjqtwbcqpxcqzbg.supabase.co';
+const SUPABASE_ANON_KEY =
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxbnRqZ2pxdHdiY3FweGNxemJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMTk2NzYsImV4cCI6MjEwNDc5NTY3Nn0.2M_u9c6g2yWm2Ev0e_FeucFSnEFTCeerVvpNwNTdI4g';
+
+let serverSupabase: any = null;
+try {
+  serverSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (e) {
+  console.warn('Could not initialize server Supabase client:', e);
+}
 
 interface StoredRoster {
   id: string;
@@ -93,6 +106,89 @@ function saveDatabase(db: ServerDB): void {
 
 // In-memory state synchronized with disk
 let dbState: ServerDB = loadDatabase();
+
+async function syncWithSupabase(roomCodeFilter?: string) {
+  if (!serverSupabase) return;
+  try {
+    let query = serverSupabase.from('user_rosters').select('*');
+    if (roomCodeFilter && roomCodeFilter !== '*') {
+      const cleanFilter = roomCodeFilter.trim().toUpperCase();
+      query = query.or(`room_code.eq.${cleanFilter},room_code.like.${cleanFilter}__%`);
+    }
+    const { data, error } = await query;
+    if (error || !data || !Array.isArray(data)) return;
+
+    let hasChanges = false;
+    data.forEach((row: any) => {
+      if (!row || !row.room_code || !row.user_name) return;
+      const rRoom = row.room_code.trim().toUpperCase();
+      const rUser = row.user_name.trim().toUpperCase();
+      const rSport = (row.sport || 'nfl').trim().toLowerCase() as 'nfl' | 'nba';
+      const lockKey = `${rRoom}_${rUser}_${rSport}`;
+      const starIds = [row.star_1_id, row.star_2_id, row.star_3_id].filter(
+        (id: any) => id && typeof id === 'string' && id.trim() !== ''
+      );
+      const isLocked = Boolean(
+        row.is_locked === true ||
+        String(row.is_locked) === 'true' ||
+        String(row.device_id).toUpperCase() === 'LOCKED' ||
+        dbState.locks[lockKey] === true
+      );
+
+      const existingIdx = dbState.rosters.findIndex(
+        (r) =>
+          (r.room_code || '').trim().toUpperCase() === rRoom &&
+          (r.user_name || '').trim().toUpperCase() === rUser &&
+          (r.sport || 'nfl').trim().toLowerCase() === rSport
+      );
+
+      const rowTime = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+      const record: StoredRoster = {
+        id: row.id || `rost_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        room_code: rRoom,
+        user_name: rUser,
+        sport: rSport,
+        star_1_id: row.star_1_id || '',
+        star_2_id: row.star_2_id || '',
+        star_3_id: row.star_3_id || '',
+        is_locked: isLocked,
+        device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
+        updated_at: row.updated_at || new Date().toISOString(),
+      };
+
+      if (existingIdx >= 0) {
+        const existingTime = dbState.rosters[existingIdx].updated_at
+          ? new Date(dbState.rosters[existingIdx].updated_at).getTime()
+          : 0;
+        if (rowTime >= existingTime || dbState.rosters[existingIdx].is_locked !== isLocked) {
+          dbState.rosters[existingIdx] = record;
+          dbState.locks[lockKey] = isLocked;
+          hasChanges = true;
+        }
+      } else {
+        dbState.rosters.push(record);
+        dbState.locks[lockKey] = isLocked;
+        hasChanges = true;
+      }
+
+      const baseRoom = rRoom.split('__')[0];
+      if (!dbState.rooms) dbState.rooms = {};
+      if (!dbState.rooms[`${baseRoom}_${rSport}`]) {
+        dbState.rooms[`${baseRoom}_${rSport}`] = { sport: rSport, createdAt: new Date().toISOString() };
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      saveDatabase(dbState);
+    }
+  } catch (err) {
+    console.warn('syncWithSupabase error:', err);
+  }
+}
+
+// Initial background sync
+syncWithSupabase();
 
 // Connected Server-Sent Event (SSE) clients
 interface SSEClient {
@@ -178,9 +274,11 @@ app.get('/api/realtime', (req: Request, res: Response) => {
 });
 
 // 3. Fetch rosters for a room
-app.get('/api/rosters', (req: Request, res: Response) => {
+app.get('/api/rosters', async (req: Request, res: Response) => {
   const roomCode = req.query.roomCode ? String(req.query.roomCode).trim().toUpperCase() : 'COUCH';
   const sport = req.query.sport ? String(req.query.sport).trim().toLowerCase() : 'nfl';
+
+  await syncWithSupabase(roomCode);
 
   const results = dbState.rosters.filter((r) => {
     const rRoom = (r.room_code || '').trim().toUpperCase();
@@ -250,11 +348,33 @@ app.post('/api/rosters', (req: Request, res: Response) => {
     dbState.rosters.push(updatedRecord);
   }
 
+  const baseRoom = cleanRoom.split('__')[0];
   if (!dbState.rooms) dbState.rooms = {};
-  dbState.rooms[`${cleanRoom}_${cleanSport}`] = { sport: cleanSport, createdAt: new Date().toISOString() };
+  dbState.rooms[`${baseRoom}_${cleanSport}`] = { sport: cleanSport, createdAt: new Date().toISOString() };
 
   saveDatabase(dbState);
   broadcastRoomUpdate(cleanRoom, cleanSport, { action: 'upsert', roster: updatedRecord });
+
+  // Sync to Supabase in background
+  if (serverSupabase) {
+    serverSupabase
+      .from('user_rosters')
+      .upsert(
+        {
+          room_code: cleanRoom,
+          user_name: cleanUser,
+          sport: cleanSport,
+          star_1_id: star_1_id || '',
+          star_2_id: star_2_id || '',
+          star_3_id: star_3_id || '',
+          is_locked: guardedLocked,
+          device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
+          updated_at: updatedRecord.updated_at,
+        },
+        { onConflict: 'room_code,user_name,sport' }
+      )
+      .catch((sbErr: any) => console.warn('Supabase upsert sync error from Express:', sbErr));
+  }
 
   res.json({ success: true, data: updatedRecord });
 });
@@ -286,6 +406,15 @@ app.delete('/api/rosters', (req: Request, res: Response) => {
   delete dbState.locks[`${cleanRoom}_${cleanUser}_${cleanSport}`];
   saveDatabase(dbState);
   broadcastRoomUpdate(cleanRoom, cleanSport, { action: 'delete', user_name: cleanUser });
+
+  if (serverSupabase) {
+    serverSupabase
+      .from('user_rosters')
+      .delete()
+      .eq('room_code', cleanRoom)
+      .eq('user_name', cleanUser)
+      .catch(() => {});
+  }
 
   res.json({ success: true });
 });
@@ -452,7 +581,9 @@ app.post('/api/rooms', (req: Request, res: Response) => {
 });
 
 // 11. List all active rooms across all devices
-app.get('/api/rooms', (req: Request, res: Response) => {
+app.get('/api/rooms', async (req: Request, res: Response) => {
+  await syncWithSupabase();
+
   const roomMap = new Map<string, { sport: 'nfl' | 'nba'; squads: Set<string> }>();
 
   // Ensure default rooms are present
@@ -462,8 +593,11 @@ app.get('/api/rooms', (req: Request, res: Response) => {
   // Include registered rooms
   if (dbState.rooms) {
     Object.entries(dbState.rooms).forEach(([mapKey, meta]) => {
-      if (!roomMap.has(mapKey)) {
-        roomMap.set(mapKey, { sport: meta.sport, squads: new Set() });
+      const lastUnderscore = mapKey.lastIndexOf('_');
+      const baseCode = (lastUnderscore > 0 ? mapKey.slice(0, lastUnderscore) : mapKey).split('__')[0];
+      const unifiedKey = `${baseCode}_${meta.sport}`;
+      if (!roomMap.has(unifiedKey)) {
+        roomMap.set(unifiedKey, { sport: meta.sport, squads: new Set() });
       }
     });
   }
@@ -472,7 +606,8 @@ app.get('/api/rooms', (req: Request, res: Response) => {
   const hintRoom = (req.query.roomCode as string || '').trim().toUpperCase();
   const hintSport: 'nfl' | 'nba' = (req.query.sport as string || '').toLowerCase() === 'nba' ? 'nba' : 'nfl';
   if (hintRoom) {
-    const hintKey = `${hintRoom}_${hintSport}`;
+    const hintBase = hintRoom.split('__')[0];
+    const hintKey = `${hintBase}_${hintSport}`;
     if (!roomMap.has(hintKey)) {
       roomMap.set(hintKey, { sport: hintSport, squads: new Set() });
     }
@@ -484,7 +619,8 @@ app.get('/api/rooms', (req: Request, res: Response) => {
     const sport: 'nfl' | 'nba' = r.sport === 'nba' ? 'nba' : 'nfl';
 
     if (!code) return;
-    const mapKey = `${code}_${sport}`;
+    const baseCode = code.split('__')[0];
+    const mapKey = `${baseCode}_${sport}`;
 
     if (!roomMap.has(mapKey)) {
       roomMap.set(mapKey, { sport, squads: new Set() });
@@ -495,7 +631,8 @@ app.get('/api/rooms', (req: Request, res: Response) => {
   });
 
   const summaries = Array.from(roomMap.entries()).map(([key, val]) => {
-    const roomCode = key.split('_')[0];
+    const lastUnderscore = key.lastIndexOf('_');
+    const roomCode = lastUnderscore > 0 ? key.slice(0, lastUnderscore) : key;
     const meta = dbState.rooms?.[key];
     return {
       roomCode,

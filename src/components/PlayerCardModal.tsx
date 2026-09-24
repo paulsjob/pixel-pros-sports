@@ -237,7 +237,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           </div>
         )}
 
-        {/* Presentation: Sprite + Live / Last Game Score */}
+        {/* Presentation: Sprite + Live / Season / Final Score */}
         <div className="grid grid-cols-2 gap-2 mt-2 shrink-0">
           <div className="bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs flex flex-col items-center justify-center p-1.5 sm:p-2 min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
             <PixelPlayerSprite
@@ -259,7 +259,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
             <div className="bg-[#ebd2a4] border-2 border-[#64748b] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
               <div className="flex items-center gap-1 text-[#475569] font-pixel text-[9px] uppercase tracking-wider font-bold">
                 <Activity size={11} className="text-[#64748b]" />
-                <span>LAST GAME</span>
+                <span>SEASON STATS</span>
               </div>
               
               <div className="font-pixel text-xl sm:text-2xl text-[#b45309] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
@@ -267,7 +267,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
               </div>
 
               <div className="text-[8px] sm:text-[9px] font-retro text-[#475569] px-1.5 py-0.5 bg-[#e2e8f0] border border-[#cbd5e1] rounded-xs whitespace-nowrap font-bold">
-                READY FOR KICKOFF
+                WAIT FOR KICKOFF
               </div>
             </div>
           ) : scoringInfo.gameState === 'in' ? (
@@ -307,7 +307,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
         <div className="mt-2 w-full box-border">
           <div className="mb-1">
             <span className="font-pixel text-[9px] sm:text-[10px] text-[#784610] uppercase font-bold">
-              {scoringInfo.gameState === 'pre' ? 'LAST GAME STATS' : 'ACTIVE GAME STATS'}
+              {scoringInfo.gameState === 'pre' ? 'SEASON STATS' : scoringInfo.gameState === 'post' ? 'FINAL STATS' : 'ACTIVE GAME STATS'}
             </span>
           </div>
           {sport === 'nba' ? (
@@ -356,7 +356,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           <div className="pb-1 mb-1 border-b border-[#c99a57] flex items-center justify-between">
             <span className="font-pixel text-[9px] sm:text-[10px] text-[#5c3509] tracking-wider uppercase flex items-center gap-1 font-bold">
               <span>🧮</span>
-              <span>{scoringInfo.gameState === 'pre' ? 'LAST GAME BREAKDOWN' : 'POINTS BREAKDOWN'}</span>
+              <span>{scoringInfo.gameState === 'pre' ? 'SEASON BREAKDOWN' : 'POINTS BREAKDOWN'}</span>
             </span>
           </div>
 
@@ -424,7 +424,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
 
             <div className="flex items-center justify-between py-1.5 px-2 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs font-bold shadow-xs mt-1.5">
               <span className="tracking-wider">
-                {scoringInfo.gameState === 'pre' ? 'LAST GAME TOTAL:' : 'TOTAL SCORE:'}
+                {scoringInfo.gameState === 'pre' ? 'SEASON TOTAL:' : 'TOTAL SCORE:'}
               </span>
               <span className="text-[#fde047] text-xs sm:text-sm font-bold">
                 {breakdownTargetScore} PTS
