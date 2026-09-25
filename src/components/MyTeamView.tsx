@@ -14,6 +14,7 @@ import {
   isMatchEnded,
   DEFAULT_NFL_COMPETITORS,
   resolvePlayerInPool,
+  computeGameRoomStandings,
 } from '../utils/teamData';
 import { getCurrentNFLWeek } from '../lib/espnSync';
 
@@ -36,6 +37,9 @@ interface MyTeamViewProps {
   onLockedSlotAttempt?: () => void;
   onInspectPlayer?: (player: Competitor) => void;
   onRequestCreateSquad?: () => void;
+  roomRosters?: any[];
+  allPlayers?: Competitor[];
+  onSwitchToStandings?: () => void;
 }
 
 export const MyTeamView: React.FC<MyTeamViewProps> = ({
@@ -56,6 +60,9 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   onLockedSlotAttempt,
   onInspectPlayer,
   onRequestCreateSquad,
+  roomRosters = [],
+  allPlayers = [],
+  onSwitchToStandings,
 }) => {
   const slotDefs = sport === 'nba' ? NBA_SLOT_DEFS : NFL_SLOT_DEFS;
   const isEmptySquadState = !userName || !userName.trim();
@@ -184,6 +191,23 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
   // Strict guard condition: A squad with < 3 distinct stars or invalid positions CAN NEVER BE LOCKED
   const effectiveIsLocked = !isEmptySquadState && isRosterValid && Boolean(isLocked);
 
+  const isSuperstars = currentSlate.isSuperstars;
+  const currentMatch = currentSlate.match;
+  const isCurrentMatchFinal = currentMatch ? isMatchEnded(currentMatch) : false;
+  const isCurrentMatchLive = currentMatch?.status === 'live';
+
+  const gameWinnerSummary = useMemo(() => {
+    if (isSuperstars) return null;
+    return computeGameRoomStandings(
+      currentSlate.id,
+      roomCode,
+      roomRosters || [],
+      allPlayers || DEFAULT_NFL_COMPETITORS,
+      matches,
+      sport
+    );
+  }, [currentSlate.id, isSuperstars, roomCode, roomRosters, allPlayers, matches, sport]);
+
   return (
     <div className="w-full box-border">
       
@@ -195,13 +219,10 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
           <h2 className="font-pixel text-xs sm:text-base text-[#5c3509] tracking-wider uppercase flex items-center gap-1.5 min-w-0 flex-1">
             <Sparkles size={14} className="text-[#b45309] shrink-0" />
             <span className="truncate">
-              {sport === 'nba'
-                ? userName
-                  ? `${userName.toUpperCase()}'S NBA STARS`
-                  : 'YOUR NBA STARS'
-                : userName
-                ? `${userName.toUpperCase()}'S NFL STARS`
-                : 'YOUR NFL STARS'}
+              {isSuperstars
+                ? '⭐ WEEKLY SUPERSTARS'
+                : `${currentSlate.id} GAME PICKS`}
+              {userName ? ` · ${userName.toUpperCase()}` : ''}
             </span>
           </h2>
 
@@ -212,7 +233,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             className="touch-manipulation px-2.5 py-1 bg-[#12579b] hover:bg-[#196bb5] text-[#fae5b8] border border-[#0a2d52] rounded-xs font-pixel text-[9px] sm:text-[10px] font-bold flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs whitespace-nowrap active:translate-y-0.5"
             title="Open game schedule & checklist"
           >
-            <span>ALL GAMES ({totalSlatesCompleted}/{allSlates.length})</span>
+            <span>SWITCH GAME ({totalSlatesCompleted}/{allSlates.length})</span>
             <span className="text-[9px] text-[#facc15]">▾</span>
           </button>
         </div>
@@ -284,6 +305,7 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                     title={`${away} vs ${home}${isLive ? ' (LIVE)' : isFinal ? ' (FINAL)' : ''}`}
                   >
                     {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />}
+                    {isFinal && <span className="text-[8px]">🏁</span>}
                     <span>{away}@{home}</span>
                     {statusInfo?.isLocked && (
                       <span className="text-[8px] px-1 py-0.2 rounded-2xs font-bold shrink-0 bg-[#0a2d52] text-[#38bdf8]">
@@ -307,6 +329,82 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Live Game Room Leaderboard Banner */}
+        {!isSuperstars && onSwitchToStandings && (
+          <div
+            onClick={onSwitchToStandings}
+            className="mb-3 p-2.5 sm:p-3 bg-linear-to-r from-[#0f233d] to-[#163359] border-2 border-[#38bdf8] rounded-xs shadow-md flex items-center justify-between gap-2 cursor-pointer hover:border-white transition-all group"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-[#1e3a63] border border-[#38bdf8] flex items-center justify-center shrink-0 text-base">
+                {isCurrentMatchFinal ? '🏁' : isCurrentMatchLive ? '🔴' : '🏆'}
+              </div>
+              <div className="min-w-0">
+                <div className="font-pixel text-[10px] text-[#fde047] font-bold flex items-center gap-1.5">
+                  <span>
+                    {isCurrentMatchFinal ? 'FINAL STANDINGS' : isCurrentMatchLive ? 'LIVE LEADER' : 'STANDINGS'}
+                  </span>
+                  <span className="text-[#93c5fd]">·</span>
+                  <span className="text-[#e2e8f0] font-retro text-xs">{currentSlate.label}</span>
+                </div>
+                <div className="font-pixel text-xs sm:text-sm text-white truncate font-bold">
+                  {gameWinnerSummary?.hasPicks ? (
+                    <span>
+                      🥇 #1 {gameWinnerSummary.leaderName} ({gameWinnerSummary.leaderScore}p)
+                      {gameWinnerSummary.standings[1] && (
+                        <span className="text-[#cbd5e1] font-normal text-[10px] sm:text-xs ml-1.5">
+                          · 🥈 {gameWinnerSummary.standings[1].userName} ({Math.round(gameWinnerSummary.standings[1].score)}p)
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-[#93c5fd] font-retro text-xs font-normal">
+                      No family picks drafted yet for this game
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSwitchToStandings?.();
+              }}
+              className="touch-manipulation px-2.5 py-1.5 bg-[#facc15] group-hover:bg-[#fde047] text-[#451a03] font-pixel text-[10px] sm:text-xs font-bold rounded-xs border-2 border-[#ca8a04] shadow-xs active:translate-y-0.5 whitespace-nowrap cursor-pointer shrink-0 flex items-center gap-1"
+            >
+              <span>STANDINGS</span>
+              <span>➔</span>
+            </button>
+          </div>
+        )}
+
+        {/* Weekly Superstars Informational Banner */}
+        {isSuperstars && (
+          <div className="mb-3 p-2.5 bg-linear-to-r from-[#451a03] to-[#78350f] border-2 border-[#facc15] rounded-xs text-[#fae5b8] shadow-md flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⭐</span>
+              <div>
+                <div className="font-pixel text-xs sm:text-sm text-[#fde047] font-bold">
+                  WEEKLY SUPERSTARS (PICK 3 FROM ANY TEAM)
+                </div>
+                <div className="font-retro text-[10px] sm:text-xs text-[#fed7aa]">
+                  Set once before Thursday kickoff! Points roll into your Total Week Mega Battle score.
+                </div>
+              </div>
+            </div>
+            {onSwitchToStandings && (
+              <button
+                type="button"
+                onClick={onSwitchToStandings}
+                className="touch-manipulation px-2.5 py-1.5 bg-[#facc15] hover:bg-[#fde047] text-[#451a03] font-pixel text-[10px] sm:text-xs font-bold rounded-xs border border-[#ca8a04] shadow-xs whitespace-nowrap cursor-pointer"
+              >
+                MEGA BATTLE →
+              </button>
+            )}
+          </div>
+        )}
 
         {/* 3 Prominent Star Podiums with generous breathing room & Empty State Overlay */}
         <div className="relative">
@@ -869,59 +967,39 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
               Tap any game below to jump directly to it and pick your stars!
             </div>
 
-            {/* Slate Cards List */}
-            <div className="p-3 overflow-y-auto space-y-1.5 flex-1 max-h-[60vh]">
-              {allSlates.map((s, idx) => {
-                const isSelected = activeSlateId === s.id;
-                const status = slatePicksStatus?.[s.id];
-                const filled = status?.filled ?? status?.count ?? 0;
-                const isLocked = Boolean(status?.isLocked);
-                const isDone = filled === 3;
-                const matchObj = s.match;
-                const isLive = matchObj?.status === 'live';
-                const isFinal = matchObj ? isMatchEnded(matchObj) : false;
+            {/* Slate Cards List Grouped By Status */}
+            <div className="p-3 overflow-y-auto space-y-3 flex-1 max-h-[60vh]">
+              {/* Option: ⭐ WEEKLY SUPERSTARS */}
+              <div>
+                {(() => {
+                  const s = allSlates.find((slate) => slate.isSuperstars);
+                  if (!s) return null;
+                  const isSelected = activeSlateId === 'SUPERSTARS';
+                  const status = slatePicksStatus?.['SUPERSTARS'];
+                  const filled = status?.filled ?? status?.count ?? 0;
+                  const isLocked = Boolean(status?.isLocked);
+                  const isDone = filled === 3;
 
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      if (onSelectSlate) onSelectSlate(s.id);
-                      setShowSlateJumpModal(false);
-                    }}
-                    className={`touch-manipulation w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
-                        : isDone
-                        ? 'bg-[#dcfce7] hover:bg-[#bbf7d0] text-[#14532d] border-[#86efac]'
-                        : 'bg-[#fff7ed] hover:bg-[#ffedd5] text-[#7c2d12] border-[#fed7aa]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-pixel text-[10px] text-[#784610] w-5 text-center shrink-0">
-                        #{idx + 1}
-                      </span>
-                      <div className="shrink-0 text-base">
-                        {s.isSuperstars ? '⭐' : '🏈'}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-pixel text-[10px] sm:text-xs font-bold truncate">
-                          {s.isSuperstars ? 'WEEKLY SUPERSTARS' : s.label}
-                        </div>
-                        <div className="font-retro text-[9px] sm:text-[10px] opacity-80 truncate">
-                          {s.subLabel}
-                          {isLive && ' • LIVE NOW'}
-                          {isFinal && ' • FINAL'}
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSelectSlate) onSelectSlate('SUPERSTARS');
+                        setShowSlateJumpModal(false);
+                      }}
+                      className={`touch-manipulation w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                          : 'bg-[#fef3c7] hover:bg-[#fde68a] text-[#78350f] border-[#f59e0b]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl">⭐</span>
+                        <div>
+                          <div className="font-pixel text-xs font-bold">WEEKLY SUPERSTARS</div>
+                          <div className="font-retro text-[10px] opacity-85">Pick 3 from ANY team across the league</div>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-1.5">
-                      {isSelected && (
-                        <span className="font-pixel text-[8px] px-1 py-0.2 bg-[#facc15] text-[#451a03] font-bold rounded-2xs">
-                          CURRENT
-                        </span>
-                      )}
                       <span
                         className={`font-pixel text-[8px] sm:text-[9px] px-2 py-0.5 rounded-2xs font-bold ${
                           isLocked
@@ -933,10 +1011,253 @@ export const MyTeamView: React.FC<MyTeamViewProps> = ({
                       >
                         {isLocked ? '🔒 LOCKED' : isDone ? '✅ READY' : '⏳ NEEDS PICKS'}
                       </span>
-                    </div>
-                  </button>
+                    </button>
+                  );
+                })()}
+              </div>
+
+              {/* 1. Completed Games (Finals) */}
+              {(() => {
+                const completedSlates = allSlates.filter(
+                  (s) => !s.isSuperstars && s.match && isMatchEnded(s.match)
                 );
-              })}
+                if (completedSlates.length === 0) return null;
+
+                return (
+                  <div>
+                    <div className="font-pixel text-[10px] text-[#5c3509] font-bold mb-1 flex items-center gap-1">
+                      <span>🏁</span>
+                      <span>COMPLETED GAMES (FINAL SCORES & WINNERS)</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {completedSlates.map((s) => {
+                        const isSelected = activeSlateId === s.id;
+                        const status = slatePicksStatus?.[s.id];
+                        const filled = status?.filled ?? status?.count ?? 0;
+                        const isLocked = Boolean(status?.isLocked);
+                        const isDone = filled === 3;
+                        const m = s.match;
+                        const winnerSummary = computeGameRoomStandings(
+                          s.id,
+                          roomCode,
+                          roomRosters || [],
+                          allPlayers || DEFAULT_NFL_COMPETITORS,
+                          matches,
+                          sport
+                        );
+
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              if (onSelectSlate) onSelectSlate(s.id);
+                              setShowSlateJumpModal(false);
+                            }}
+                            className={`touch-manipulation w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                                : 'bg-[#faebd0] hover:bg-white text-[#5c3509] border-[#c99a57]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-pixel text-xs font-bold flex items-center gap-1.5">
+                                <span>{s.awayTeam} {m?.awayScore != null ? m.awayScore : 0} @ {s.homeTeam} {m?.homeScore != null ? m.homeScore : 0}</span>
+                                <span className="text-[8px] bg-[#475569] text-white px-1 rounded-2xs font-normal">FINAL</span>
+                              </div>
+                              <div className="font-retro text-[11px] text-[#784610] mt-0.5 truncate">
+                                {winnerSummary.hasPicks ? (
+                                  <span className="text-[#15803d] font-bold">
+                                    👑 {winnerSummary.leaderName} won with {winnerSummary.leaderScore} pts!
+                                  </span>
+                                ) : (
+                                  <span className="opacity-70">No family picks recorded</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              {isSelected && (
+                                <span className="font-pixel text-[8px] px-1 py-0.2 bg-[#facc15] text-[#451a03] font-bold rounded-2xs">
+                                  CURRENT
+                                </span>
+                              )}
+                              <span
+                                className={`font-pixel text-[8px] sm:text-[9px] px-2 py-0.5 rounded-2xs font-bold ${
+                                  isLocked
+                                    ? 'bg-[#0a2d52] text-[#38bdf8]'
+                                    : isDone
+                                    ? 'bg-[#15803d] text-white'
+                                    : 'bg-[#ea580c] text-white'
+                                }`}
+                              >
+                                {isLocked ? '🔒 LOCKED' : isDone ? '✅ READY' : `${filled}/3 PICKS`}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 2. Live Games */}
+              {(() => {
+                const liveSlates = allSlates.filter(
+                  (s) => !s.isSuperstars && s.match && s.match.status === 'live'
+                );
+                if (liveSlates.length === 0) return null;
+
+                return (
+                  <div>
+                    <div className="font-pixel text-[10px] text-[#b91c1c] font-bold mb-1 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                      <span>LIVE IN PROGRESS</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {liveSlates.map((s) => {
+                        const isSelected = activeSlateId === s.id;
+                        const status = slatePicksStatus?.[s.id];
+                        const filled = status?.filled ?? status?.count ?? 0;
+                        const isLocked = Boolean(status?.isLocked);
+                        const isDone = filled === 3;
+                        const m = s.match;
+                        const winnerSummary = computeGameRoomStandings(
+                          s.id,
+                          roomCode,
+                          roomRosters || [],
+                          allPlayers || DEFAULT_NFL_COMPETITORS,
+                          matches,
+                          sport
+                        );
+
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              if (onSelectSlate) onSelectSlate(s.id);
+                              setShowSlateJumpModal(false);
+                            }}
+                            className={`touch-manipulation w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                                : 'bg-[#ffe4e6] hover:bg-[#fecdd3] text-[#9f1239] border-[#fda4af]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-pixel text-xs font-bold flex items-center gap-1.5">
+                                <span>{s.awayTeam} {m?.awayScore != null ? m.awayScore : 0} @ {s.homeTeam} {m?.homeScore != null ? m.homeScore : 0}</span>
+                                <span className="text-[8px] bg-red-600 text-white px-1 rounded-2xs animate-pulse font-normal">LIVE</span>
+                              </div>
+                              <div className="font-retro text-[11px] mt-0.5 truncate">
+                                {winnerSummary.hasPicks ? (
+                                  <span className="font-bold text-[#991b1b]">
+                                    👑 {winnerSummary.leaderName} leading ({winnerSummary.leaderScore} pts)
+                                  </span>
+                                ) : (
+                                  <span className="opacity-70">No family picks recorded</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              {isSelected && (
+                                <span className="font-pixel text-[8px] px-1 py-0.2 bg-[#facc15] text-[#451a03] font-bold rounded-2xs">
+                                  CURRENT
+                                </span>
+                              )}
+                              <span
+                                className={`font-pixel text-[8px] sm:text-[9px] px-2 py-0.5 rounded-2xs font-bold ${
+                                  isLocked
+                                    ? 'bg-[#0a2d52] text-[#38bdf8]'
+                                    : isDone
+                                    ? 'bg-[#15803d] text-white'
+                                    : 'bg-[#ea580c] text-white animate-pulse'
+                                }`}
+                              >
+                                {isLocked ? '🔒 LOCKED' : isDone ? '✅ READY' : '⏳ NEEDS PICKS'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 3. Upcoming Games */}
+              {(() => {
+                const upcomingSlates = allSlates.filter(
+                  (s) => !s.isSuperstars && s.match && !isMatchEnded(s.match) && s.match.status !== 'live'
+                );
+                if (upcomingSlates.length === 0) return null;
+
+                return (
+                  <div>
+                    <div className="font-pixel text-[10px] text-[#5c3509] font-bold mb-1 flex items-center gap-1">
+                      <span>⏳</span>
+                      <span>UPCOMING GAMES (SCHEDULE & LINEUPS)</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {upcomingSlates.map((s) => {
+                        const isSelected = activeSlateId === s.id;
+                        const status = slatePicksStatus?.[s.id];
+                        const filled = status?.filled ?? status?.count ?? 0;
+                        const isLocked = Boolean(status?.isLocked);
+                        const isDone = filled === 3;
+                        const m = s.match;
+
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              if (onSelectSlate) onSelectSlate(s.id);
+                              setShowSlateJumpModal(false);
+                            }}
+                            className={`touch-manipulation w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                                : 'bg-[#faebd0] hover:bg-white text-[#5c3509] border-[#c99a57]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-pixel text-xs font-bold">
+                                {s.awayTeam} @ {s.homeTeam}
+                              </div>
+                              <div className="font-retro text-[10px] text-[#784610] mt-0.5">
+                                {m?.quarter_time || m?.periodLabel || 'Upcoming'}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              {isSelected && (
+                                <span className="font-pixel text-[8px] px-1 py-0.2 bg-[#facc15] text-[#451a03] font-bold rounded-2xs">
+                                  CURRENT
+                                </span>
+                              )}
+                              <span
+                                className={`font-pixel text-[8px] sm:text-[9px] px-2 py-0.5 rounded-2xs font-bold ${
+                                  isLocked
+                                    ? 'bg-[#0a2d52] text-[#38bdf8]'
+                                    : isDone
+                                    ? 'bg-[#15803d] text-white'
+                                    : 'bg-[#ea580c] text-white animate-pulse'
+                                }`}
+                              >
+                                {isLocked ? '🔒 LOCKED' : isDone ? '✅ READY' : `${filled}/3 PICKS`}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Modal Footer */}

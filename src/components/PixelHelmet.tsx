@@ -140,11 +140,19 @@ export const PixelHelmet: React.FC<PixelHelmetProps> = ({
 
   return (
     <img
-      src={`/helmets/${normalized}.png`}
+      src={`/assets/helmets/${normalized}.png`}
       alt={alt || `${normalized} Helmet`}
       width={pixelSize}
       height={pixelSize}
-      onError={() => setHasError(true)}
+      onError={(e) => {
+        const target = e.currentTarget;
+        if (!target.dataset.triedFallback) {
+          target.dataset.triedFallback = 'true';
+          target.src = `/helmets/${normalized}.png`;
+        } else {
+          setHasError(true);
+        }
+      }}
       style={{
         width: `${pixelSize}px`,
         height: `${pixelSize}px`,

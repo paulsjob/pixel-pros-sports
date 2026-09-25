@@ -169,7 +169,31 @@ export default function App() {
   const [availableRooms, setAvailableRooms] = useState<ActiveRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [activeSlateId, setActiveSlateId] = useState<string>('SUPERSTARS');
+
+  // Default game battle slate (Thursday Night Football or live match first, instead of burying games)
+  const defaultMatchSlate = useMemo(() => {
+    if (matches && matches.length > 0) {
+      const live = matches.find((m) => m.status === 'live');
+      if (live) {
+        const away = (live.awayTeamCode || live.away_team || '').toUpperCase();
+        const home = (live.homeTeamCode || live.home_team || '').toUpperCase();
+        if (away && home) return `${away}@${home}`;
+      }
+      const first = matches[0];
+      const away = (first.awayTeamCode || first.away_team || '').toUpperCase();
+      const home = (first.homeTeamCode || first.home_team || '').toUpperCase();
+      if (away && home) return `${away}@${home}`;
+    }
+    return currentSport === 'nba' ? 'BOS@NYK' : 'ATL@GB';
+  }, [matches, currentSport]);
+
+  // Overarching App Mode:
+  // 'game' = INDIVIDUAL GAME BATTLE (e.g. Thursday Night Football ATL@GB)
+  // 'total_week' = TOTAL WEEK (Weekly Superstars & Mega Battle Leaderboard)
+  const [appMode, setAppMode] = useState<'game' | 'total_week'>('game');
+  const [activeSlateId, setActiveSlateId] = useState<string>(() => {
+    return 'ATL@GB';
+  });
   const activeSlateIdRef = useRef<string>(activeSlateId);
   const [showArchivedInSwitcher, setShowArchivedInSwitcher] = useState<boolean>(false);
 
@@ -477,6 +501,11 @@ export default function App() {
 
   const handleSelectSlate = (newSlate: string) => {
     setActiveSlateId(newSlate);
+    if (newSlate === 'SUPERSTARS') {
+      setAppMode('total_week');
+    } else {
+      setAppMode('game');
+    }
     const baseRoom = (roomCode || 'COUCH').toUpperCase();
     const targetRoom = getEffectiveRoomCodeForSlate(baseRoom, newSlate);
     const cleanUser = (userName || '').trim().toUpperCase();
@@ -526,6 +555,21 @@ export default function App() {
         ? `Switched to ⭐ WEEKLY SUPERSTARS!`
         : `Switched to Game Battle: ${newSlate}!`
     );
+  };
+
+  const handleSwitchMode = (mode: 'game' | 'total_week') => {
+    setAppMode(mode);
+    if (mode === 'total_week') {
+      if (currentTab === 'squad') {
+        handleSelectSlate('SUPERSTARS');
+      }
+      showToast('Switched to 🏆 TOTAL WEEK MODE (Mega Battle & Superstars)');
+    } else {
+      if (activeSlateId === 'SUPERSTARS' || activeSlateId === 'MEGA_TOTAL') {
+        handleSelectSlate(defaultMatchSlate);
+      }
+      showToast(`Switched to 🏈 INDIVIDUAL GAME: ${activeSlateId === 'SUPERSTARS' ? defaultMatchSlate : activeSlateId}`);
+    }
   };
 
   const handleSwitchToBoard = () => {
@@ -1469,7 +1513,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Row 2: Full-Width Navigation Segmented Tabs [ SQUAD ] [ BOARD ] */}
+            {/* Row 2: Full-Width Navigation Segmented Tabs [ SQUAD ] [ LEADERBOARD ] */}
             <div className="grid grid-cols-2 gap-1.5 px-2 py-1 bg-[#090e1f] border-b border-[#1a264a]/70 w-full box-border">
               <button
                 type="button"
@@ -1481,7 +1525,7 @@ export default function App() {
                 }`}
               >
                 <Users size={12} className={currentTab === 'squad' ? 'text-[#38bdf8]' : ''} />
-                <span>MY SQUAD</span>
+                <span>SQUAD</span>
               </button>
 
               <button
@@ -1493,7 +1537,7 @@ export default function App() {
                     : 'bg-[#141d33] text-[#fae5b8]/70 border-[#273552] hover:text-[#fae5b8]'
                 }`}
               >
-                <Trophy size={12} className={currentTab === 'couch' ? 'text-[#38bdf8]' : ''} />
+                <Trophy size={12} className={currentTab === 'couch' ? 'text-[#facc15]' : ''} />
                 <span>LEADERBOARD</span>
               </button>
             </div>
@@ -1519,29 +1563,29 @@ export default function App() {
               <SportSwitcher currentSport={currentSport} onSportChange={handleSportChange} />
             </div>
 
-            <nav className="flex items-center gap-1 shrink-0">
+            <nav className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => setCurrentTab('squad')}
-                className={`touch-manipulation px-1.5 py-0.5 sm:px-2 sm:py-1 flex items-center justify-center gap-1 font-pixel text-[9px] sm:text-[10px] md:text-xs border-2 cursor-pointer transition-all ${
+                className={`touch-manipulation px-2.5 py-1 sm:px-3 sm:py-1 flex items-center justify-center gap-1.5 font-pixel text-[10px] md:text-xs border-2 cursor-pointer transition-all ${
                   currentTab === 'squad'
-                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'
+                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-1 ring-[#38bdf8] font-bold shadow-xs'
                     : 'bg-[#1a2238] text-[#fae5b8]/75 border-[#273552]'
                 }`}
               >
-                <Users size={11} className={currentTab === 'squad' ? 'text-[#38bdf8]' : ''} />
+                <Users size={12} className={currentTab === 'squad' ? 'text-[#38bdf8]' : ''} />
                 <span>SQUAD</span>
               </button>
 
               <button
                 onClick={handleSwitchToBoard}
-                className={`touch-manipulation px-1.5 py-0.5 sm:px-2 sm:py-1 flex items-center justify-center gap-1 font-pixel text-[9px] sm:text-[10px] md:text-xs border-2 cursor-pointer transition-all ${
+                className={`touch-manipulation px-2.5 py-1 sm:px-3 sm:py-1 flex items-center justify-center gap-1.5 font-pixel text-[10px] md:text-xs border-2 cursor-pointer transition-all ${
                   currentTab === 'couch'
-                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] font-bold'
+                    ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-1 ring-[#38bdf8] font-bold shadow-xs'
                     : 'bg-[#1a2238] text-[#fae5b8]/75 border-[#273552]'
                 }`}
               >
-                <Trophy size={11} className={currentTab === 'couch' ? 'text-[#38bdf8]' : ''} />
-                <span>BOARD</span>
+                <Trophy size={12} className={currentTab === 'couch' ? 'text-[#facc15]' : ''} />
+                <span>LEADERBOARD</span>
               </button>
             </nav>
 
@@ -1632,6 +1676,9 @@ export default function App() {
                 activeSlateId={activeSlateId}
                 onSelectSlate={handleSelectSlate}
                 slatePicksStatus={slatePicksStatus}
+                allPlayers={roster}
+                roomRosters={roomRosters}
+                onSwitchToStandings={handleSwitchToBoard}
                 onCommitUserName={(name) => setUserName(name.toUpperCase())}
                 onCommitRoomCode={handleCommitRoomCode}
                 onSelectSlot={(slotKey) => setActiveSlot(slotKey)}
@@ -1652,6 +1699,10 @@ export default function App() {
                 roomCode={roomCode}
                 userName={userName}
                 sport={currentSport}
+                activeSlateId={activeSlateId}
+                onSelectSlate={handleSelectSlate}
+                onSwitchToPicks={() => setCurrentTab('squad')}
+                isGameRoomMode={appMode === 'game'}
                 onCommitRoomCode={handleCommitRoomCode}
                 onCommitUserName={(name) => setUserName(name.toUpperCase())}
                 onOpenPlayerDetail={(player) => setDetailedPlayer(player)}

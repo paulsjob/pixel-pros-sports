@@ -26,6 +26,18 @@
   font-family: 'VT323', monospace;
 }
 
+/* Unified Leaderboard Layout Container */
+.leaderboard-column-wrapper {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
 /* 8-bit Retro Borders & Shadows */
 .pixel-box-cream {
   background-color: #fae5b8;

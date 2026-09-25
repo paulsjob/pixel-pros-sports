@@ -14,6 +14,7 @@ import {
   getPlayerVisualAvatar,
   sortMatchesByKickoffAndStatus,
   isMatchEnded,
+  computeGameRoomStandings,
 } from '../utils/teamData';
 
 function formatPickedByName(rawName: string): string {
@@ -40,10 +41,14 @@ interface LeaderboardViewProps {
   roomCode: string;
   userName: string;
   sport?: SportId;
+  activeSlateId?: string;
+  onSelectSlate?: (slateId: string) => void;
   onCommitRoomCode: (code: string) => void;
   onCommitUserName: (name: string) => void;
   onOpenPlayerDetail?: (player: Competitor) => void;
   onSelectSquad?: (squadName: string) => void;
+  onSwitchToPicks?: () => void;
+  isGameRoomMode?: boolean;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
@@ -54,14 +59,33 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   roomCode,
   userName,
   sport = 'nfl',
+  activeSlateId,
+  onSelectSlate,
   onCommitRoomCode,
   onCommitUserName,
   onOpenPlayerDetail,
   onSelectSquad,
+  onSwitchToPicks,
+  isGameRoomMode = false,
 }) => {
   // Two bold retro toggle buttons: [ FAMILY ] (default) and [ TOP SCORES ]
   const [activeTier, setActiveTier] = useState<'family' | 'top_scores'>('family');
-  const [leagueSlateFilter, setLeagueSlateFilter] = useState<string>('MEGA_TOTAL');
+  const [leagueSlateFilter, setLeagueSlateFilter] = useState<string>(() => {
+    if (activeSlateId && activeSlateId.trim()) return activeSlateId.trim();
+    return isGameRoomMode ? 'ATL@GB' : 'MEGA_TOTAL';
+  });
+  const [showGameSelectorModal, setShowGameSelectorModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (activeSlateId && activeSlateId.trim() && activeSlateId.trim() !== leagueSlateFilter) {
+      setLeagueSlateFilter(activeSlateId.trim());
+    }
+  }, [activeSlateId]);
+
+  const handleSelectSlateFilter = (newSlate: string) => {
+    setLeagueSlateFilter(newSlate);
+    onSelectSlate?.(newSlate);
+  };
   const [sortBy, setSortBy] = useState<'score' | 'slates'>('score');
   const [expandedSquadName, setExpandedSquadName] = useState<string | null>(userName ? userName.trim().toUpperCase() : null);
 
@@ -263,16 +287,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           superstarsScore = superstarPlayers.reduce((s, p) => s + getPlayerLivePoints(p), 0);
         }
 
-        allUserRosters.forEach((r) => {
-          const s1 = resolvePlayerInPool(r.star_1_id, safeNflPlayers, sport);
-          const s2 = resolvePlayerInPool(r.star_2_id, safeNflPlayers, sport);
-          const s3 = resolvePlayerInPool(r.star_3_id, safeNflPlayers, sport);
-          const stars = [s1, s2, s3].filter(Boolean) as Competitor[];
-          if (stars.length > 0) {
-            slatesCount++;
-            totalScore += stars.reduce((s, p) => s + getPlayerLivePoints(p), 0);
+        // In MEGA BATTLE (Total Week): The score is driven by the user's 3 Weekly Superstars!
+        // Never double-count by summing Weekly Superstars AND individual game rosters!
+        if (superstarPlayers.length > 0) {
+          totalScore = superstarsScore;
+          slatesCount = 1;
+        } else {
+          // Fallback if no Weekly Superstars were drafted yet
+          const gameRosters = allUserRosters.filter((r) => (r.room_code || '').toUpperCase().startsWith(`${cleanRoom}__`));
+          if (gameRosters.length > 0) {
+            totalScore = gameRosters.reduce((sum, r) => {
+              const s1 = resolvePlayerInPool(r.star_1_id, safeNflPlayers, sport);
+              const s2 = resolvePlayerInPool(r.star_2_id, safeNflPlayers, sport);
+              const s3 = resolvePlayerInPool(r.star_3_id, safeNflPlayers, sport);
+              return sum + [s1, s2, s3].filter(Boolean).reduce((s, p) => s + getPlayerLivePoints(p as Competitor), 0);
+            }, 0);
+            slatesCount = gameRosters.length;
+          } else {
+            totalScore = 0;
+            slatesCount = 0;
           }
-        });
+        }
 
         const slateBreakdowns: Array<{
           slateId: string;
@@ -430,23 +465,256 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     return 'bg-[#1e293b] text-[#94a3b8] border-[#334155]';
   };
 
+  const isGameRoom = leagueSlateFilter !== 'MEGA_TOTAL' && leagueSlateFilter !== 'SUPERSTARS';
+  const activeGameMatch = useMemo(() => {
+    if (!isGameRoom) return null;
+    const cleanFilter = leagueSlateFilter.replace('_', '@').toUpperCase();
+    return sortedMatches.find((m) => {
+      const away = (m.awayTeamCode || m.away_team || '').trim().toUpperCase();
+      const home = (m.homeTeamCode || m.home_team || '').trim().toUpperCase();
+      return `${away}@${home}` === cleanFilter;
+    }) || sortedMatches[0] || null;
+  }, [sortedMatches, leagueSlateFilter, isGameRoom]);
+
+  const getGameStatusDateReadout = (m: Match): string => {
+    const isFinal = isMatchEnded(m);
+    const isLive = m.status === 'live';
+
+    if (isFinal) {
+      let datePart = '';
+      if (m.gameDate) {
+        try {
+          const d = new Date(m.gameDate);
+          if (!isNaN(d.getTime())) {
+            const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            datePart = `${days[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
+          }
+        } catch {}
+      }
+      if (!datePart && m.quarter_time) {
+        const cleaned = m.quarter_time.replace(/FINAL/gi, '').replace(/[•\-\/]/g, '').trim().toUpperCase();
+        if (cleaned) datePart = cleaned;
+      }
+      if (!datePart && m.periodLabel) {
+        const cleaned = m.periodLabel.replace(/FINAL/gi, '').replace(/[•\-\/]/g, '').trim().toUpperCase();
+        if (cleaned) datePart = cleaned;
+      }
+      const pair = `${(m.awayTeamCode || '').toUpperCase()}@${(m.homeTeamCode || '').toUpperCase()}`;
+      if (!datePart && (pair === 'ATL@GB' || pair === 'GB@ATL')) {
+        datePart = 'THU 9/24';
+      }
+
+      // Clean out any residual "FINAL" substring in datePart to prevent any "FINAL • FINAL"
+      const cleanDate = datePart.replace(/FINAL/gi, '').replace(/^[•\s\-]+|[•\s\-]+$/g, '').trim();
+      return cleanDate ? `FINAL • ${cleanDate}` : 'FINAL';
+    }
+
+    if (isLive) {
+      const qTime = (m.quarter_time || m.quarterTime || m.periodLabel || 'Q3 08:14')
+        .toUpperCase()
+        .replace(/LIVE/gi, '')
+        .replace(/^[•\s\-]+|[•\s\-]+$/g, '')
+        .trim();
+      return `🔴 ${qTime || 'Q3'} • LIVE`;
+    }
+
+    // Upcoming: Clean date/time without "KICKOFF" or "KICKOFF •"
+    let cleanTime = '';
+    if (m.gameDate) {
+      try {
+        const d = new Date(m.gameDate);
+        if (!isNaN(d.getTime())) {
+          const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+          const hours = d.getHours();
+          const mins = d.getMinutes().toString().padStart(2, '0');
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          const h12 = hours % 12 || 12;
+          cleanTime = `${days[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()} • ${h12}:${mins} ${ampm} ET`;
+        }
+      } catch {}
+    }
+    if (!cleanTime) {
+      const raw = m.quarter_time || m.periodLabel || m.quarterTime || 'SUN 1:00 PM ET';
+      cleanTime = raw
+        .replace(/KICKOFF\s*•?\s*/gi, '')
+        .replace(/^[•\s\-]+|[•\s\-]+$/g, '')
+        .trim()
+        .toUpperCase();
+    }
+    return cleanTime || 'SUN 1:00 PM ET';
+  };
+
   return (
-    <div className="w-full box-border space-y-3 sm:space-y-4 overflow-hidden">
-      {/* Top Header - No repetitive text */}
-      <div className="text-center">
-        <div className="flex items-center justify-center gap-2 sm:gap-3 mb-1">
-          <PixelShieldIcon size={30} color="#155e9e" />
-          <h1 className="font-pixel text-lg sm:text-2xl text-[#fae5b8] tracking-widest drop-shadow-[0_4px_0_#0f172a]">
-            LEADERBOARD
-          </h1>
+    <div className="leaderboard-column-wrapper w-full max-w-[680px] mx-auto px-2 sm:px-3 box-border flex flex-col items-stretch space-y-2.5 sm:space-y-3">
+      {/* 1. Single Clean Game Selector Bar (Flush width) */}
+      <div className="w-full p-1 sm:p-1.5 bg-[#ecd7ab]/90 border-2 border-[#c99a57] rounded-xs shadow-inner box-border">
+        <div className="relative flex items-center gap-1 w-full">
+          <button
+            type="button"
+            onClick={() => handleScrollStandingSlate('left')}
+            className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
+            title="Scroll Left"
+            aria-label="Scroll Left"
+          >
+            <ChevronLeft size={16} className="text-[#5c3509]" />
+          </button>
+
+          <div
+            ref={standingSlateScrollRef}
+            className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth"
+          >
+            {/* 🏆 ALL WEEK */}
+            <button
+              ref={leagueSlateFilter === 'MEGA_TOTAL' ? activeStandingSlateBtnRef : undefined}
+              type="button"
+              onClick={() => handleSelectSlateFilter('MEGA_TOTAL')}
+              className={`touch-manipulation px-2.5 sm:px-3 py-1 rounded-xs font-pixel text-[9px] sm:text-[10px] border-2 cursor-pointer transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap shadow-xs ${
+                leagueSlateFilter === 'MEGA_TOTAL'
+                  ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-1 ring-[#38bdf8] font-bold'
+                  : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
+              }`}
+            >
+              <Trophy size={11} className="text-[#f59e0b]" />
+              <span>ALL WEEK</span>
+            </button>
+
+            {/* Individual Matches in Chronological Day/Time Block & Alphabetical Order */}
+            {sortedMatches.map((m) => {
+              const away = (m.awayTeamCode || m.away_team || '').trim().toUpperCase();
+              const home = (m.homeTeamCode || m.home_team || '').trim().toUpperCase();
+              const pairKey = `${away}@${home}`;
+              const isSelected = leagueSlateFilter === pairKey;
+              const isFinal = isMatchEnded(m);
+              const isLive = m.status === 'live';
+
+              return (
+                <button
+                  key={pairKey || m.id}
+                  ref={isSelected ? activeStandingSlateBtnRef : undefined}
+                  type="button"
+                  onClick={() => handleSelectSlateFilter(pairKey)}
+                  className={`touch-manipulation px-2 sm:px-2.5 py-1 rounded-xs font-pixel text-[9px] sm:text-[10px] border-2 cursor-pointer transition-all shrink-0 whitespace-nowrap shadow-xs flex items-center gap-1 ${
+                    isSelected
+                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-1 ring-[#38bdf8] font-bold'
+                      : isLive
+                      ? 'bg-[#ffe4e6] text-[#9f1239] border-[#fda4af]'
+                      : isFinal
+                      ? 'bg-[#d8c29a] text-[#5c3509] border-[#b38947]'
+                      : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
+                  }`}
+                >
+                  {isLive && <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />}
+                  {isFinal && <span className="text-[8px]">🏁</span>}
+                  <span>{away}@{home}</span>
+                  {m.awayScore != null && m.homeScore != null && (
+                    <span className="text-[8px] opacity-80 font-normal">
+                      {m.awayScore}-{m.homeScore}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleScrollStandingSlate('right')}
+            className="touch-manipulation w-7 h-7 sm:w-8 sm:h-8 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
+            title="Scroll Right"
+            aria-label="Scroll Right"
+          >
+            <ChevronRight size={16} className="text-[#5c3509]" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowGameSelectorModal(true)}
+            className="touch-manipulation px-2 py-1 bg-[#12579b] hover:bg-[#1b6ca8] text-[#fae5b8] border border-[#0a2d52] rounded-xs font-pixel text-[9px] sm:text-[10px] font-bold shadow-xs cursor-pointer shrink-0"
+            title="All Games List"
+          >
+            ALL ▾
+          </button>
         </div>
       </div>
 
-      {/* 2-Tier Retro Toggle Buttons: [ FAMILY ] and [ TOP SCORES ] */}
-      <div className="flex justify-center w-full max-w-md mx-auto gap-3 sm:gap-4 px-2">
+      {/* 2. Hero Scoreboard Marquee (Flush width) */}
+      {isGameRoom && activeGameMatch ? (
+        <div className="w-full my-0 p-3.5 sm:p-4 bg-[#0b1a2e] border-2 border-[#1e3a5f] rounded-lg shadow-lg text-[#fae5b8] box-border">
+          <div className="flex items-center justify-between">
+            {/* Away Team (Left): 8-bit helmet (~48px-56px), normal facing right */}
+            <div className="flex flex-col items-center justify-center w-20 sm:w-24 shrink-0 text-center">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center">
+                <PixelHelmet
+                  teamCode={(activeGameMatch.awayTeamCode || activeGameMatch.away_team || '').trim().toUpperCase()}
+                  size={52}
+                />
+              </div>
+              <span className="mt-1 font-pixel text-xs sm:text-sm font-bold tracking-wider text-white">
+                {(activeGameMatch.awayTeamCode || activeGameMatch.away_team || '').trim().toUpperCase()}
+              </span>
+            </div>
+
+            {/* Center Score Readout: Giant high-contrast retro score (38px-44px) + game status & date */}
+            <div className="flex-1 flex flex-col items-center justify-center px-2 text-center">
+              <div className="font-pixel text-[36px] sm:text-[42px] leading-none font-bold tracking-wider text-[#fde047] drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
+                {activeGameMatch.awayScore ?? activeGameMatch.away_score ?? 0} - {activeGameMatch.homeScore ?? activeGameMatch.home_score ?? 0}
+              </div>
+              <div className="mt-1.5 font-pixel text-[10px] sm:text-[11px] text-[#fae5b8] tracking-wide uppercase font-bold flex items-center justify-center gap-1.5">
+                {getGameStatusDateReadout(activeGameMatch)}
+              </div>
+            </div>
+
+            {/* Home Team (Right): 8-bit helmet flipped horizontally with scaleX(-1) to face inward toward score */}
+            <div className="flex flex-col items-center justify-center w-20 sm:w-24 shrink-0 text-center">
+              <div
+                className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center inline-block"
+                style={{ transform: 'scaleX(-1)' }}
+              >
+                <PixelHelmet
+                  teamCode={(activeGameMatch.homeTeamCode || activeGameMatch.home_team || '').trim().toUpperCase()}
+                  size={52}
+                />
+              </div>
+              <span className="mt-1 font-pixel text-xs sm:text-sm font-bold tracking-wider text-white">
+                {(activeGameMatch.homeTeamCode || activeGameMatch.home_team || '').trim().toUpperCase()}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full my-0 p-3.5 sm:p-4 bg-[#0b1a2e] border-2 border-[#1e3a5f] rounded-lg shadow-lg text-[#fae5b8] box-border">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col items-center justify-center w-20 sm:w-24 shrink-0 text-center">
+              <span className="text-3xl sm:text-4xl select-none">🏆</span>
+              <span className="mt-1 font-pixel text-[10px] sm:text-xs font-bold tracking-wider text-[#fde047]">
+                ALL WEEK
+              </span>
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center px-2 text-center">
+              <div className="font-pixel text-[24px] sm:text-[32px] leading-tight font-bold tracking-wider text-[#fde047] drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
+                MEGA BATTLE
+              </div>
+              <div className="mt-1 font-pixel text-[10px] sm:text-[11px] text-[#fae5b8] tracking-wide uppercase font-bold">
+                TOTAL LEAGUE STANDINGS • ALL GAMES
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center w-20 sm:w-24 shrink-0 text-center">
+              <span className="text-3xl sm:text-4xl select-none">👑</span>
+              <span className="mt-1 font-pixel text-[10px] sm:text-xs font-bold tracking-wider text-[#fde047]">
+                LEADER
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Mode Toggle: Centered [ 👥 FAMILY ] and [ ✨ TOP SCORES ] (Flush width) */}
+      <div className="w-full flex justify-center gap-2.5 sm:gap-3 box-border">
         <button
           onClick={() => setActiveTier('family')}
-          className={`touch-manipulation flex-1 py-2.5 sm:py-3 px-3 sm:px-5 font-pixel text-xs sm:text-sm border-3 cursor-pointer transition-all active:translate-y-0.5 flex items-center justify-center gap-2 ${
+          className={`touch-manipulation flex-1 py-2 sm:py-2.5 px-3 sm:px-5 font-pixel text-xs sm:text-sm border-3 cursor-pointer transition-all active:translate-y-0.5 flex items-center justify-center gap-2 rounded-t-xs ${
             activeTier === 'family'
               ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_4px_0_0_#051a30]'
               : 'bg-[#ebd2a4] text-[#5c3509] border-[#c99a57] hover:bg-[#fae9c8]'
@@ -458,7 +726,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
         <button
           onClick={() => setActiveTier('top_scores')}
-          className={`touch-manipulation flex-1 py-2.5 sm:py-3 px-3 sm:px-5 font-pixel text-xs sm:text-sm border-3 cursor-pointer transition-all active:translate-y-0.5 flex items-center justify-center gap-2 ${
+          className={`touch-manipulation flex-1 py-2 sm:py-2.5 px-3 sm:px-5 font-pixel text-xs sm:text-sm border-3 cursor-pointer transition-all active:translate-y-0.5 flex items-center justify-center gap-2 rounded-t-xs ${
             activeTier === 'top_scores'
               ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] shadow-[0_4px_0_0_#051a30]'
               : 'bg-[#ebd2a4] text-[#5c3509] border-[#c99a57] hover:bg-[#fae9c8]'
@@ -469,18 +737,14 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         </button>
       </div>
 
-      {/* Main Container: Strict 2 Columns with Zero Horizontal Scrolling */}
-      <div className="pixel-box-cream p-3 sm:p-5 rounded-xs w-full max-w-full overflow-hidden box-border">
+      {/* 4. Standings Container (Flush width) */}
+      <div className="pixel-box-cream p-3 sm:p-5 rounded-xs w-full overflow-hidden box-border">
         
         {/* Tier Subheader Banner */}
-        <div className="flex items-center justify-between pb-2.5 sm:pb-3 mb-2 border-b-2 border-[#d4a86a]">
+        <div className="flex items-center justify-between pb-2 sm:pb-2.5 mb-2 border-b-2 border-[#d4a86a]">
           <div>
             <h2 className="font-pixel text-xs sm:text-sm text-[#5c3509] tracking-wider uppercase">
-              {activeTier === 'family'
-                ? 'HOUSEHOLD STANDINGS'
-                : sport === 'nba'
-                ? 'TOP NBA ATHLETES'
-                : 'TOP NFL ATHLETES'}
+              {activeTier === 'family' ? 'STANDINGS' : 'TOP PLAYERS'}
             </h2>
           </div>
 
@@ -492,189 +756,121 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         </div>
 
         {/* Arcade Top 3 Podium Showcase */}
-        {activeTier === 'family' && familyListWithDynamicTotals.length >= 2 && (
-          <div className="mb-3 p-2.5 sm:p-3 bg-linear-to-b from-[#10223f] to-[#0a1628] border-2 border-[#38bdf8] rounded-xs shadow-[0_4px_0_0_#051a30] text-[#fae5b8]">
-            <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#38bdf8]/30">
-              <div className="flex items-center gap-1.5 font-pixel text-[10px] sm:text-xs text-[#fde047] font-bold">
-                <Trophy size={14} className="text-[#facc15]" />
-                <span>CHAMPIONSHIP PODIUM</span>
-              </div>
-              <span className="font-retro text-[10px] text-[#93c5fd]">
-                {leagueSlateFilter === 'MEGA_TOTAL' ? 'ALL GAMES' : leagueSlateFilter}
-              </span>
-            </div>
+        {activeTier === 'family' && familyListWithDynamicTotals.length >= 2 && (() => {
+          const topScore = familyListWithDynamicTotals[0]?.totalScore || 0;
+          const isPodiumZeroPts = topScore === 0;
 
-            {/* 3 Pedestals: 2nd (left), 1st (center, tallest), 3rd (right) */}
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 items-end pt-1">
-              {/* 🥈 #2 Silver */}
-              {familyListWithDynamicTotals[1] && (
-                <div
-                  onClick={() => setExpandedSquadName((prev) => (prev === familyListWithDynamicTotals[1].userName ? null : familyListWithDynamicTotals[1].userName))}
-                  className="flex flex-col items-center p-1.5 bg-[#1e293b] hover:bg-[#334155] border-2 border-[#94a3b8] rounded-xs cursor-pointer transition-transform active:scale-95 text-center min-h-[92px] justify-between shadow-xs"
-                >
-                  <div className="font-pixel text-[9px] sm:text-[10px] text-[#cbd5e1] font-bold flex items-center gap-0.5">
-                    <span>🥈</span> #2
-                  </div>
-                  <div className="my-0.5">
-                    <div className="font-pixel text-[10px] sm:text-xs text-white truncate max-w-[85px] sm:max-w-[110px] font-bold">
-                      {familyListWithDynamicTotals[1].userName}
-                    </div>
-                    <div className="font-pixel text-xs sm:text-sm text-[#facc15] font-bold">
-                      {Math.round(familyListWithDynamicTotals[1].totalScore)}p
-                    </div>
-                  </div>
-                  <div className="text-[8px] font-retro text-[#94a3b8]">
-                    {Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore) > 0
-                      ? `-${Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore)}p`
-                      : 'TIED'}
-                  </div>
+          return (
+            <div className="mb-3 p-2.5 sm:p-3 bg-linear-to-b from-[#10223f] to-[#0a1628] border-2 border-[#38bdf8] rounded-xs shadow-[0_4px_0_0_#051a30] text-[#fae5b8]">
+              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#38bdf8]/30">
+                <div className="flex items-center gap-1.5 font-pixel text-[10px] sm:text-xs text-[#fde047] font-bold">
+                  <Trophy size={14} className="text-[#facc15]" />
+                  <span>{isPodiumZeroPts ? 'PRE-GAME PODIUM' : 'PODIUM'}</span>
                 </div>
-              )}
-
-              {/* 🥇 #1 Gold (TALLEST / HIGHLIGHTED) */}
-              {familyListWithDynamicTotals[0] && (
-                <div
-                  onClick={() => setExpandedSquadName((prev) => (prev === familyListWithDynamicTotals[0].userName ? null : familyListWithDynamicTotals[0].userName))}
-                  className="flex flex-col items-center p-2 bg-[#854d0e]/90 hover:bg-[#a16207] border-2 border-[#fde047] rounded-xs cursor-pointer transition-transform active:scale-95 text-center min-h-[110px] justify-between shadow-[0_0_12px_rgba(250,204,21,0.35)] ring-2 ring-[#facc15]/50 relative"
-                >
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-sm select-none">
-                    👑
-                  </div>
-                  <div className="font-pixel text-[10px] sm:text-xs text-[#fef08a] font-bold flex items-center gap-1">
-                    <span>🥇</span> #1 LEADER
-                  </div>
-                  <div className="my-0.5">
-                    <div className="font-pixel text-xs sm:text-sm text-white truncate max-w-[95px] sm:max-w-[125px] font-bold">
-                      {familyListWithDynamicTotals[0].userName}
-                    </div>
-                    <div className="font-pixel text-sm sm:text-base text-[#fde047] font-bold">
-                      {Math.round(familyListWithDynamicTotals[0].totalScore)}p
-                    </div>
-                  </div>
-                  <div className="text-[8px] font-pixel text-[#fef08a] bg-[#713f12] px-1 py-0.2 rounded-2xs">
-                    {familyListWithDynamicTotals[0].slatesCount} SLATES
-                  </div>
-                </div>
-              )}
-
-              {/* 🥉 #3 Bronze */}
-              {familyListWithDynamicTotals[2] ? (
-                <div
-                  onClick={() => setExpandedSquadName((prev) => (prev === familyListWithDynamicTotals[2].userName ? null : familyListWithDynamicTotals[2].userName))}
-                  className="flex flex-col items-center p-1.5 bg-[#1e293b] hover:bg-[#334155] border-2 border-[#b45309] rounded-xs cursor-pointer transition-transform active:scale-95 text-center min-h-[85px] justify-between shadow-xs"
-                >
-                  <div className="font-pixel text-[9px] sm:text-[10px] text-[#fed7aa] font-bold flex items-center gap-0.5">
-                    <span>🥉</span> #3
-                  </div>
-                  <div className="my-0.5">
-                    <div className="font-pixel text-[10px] sm:text-xs text-white truncate max-w-[85px] sm:max-w-[110px] font-bold">
-                      {familyListWithDynamicTotals[2].userName}
-                    </div>
-                    <div className="font-pixel text-xs sm:text-sm text-[#facc15] font-bold">
-                      {Math.round(familyListWithDynamicTotals[2].totalScore)}p
-                    </div>
-                  </div>
-                  <div className="text-[8px] font-retro text-[#cbd5e1]">
-                    {Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore) > 0
-                      ? `-${Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore)}p`
-                      : 'TIED'}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-1.5 bg-[#1e293b]/40 border-2 border-dashed border-[#475569] rounded-xs min-h-[85px] text-center">
-                  <span className="font-pixel text-[8px] text-[#64748b]">OPEN SPOT</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* League Slate Scope Carousel */}
-        {activeTier === 'family' && (
-          <div className="mb-2.5 p-1.5 bg-[#ecd7ab]/90 border-2 border-[#c99a57] rounded-xs shadow-inner">
-            <div className="relative flex items-center gap-1 w-full">
-              {/* Left Arrow: scrolls buttons only */}
-              <button
-                type="button"
-                onClick={() => handleScrollStandingSlate('left')}
-                className="touch-manipulation p-1 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
-                title="Scroll Left"
-                aria-label="Scroll Left"
-              >
-                <ChevronLeft size={14} className="text-[#5c3509]" />
-              </button>
-
-              <div
-                ref={standingSlateScrollRef}
-                className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth"
-              >
-                {/* Option 1: 🏆 WEEKLY MEGA BATTLE (TOTAL) */}
-                <button
-                  ref={leagueSlateFilter === 'MEGA_TOTAL' ? activeStandingSlateBtnRef : undefined}
-                  type="button"
-                  onClick={() => setLeagueSlateFilter('MEGA_TOTAL')}
-                  className={`touch-manipulation px-2.5 py-1 rounded-xs font-pixel text-[9px] sm:text-[10px] border-2 cursor-pointer transition-all flex items-center gap-1 shrink-0 whitespace-nowrap shadow-xs ${
-                    leagueSlateFilter === 'MEGA_TOTAL'
-                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] font-bold'
-                      : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                  }`}
-                >
-                  <span>🏆 MEGA BATTLE</span>
-                  <span className="text-[8px] bg-[#f59e0b] text-[#78350f] px-1 rounded-2xs font-black">TOTAL</span>
-                </button>
-
-                {/* Option 2: ⭐ WEEKLY SUPERSTARS */}
-                <button
-                  ref={leagueSlateFilter === 'SUPERSTARS' ? activeStandingSlateBtnRef : undefined}
-                  type="button"
-                  onClick={() => setLeagueSlateFilter('SUPERSTARS')}
-                  className={`touch-manipulation px-2 py-1 rounded-xs font-pixel text-[9px] sm:text-[10px] border-2 cursor-pointer transition-all flex items-center gap-1 shrink-0 whitespace-nowrap shadow-xs ${
-                    leagueSlateFilter === 'SUPERSTARS'
-                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] font-bold'
-                      : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                  }`}
-                >
-                  <Sparkles size={10} className="text-[#f59e0b]" />
-                  <span>SUPERSTARS</span>
-                </button>
-
-                {/* Option 3..N: Games in order */}
-                {sortedMatches.map((m) => {
-                  const away = (m.awayTeamCode || m.away_team || '').trim().toUpperCase();
-                  const home = (m.homeTeamCode || m.home_team || '').trim().toUpperCase();
-                  const pairKey = `${away}@${home}`;
-                  const isSelected = leagueSlateFilter === pairKey;
-                  return (
-                    <button
-                      key={pairKey || m.id}
-                      ref={isSelected ? activeStandingSlateBtnRef : undefined}
-                      type="button"
-                      onClick={() => setLeagueSlateFilter(pairKey)}
-                      className={`touch-manipulation px-2 py-1 rounded-xs font-pixel text-[9px] sm:text-[10px] border-2 cursor-pointer transition-all shrink-0 whitespace-nowrap shadow-xs ${
-                        isSelected
-                          ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] font-bold'
-                          : 'bg-[#fae5b8] hover:bg-[#fff7ed] text-[#5c3509] border-[#c99a57]'
-                      }`}
-                    >
-                      <span>{away}@{home}</span>
-                    </button>
-                  );
-                })}
+                <span className="font-retro text-[10px] text-[#93c5fd]">
+                  {isPodiumZeroPts ? 'ALL SQUADS TIED (0 PTS)' : 'TOP 3'}
+                </span>
               </div>
 
-              {/* Right Arrow: scrolls buttons only */}
-              <button
-                type="button"
-                onClick={() => handleScrollStandingSlate('right')}
-                className="touch-manipulation p-1 bg-[#ebd2a4] hover:bg-[#fae5b8] text-[#5c3509] border border-[#c99a57] rounded-xs font-pixel text-xs font-bold shadow-xs active:translate-y-0.5 shrink-0 flex items-center justify-center cursor-pointer"
-                title="Scroll Right"
-                aria-label="Scroll Right"
-              >
-                <ChevronRight size={14} className="text-[#5c3509]" />
-              </button>
+              {/* 3 Pedestals: 2nd (left), 1st (center, tallest), 3rd (right) */}
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2 items-end pt-1">
+                {/* 🥈 #2 Silver */}
+                {familyListWithDynamicTotals[1] && (
+                  <div
+                    onClick={() => setExpandedSquadName((prev) => (prev === familyListWithDynamicTotals[1].userName ? null : familyListWithDynamicTotals[1].userName))}
+                    className="flex flex-col items-center p-1.5 bg-[#1e293b] hover:bg-[#334155] border-2 border-[#94a3b8] rounded-xs cursor-pointer transition-transform active:scale-95 text-center min-h-[92px] justify-between shadow-xs"
+                  >
+                    <div className="font-pixel text-[9px] sm:text-[10px] text-[#cbd5e1] font-bold flex items-center gap-0.5">
+                      <span>🥈</span> #2
+                    </div>
+                    <div className="my-0.5">
+                      <div className="font-pixel text-[10px] sm:text-xs text-white truncate max-w-[85px] sm:max-w-[110px] font-bold">
+                        {familyListWithDynamicTotals[1].userName}
+                      </div>
+                      <div className="font-pixel text-xs sm:text-sm text-[#facc15] font-bold">
+                        {Math.round(familyListWithDynamicTotals[1].totalScore)}p
+                      </div>
+                    </div>
+                    <div className="text-[8px] font-retro text-[#94a3b8]">
+                      {isPodiumZeroPts || Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore) === 0
+                        ? 'TIED'
+                        : `-${Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[1].totalScore)}p`}
+                    </div>
+                  </div>
+                )}
+
+                {/* 🥇 #1 Gold (TALLEST / HIGHLIGHTED) */}
+                {familyListWithDynamicTotals[0] && (
+                  <div
+                    onClick={() => setExpandedSquadName((prev) => (prev === familyListWithDynamicTotals[0].userName ? null : familyListWithDynamicTotals[0].userName))}
+                    className={`flex flex-col items-center p-2 rounded-xs cursor-pointer transition-transform active:scale-95 text-center min-h-[114px] sm:min-h-[120px] justify-between relative ${
+                      isPodiumZeroPts
+                        ? 'bg-[#1e293b] hover:bg-[#334155] border-2 border-[#cbd5e1] shadow-xs'
+                        : 'bg-[#854d0e]/95 hover:bg-[#a16207] border-2 border-[#fde047] shadow-[0_0_16px_rgba(250,204,21,0.45)] ring-2 ring-[#facc15]/60'
+                    }`}
+                  >
+                    {!isPodiumZeroPts && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-sm select-none animate-bounce">
+                        👑
+                      </div>
+                    )}
+                    <div className="font-pixel text-[10px] sm:text-xs text-[#fef08a] font-bold flex items-center gap-1">
+                      {isPodiumZeroPts ? (
+                        <span>PRE-GAME</span>
+                      ) : (
+                        <>
+                          <span>🥇</span> {isGameRoom ? '#1 WINNER' : '#1 LEADER'}
+                        </>
+                      )}
+                    </div>
+                    <div className="my-0.5">
+                      <div className="font-pixel text-xs sm:text-sm text-white truncate max-w-[95px] sm:max-w-[125px] font-bold">
+                        {familyListWithDynamicTotals[0].userName}
+                      </div>
+                      <div className="font-pixel text-sm sm:text-base text-[#fde047] font-bold">
+                        {Math.round(familyListWithDynamicTotals[0].totalScore)}p
+                      </div>
+                    </div>
+                    <div className={`text-[8px] font-pixel px-1.5 py-0.5 rounded-2xs font-bold ${
+                      isPodiumZeroPts ? 'text-[#cbd5e1] bg-[#0f172a]' : 'text-[#fef08a] bg-[#713f12]'
+                    }`}>
+                      {isPodiumZeroPts ? 'TIED (0 PTS)' : '1ST PLACE'}
+                    </div>
+                  </div>
+                )}
+
+                {/* 🥉 #3 Bronze */}
+                {familyListWithDynamicTotals[2] ? (
+                  <div
+                    onClick={() => setExpandedSquadName((prev) => (prev === familyListWithDynamicTotals[2].userName ? null : familyListWithDynamicTotals[2].userName))}
+                    className="flex flex-col items-center p-1.5 bg-[#1e293b] hover:bg-[#334155] border-2 border-[#b45309] rounded-xs cursor-pointer transition-transform active:scale-95 text-center min-h-[85px] justify-between shadow-xs"
+                  >
+                    <div className="font-pixel text-[9px] sm:text-[10px] text-[#fed7aa] font-bold flex items-center gap-0.5">
+                      <span>🥉</span> #3
+                    </div>
+                    <div className="my-0.5">
+                      <div className="font-pixel text-[10px] sm:text-xs text-white truncate max-w-[85px] sm:max-w-[110px] font-bold">
+                        {familyListWithDynamicTotals[2].userName}
+                      </div>
+                      <div className="font-pixel text-xs sm:text-sm text-[#facc15] font-bold">
+                        {Math.round(familyListWithDynamicTotals[2].totalScore)}p
+                      </div>
+                    </div>
+                    <div className="text-[8px] font-retro text-[#cbd5e1]">
+                      {isPodiumZeroPts || Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore) === 0
+                        ? 'TIED'
+                        : `-${Math.round(familyListWithDynamicTotals[0].totalScore - familyListWithDynamicTotals[2].totalScore)}p`}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-1.5 bg-[#1e293b]/40 border-2 border-dashed border-[#475569] rounded-xs min-h-[85px] text-center">
+                    <span className="font-pixel text-[8px] text-[#64748b]">OPEN SPOT</span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Pre-kickoff informational banner when games have not started yet */}
         {activeTier === 'top_scores' && !hasAnyLiveScoring && (
@@ -1010,6 +1206,249 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         </div>
 
       </div>
+
+      {/* Game Selector Hub Modal */}
+      {showGameSelectorModal && (
+        <div className="fixed inset-0 z-50 bg-[#080d1a]/85 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-[#faebd0] border-4 border-[#1a2238] rounded-xs max-w-lg w-full max-h-[85vh] flex flex-col shadow-[0_8px_0_0_#0a0f1d] animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-3 bg-[#12579b] text-[#fae5b8] border-b-2 border-[#0a2d52] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-base select-none">🏈</span>
+                <h3 className="font-pixel text-xs sm:text-sm font-bold tracking-wide truncate">
+                  ALL MATCHUPS
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGameSelectorModal(false)}
+                className="w-7 h-7 bg-[#b91c1c] hover:bg-[#dc2626] text-white font-pixel text-xs rounded-2xs flex items-center justify-center cursor-pointer border border-[#7f1d1d] shadow-2xs active:translate-y-0.5 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 overflow-y-auto space-y-3 flex-1 max-h-[60vh]">
+              {/* Total Week Option */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSelectSlateFilter('MEGA_TOTAL');
+                    setShowGameSelectorModal(false);
+                  }}
+                  className={`w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                    leagueSlateFilter === 'MEGA_TOTAL'
+                      ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                      : 'bg-[#fef3c7] hover:bg-[#fde68a] text-[#78350f] border-[#f59e0b]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🏆</span>
+                    <div>
+                      <div className="font-pixel text-xs font-bold">ALL WEEK (TOTAL)</div>
+                      <div className="font-retro text-[10px] opacity-80">All 16 Games + Superstars Combined</div>
+                    </div>
+                  </div>
+                  <span className="font-pixel text-[9px] bg-[#f59e0b] text-[#78350f] px-2 py-0.5 rounded-2xs font-bold">
+                    OVERALL
+                  </span>
+                </button>
+              </div>
+
+              {/* 1. Finished Games (Finals) */}
+              {(() => {
+                const finals = sortedMatches.filter((m) => isMatchEnded(m));
+                if (finals.length === 0) return null;
+                return (
+                  <div>
+                    <div className="font-pixel text-[10px] text-[#5c3509] font-bold mb-1 flex items-center gap-1">
+                      <span>🏁</span>
+                      <span>FINAL GAMES</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {finals.map((m) => {
+                        const away = (m.awayTeamCode || m.away_team || '').toUpperCase();
+                        const home = (m.homeTeamCode || m.home_team || '').toUpperCase();
+                        const pairKey = `${away}@${home}`;
+                        const isSelected = leagueSlateFilter === pairKey;
+                        const winnerSummary = computeGameRoomStandings(
+                          pairKey,
+                          cleanRoom,
+                          effectiveRoomRosters,
+                          safeNflPlayers,
+                          matches,
+                          sport
+                        );
+
+                        return (
+                          <button
+                            key={pairKey}
+                            type="button"
+                            onClick={() => {
+                              handleSelectSlateFilter(pairKey);
+                              setShowGameSelectorModal(false);
+                            }}
+                            className={`w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                                : 'bg-[#faebd0] hover:bg-white text-[#5c3509] border-[#c99a57]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-pixel text-xs font-bold flex items-center gap-1.5">
+                                <span>{away} {m.awayScore != null ? m.awayScore : 0} @ {home} {m.homeScore != null ? m.homeScore : 0}</span>
+                                <span className="text-[8px] bg-[#475569] text-white px-1 rounded-2xs font-normal">FINAL</span>
+                              </div>
+                              <div className="font-retro text-[11px] text-[#784610] mt-0.5 truncate">
+                                {winnerSummary.hasPicks ? (
+                                  <span className="text-[#15803d] font-bold">
+                                    👑 {winnerSummary.leaderName} won with {winnerSummary.leaderScore} pts!
+                                  </span>
+                                ) : (
+                                  <span className="opacity-70">No family picks recorded</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="font-pixel text-[9px] text-[#12579b] bg-[#e0f2fe] px-2 py-1 rounded-2xs shrink-0 font-bold border border-[#bae6fd]">
+                              VIEW STANDINGS →
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 2. Live Games */}
+              {(() => {
+                const liveGames = sortedMatches.filter((m) => m.status === 'live');
+                if (liveGames.length === 0) return null;
+                return (
+                  <div>
+                    <div className="font-pixel text-[10px] text-[#b91c1c] font-bold mb-1 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                      <span>LIVE IN PROGRESS</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {liveGames.map((m) => {
+                        const away = (m.awayTeamCode || m.away_team || '').toUpperCase();
+                        const home = (m.homeTeamCode || m.home_team || '').toUpperCase();
+                        const pairKey = `${away}@${home}`;
+                        const isSelected = leagueSlateFilter === pairKey;
+                        const winnerSummary = computeGameRoomStandings(
+                          pairKey,
+                          cleanRoom,
+                          effectiveRoomRosters,
+                          safeNflPlayers,
+                          matches,
+                          sport
+                        );
+
+                        return (
+                          <button
+                            key={pairKey}
+                            type="button"
+                            onClick={() => {
+                              handleSelectSlateFilter(pairKey);
+                              setShowGameSelectorModal(false);
+                            }}
+                            className={`w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                                : 'bg-[#ffe4e6] hover:bg-[#fecdd3] text-[#9f1239] border-[#fda4af]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-pixel text-xs font-bold flex items-center gap-1.5">
+                                <span>{away} {m.awayScore != null ? m.awayScore : 0} @ {home} {m.homeScore != null ? m.homeScore : 0}</span>
+                                <span className="text-[8px] bg-red-600 text-white px-1 rounded-2xs animate-pulse font-normal">LIVE</span>
+                              </div>
+                              <div className="font-retro text-[11px] mt-0.5 truncate">
+                                {winnerSummary.hasPicks ? (
+                                  <span className="font-bold text-[#991b1b]">
+                                    👑 {winnerSummary.leaderName} leading ({winnerSummary.leaderScore} pts)
+                                  </span>
+                                ) : (
+                                  <span className="opacity-70">No family picks recorded</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="font-pixel text-[9px] text-[#991b1b] bg-white px-2 py-1 rounded-2xs shrink-0 font-bold border border-[#fca5a5]">
+                              VIEW LIVE →
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 3. Upcoming Games */}
+              {(() => {
+                const upcoming = sortedMatches.filter((m) => !isMatchEnded(m) && m.status !== 'live');
+                if (upcoming.length === 0) return null;
+                return (
+                  <div>
+                    <div className="font-pixel text-[10px] text-[#5c3509] font-bold mb-1 flex items-center gap-1">
+                      <span>⏳</span>
+                      <span>UPCOMING GAMES (SCHEDULE & LINEUPS)</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {upcoming.map((m) => {
+                        const away = (m.awayTeamCode || m.away_team || '').toUpperCase();
+                        const home = (m.homeTeamCode || m.home_team || '').toUpperCase();
+                        const pairKey = `${away}@${home}`;
+                        const isSelected = leagueSlateFilter === pairKey;
+
+                        return (
+                          <button
+                            key={pairKey}
+                            type="button"
+                            onClick={() => {
+                              handleSelectSlateFilter(pairKey);
+                              setShowGameSelectorModal(false);
+                            }}
+                            className={`w-full p-2.5 rounded-xs border-2 text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#12579b] text-[#fae5b8] border-[#0a2d52] ring-2 ring-[#38bdf8] shadow-xs'
+                                : 'bg-[#faebd0] hover:bg-white text-[#5c3509] border-[#c99a57]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-pixel text-xs font-bold">
+                                {away} @ {home}
+                              </div>
+                              <div className="font-retro text-[10px] text-[#784610] mt-0.5">
+                                {m.quarter_time || m.periodLabel || 'Upcoming'}
+                              </div>
+                            </div>
+                            <span className="font-pixel text-[9px] text-[#5c3509] bg-[#fae5b8] px-2 py-1 rounded-2xs shrink-0 font-bold border border-[#c99a57]">
+                              SELECT →
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-2.5 bg-[#ecd7ab] border-t-2 border-[#c99a57] flex items-center justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowGameSelectorModal(false)}
+                className="px-4 py-1.5 bg-[#12579b] hover:bg-[#1a6cb8] text-white font-pixel text-xs rounded-xs border border-[#0a2d52] font-bold cursor-pointer"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

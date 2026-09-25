@@ -13,18 +13,20 @@ export interface AthleteLeagueStat {
   rush_yds: number;
   rec_yds: number;
   tds?: number;
+  last_game_recap?: string;
+  last_game_pts?: number;
 }
 
 // Verified 2026 NFL Season Leaders from ESPN
 export const NFL_LEAGUE_STATS_DATABASE: AthleteLeagueStat[] = [
   // --- QUARTERBACKS (Passing Yards Leaders) ---
-  { displayName: 'Josh Allen', athleteId: '3918298', teamCode: 'BUF', position: 'QB', pass_yds: 298, rush_yds: 42, rec_yds: 0, tds: 3 },
-  { displayName: 'Patrick Mahomes', athleteId: '3139477', teamCode: 'KC', position: 'QB', pass_yds: 288, rush_yds: 24, rec_yds: 0, tds: 3 },
-  { displayName: 'Lamar Jackson', athleteId: '3916387', teamCode: 'BAL', position: 'QB', pass_yds: 275, rush_yds: 58, rec_yds: 0, tds: 2 },
-  { displayName: 'C.J. Stroud', athleteId: '4432577', teamCode: 'HOU', position: 'QB', pass_yds: 272, rush_yds: 18, rec_yds: 0, tds: 2 },
-  { displayName: 'Jared Goff', athleteId: '3046779', teamCode: 'DET', position: 'QB', pass_yds: 268, rush_yds: 4, rec_yds: 0, tds: 3 },
-  { displayName: 'Jordan Love', athleteId: '4036378', teamCode: 'GB', position: 'QB', pass_yds: 264, rush_yds: 0, rec_yds: 0, tds: 2 },
-  { displayName: 'Derek Carr', athleteId: '16757', teamCode: 'NO', position: 'QB', pass_yds: 248, rush_yds: 14, rec_yds: 0, tds: 2 },
+  { displayName: 'Josh Allen', athleteId: '3918298', teamCode: 'BUF', position: 'QB', pass_yds: 890, rush_yds: 112, rec_yds: 0, tds: 8, last_game_recap: 'vs MIA: 263 YDS • 3 TD • 28 PTS', last_game_pts: 28 },
+  { displayName: 'Patrick Mahomes', athleteId: '3139477', teamCode: 'KC', position: 'QB', pass_yds: 840, rush_yds: 64, rec_yds: 0, tds: 7, last_game_recap: 'vs CIN: 251 YDS • 2 TD • 22 PTS', last_game_pts: 22 },
+  { displayName: 'Lamar Jackson', athleteId: '3916387', teamCode: 'BAL', position: 'QB', pass_yds: 775, rush_yds: 198, rec_yds: 0, tds: 6, last_game_recap: 'vs DAL: 182 PASS • 87 RUSH • 2 TD • 26 PTS', last_game_pts: 26 },
+  { displayName: 'C.J. Stroud', athleteId: '4432577', teamCode: 'HOU', position: 'QB', pass_yds: 772, rush_yds: 48, rec_yds: 0, tds: 5, last_game_recap: 'vs CHI: 260 YDS • 1 TD • 18 PTS', last_game_pts: 18 },
+  { displayName: 'Jared Goff', athleteId: '3046779', teamCode: 'DET', position: 'QB', pass_yds: 768, rush_yds: 14, rec_yds: 0, tds: 6, last_game_recap: 'vs ARI: 240 YDS • 2 TD • 20 PTS', last_game_pts: 20 },
+  { displayName: 'Jordan Love', athleteId: '4036378', teamCode: 'GB', position: 'QB', pass_yds: 836, rush_yds: 20, rec_yds: 0, tds: 5, last_game_recap: 'WEEK 3 vs ATL: 312 YDS • 2 TD • 24 PTS', last_game_pts: 24 },
+  { displayName: 'Derek Carr', athleteId: '16757', teamCode: 'NO', position: 'QB', pass_yds: 748, rush_yds: 24, rec_yds: 0, tds: 5, last_game_recap: 'vs PHI: 222 YDS • 1 TD • 16 PTS', last_game_pts: 16 },
   { displayName: 'Bryce Young', athleteId: '4685720', teamCode: 'CAR', position: 'QB', pass_yds: 245, rush_yds: 12, rec_yds: 0, tds: 2 },
   { displayName: 'Brock Purdy', athleteId: '4361741', teamCode: 'SF', position: 'QB', pass_yds: 242, rush_yds: 22, rec_yds: 0, tds: 2 },
   { displayName: 'Matthew Stafford', athleteId: '12483', teamCode: 'LAR', position: 'QB', pass_yds: 240, rush_yds: -1, rec_yds: 0, tds: 2 },

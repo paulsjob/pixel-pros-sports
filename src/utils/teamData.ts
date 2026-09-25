@@ -473,14 +473,14 @@ export const DEFAULT_NFL_MATCHES: Match[] = [
     awayTeamCode: 'ATL',
     home_team: 'GB',
     away_team: 'ATL',
-    homeScore: 0,
-    awayScore: 0,
-    home_score: 0,
-    away_score: 0,
-    quarter_time: 'Thu 8:15 PM',
-    quarterTime: 'Thu 8:15 PM',
-    periodLabel: 'Thu 8:15 PM',
-    status: 'upcoming',
+    homeScore: 14,
+    awayScore: 35,
+    home_score: 14,
+    away_score: 35,
+    quarter_time: 'Final',
+    quarterTime: 'Final',
+    periodLabel: 'Final',
+    status: 'final',
     week: 3,
     weekLabel: 'Week 3',
     gameDate: '2026-09-25T00:15Z',
@@ -1610,33 +1610,77 @@ export function isMatchEnded(m?: Match | any | null): boolean {
 }
 
 /**
- * Sorts matches strictly by kickoff time, placing:
- * 1. Live games at the very front
- * 2. Upcoming games ordered chronologically by kickoff time (earliest first)
- * 3. Completed/final games pushed to the very end of the list
+ * Computes the NFL chronological day/time block for standard weekly scheduling:
+ * Block 0: Thursday Night Football (TNF, always first)
+ * Block 1: Friday / Saturday games
+ * Block 2: Sunday 1:00 PM ET games (early afternoon window)
+ * Block 3: Sunday 4:00 PM / 4:25 PM ET games (late afternoon window)
+ * Block 4: Sunday Night Football (SNF, ~8:20 PM ET)
+ * Block 5: Monday Night Football (MNF, ~8:15 PM ET, always last)
+ */
+export function getMatchTimeBlock(m: Match): number {
+  const away = (m.awayTeamCode || m.away_team || '').trim().toUpperCase();
+  const home = (m.homeTeamCode || m.home_team || '').trim().toUpperCase();
+  const pair = `${away}@${home}`;
+
+  // Explicit known marquee slots for the active week
+  if (pair === 'ATL@GB' || pair === 'GB@ATL') return 0; // TNF
+
+  const label = `${m.quarter_time || ''} ${m.periodLabel || ''} ${m.quarterTime || ''}`.toUpperCase();
+
+  if (label.includes('THU')) return 0;
+  if (label.includes('FRI') || label.includes('SAT')) return 1;
+  if (label.includes('MON')) return 5;
+
+  if (label.includes('SUN')) {
+    if (label.includes('8:20') || label.includes('8:15') || label.includes('NIGHT')) return 4;
+    if (label.includes('4:05') || label.includes('4:25') || label.includes('4:00') || label.includes('4 PM')) return 3;
+    if (label.includes('1:00') || label.includes('1 PM')) return 2;
+  }
+
+  // Parse gameDate
+  if (m.gameDate) {
+    try {
+      const d = new Date(m.gameDate);
+      if (!isNaN(d.getTime())) {
+        const utcDay = d.getUTCDay();
+        const utcHour = d.getUTCHours();
+        // Thursday Night (UTC Day 4 or early Day 5)
+        if (utcDay === 4 || (utcDay === 5 && utcHour < 5)) return 0;
+        if (utcDay === 5 || utcDay === 6) return 1;
+        if (utcDay === 0 || (utcDay === 1 && utcHour < 5)) {
+          // Sunday
+          if (utcDay === 0 && utcHour <= 18) return 2; // 1:00 PM ET (17:00 UTC)
+          if (utcDay === 0 && utcHour <= 22) return 3; // 4:00/4:25 PM ET (20:00 UTC)
+          return 4; // SNF (8:20 PM ET is 00:20 UTC Monday)
+        }
+        if (utcDay === 1 || (utcDay === 2 && utcHour < 5)) return 5; // Monday Night
+      }
+    } catch {}
+  }
+
+  return 2; // Default Sunday 1pm
+}
+
+/**
+ * Sorts NFL matches by day/time block, and alphabetically within each block:
+ * 1. Thursday Night Football first
+ * 2. Sunday 1:00 PM ET games in alphabetical order
+ * 3. Sunday 4:00 PM / 4:25 PM ET games in alphabetical order
+ * 4. Sunday Night Football
+ * 5. Monday Night Football last
  */
 export function sortMatchesByKickoffAndStatus(matches: Match[]): Match[] {
   return [...matches].sort((a, b) => {
-    const aEnded = isMatchEnded(a);
-    const bEnded = isMatchEnded(b);
+    // 1. Group by Day/Time block
+    const blockA = getMatchTimeBlock(a);
+    const blockB = getMatchTimeBlock(b);
 
-    // 1. Live games always at the very top
-    const aLive = a.status === 'live';
-    const bLive = b.status === 'live';
-    if (aLive && !bLive) return -1;
-    if (bLive && !aLive) return 1;
-
-    // 2. Completed / Final games ALWAYS move to the end of the list
-    if (!aEnded && bEnded) return -1;
-    if (aEnded && !bEnded) return 1;
-
-    // 3. Among upcoming or among completed games, order chronologically by kickoff time
-    const dateA = a.gameDate ? new Date(a.gameDate).getTime() : 0;
-    const dateB = b.gameDate ? new Date(b.gameDate).getTime() : 0;
-    if (dateA !== dateB) {
-      return dateA - dateB;
+    if (blockA !== blockB) {
+      return blockA - blockB;
     }
 
+    // 2. Within each time block, order alphabetically by matchup (e.g. AWAY@HOME)
     const awayA = (a.awayTeamCode || a.away_team || '').trim().toUpperCase();
     const awayB = (b.awayTeamCode || b.away_team || '').trim().toUpperCase();
     const homeA = (a.homeTeamCode || a.home_team || '').trim().toUpperCase();
@@ -1645,5 +1689,86 @@ export function sortMatchesByKickoffAndStatus(matches: Match[]): Match[] {
     const pairB = `${awayB}@${homeB}`;
     return pairA.localeCompare(pairB);
   });
+}
+
+export interface GameRoomWinnerSummary {
+  leaderName: string;
+  leaderScore: number;
+  totalParticipants: number;
+  isTied: boolean;
+  hasPicks: boolean;
+  standings: Array<{
+    userName: string;
+    score: number;
+    stars: Competitor[];
+  }>;
+}
+
+export function computeGameRoomStandings(
+  matchPair: string,
+  cleanRoom: string,
+  roomRosters: any[],
+  competitors: Competitor[],
+  matches: Match[],
+  sport: SportId = 'nfl'
+): GameRoomWinnerSummary {
+  const cleanRoomCode = (cleanRoom || 'COUCH').trim().toUpperCase();
+  const targetRoomCode =
+    matchPair === 'SUPERSTARS'
+      ? cleanRoomCode
+      : `${cleanRoomCode}__${matchPair.replace('@', '_').toUpperCase()}`;
+
+  const userStandings: Array<{ userName: string; score: number; stars: Competitor[] }> = [];
+
+  const filteredRosters = (roomRosters || []).filter(
+    (r) => (r.room_code || '').trim().toUpperCase() === targetRoomCode
+  );
+
+  filteredRosters.forEach((r) => {
+    const userName = (r.user_name || '').trim().toUpperCase();
+    if (!userName) return;
+
+    const s1 = resolvePlayerInPool(r.star_1_id, competitors, sport);
+    const s2 = resolvePlayerInPool(r.star_2_id, competitors, sport);
+    const s3 = resolvePlayerInPool(r.star_3_id, competitors, sport);
+    const stars = [s1, s2, s3].filter(Boolean) as Competitor[];
+
+    if (stars.length > 0) {
+      let score = 0;
+      stars.forEach((p) => {
+        const m = findMatchForPlayer(p, matches);
+        const scoring = getPlayerScoringDisplay(p, m, sport);
+        if (scoring.gameState !== 'pre') {
+          score += scoring.activeScore > 0 ? scoring.activeScore : 0;
+        }
+      });
+      userStandings.push({ userName, score, stars });
+    }
+  });
+
+  userStandings.sort((a, b) => b.score - a.score);
+
+  if (userStandings.length === 0) {
+    return {
+      leaderName: '',
+      leaderScore: 0,
+      totalParticipants: 0,
+      isTied: false,
+      hasPicks: false,
+      standings: [],
+    };
+  }
+
+  const leader = userStandings[0];
+  const isTied = userStandings.length > 1 && userStandings[1].score === leader.score;
+
+  return {
+    leaderName: leader.userName,
+    leaderScore: Math.round(leader.score),
+    totalParticipants: userStandings.length,
+    isTied,
+    hasPicks: true,
+    standings: userStandings,
+  };
 }
 
