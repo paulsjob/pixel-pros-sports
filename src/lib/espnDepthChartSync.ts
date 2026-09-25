@@ -469,6 +469,8 @@ export async function runPureDynamicDepthChartSync(
               }
               if (existing.last_game_score) dc.last_game_score = existing.last_game_score;
               if (existing.last_game_stats) dc.last_game_stats = existing.last_game_stats;
+              if (existing.seasonStats) dc.seasonStats = existing.seasonStats;
+              if (existing.season_stats) dc.season_stats = existing.season_stats;
               if (!dc.injuryStatus && existing.injuryStatus) {
                 dc.injuryStatus = existing.injuryStatus;
                 dc.injuryDetail = existing.injuryDetail;

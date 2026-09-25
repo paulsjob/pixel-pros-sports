@@ -6,6 +6,7 @@
 import { Competitor, Match, SportId, ActiveSlot } from '../types';
 import { NFL_ROSTER_MANIFEST, validateTeamRoster, isRetiredPlayer } from '../data/nflRosterManifest';
 import { lookupNFLAthleteLeagueStats } from '../data/nflLeagueStats';
+import { DEFAULT_NBA_COMPETITORS } from './nbaTeamData';
 
 export interface TeamMeta {
   code: string;
@@ -375,25 +376,64 @@ export function buildManifestCompetitors(): Competitor[] {
         injuryDetail: ath.injuryDetail || '',
         rating: ath.depthRank === 1 ? 95 : 85,
         score: 0,
-        stats: (() => {
+        // Live game stats start strictly at 0 until the player's game kicks off and stats are recorded in boxscore!
+        stats: {
+          pass_yds: 0,
+          passingYards: 0,
+          rush_yds: 0,
+          rushingYards: 0,
+          rec_yds: 0,
+          receivingYards: 0,
+          tds: 0,
+          touchdowns: 0,
+          fgs: 0,
+          stops: 0,
+          total_yards: 0,
+          primaryMetricLabel: ath.position === 'QB' ? 'Pass Yds' : ath.position === 'RB' ? 'Rush Yds' : 'Rec Yds',
+          primaryMetricValue: 0,
+        },
+        seasonStats: (() => {
           const lStat = lookupNFLAthleteLeagueStats(ath.displayName, ath.athleteId);
           const pYards = lStat?.pass_yds || 0;
           const rYards = lStat?.rush_yds || 0;
           const rcYards = lStat?.rec_yds || 0;
           const totalYds = pYards + rYards + rcYards;
-          const primaryLabel = ath.position === 'QB' ? 'Pass Yds' : ath.position === 'RB' ? 'Rush Yds' : 'Rec Yds';
           const primaryVal = ath.position === 'QB' ? pYards : ath.position === 'RB' ? rYards : rcYards;
           return {
             pass_yds: pYards,
             rush_yds: rYards,
             rec_yds: rcYards,
             tds: lStat?.tds || 0,
-            fgs: 0,
-            stops: 0,
+            touchdowns: lStat?.tds || 0,
             total_yards: totalYds,
-            primaryMetricLabel: primaryLabel,
+            primaryMetricLabel: ath.position === 'QB' ? 'Pass Yds' : ath.position === 'RB' ? 'Rush Yds' : 'Rec Yds',
             primaryMetricValue: primaryVal,
           };
+        })(),
+        season_stats: (() => {
+          const lStat = lookupNFLAthleteLeagueStats(ath.displayName, ath.athleteId);
+          const pYards = lStat?.pass_yds || 0;
+          const rYards = lStat?.rush_yds || 0;
+          const rcYards = lStat?.rec_yds || 0;
+          const totalYds = pYards + rYards + rcYards;
+          return {
+            pass_yds: pYards,
+            rush_yds: rYards,
+            rec_yds: rcYards,
+            tds: lStat?.tds || 0,
+            total_yards: totalYds,
+          };
+        })(),
+        lastGameScore: (() => {
+          const lStat = lookupNFLAthleteLeagueStats(ath.displayName, ath.athleteId);
+          if (!lStat) return 0;
+          return calculateNFLPlayerScore(lStat);
+        })(),
+        lastGameStats: (() => {
+          const lStat = lookupNFLAthleteLeagueStats(ath.displayName, ath.athleteId);
+          if (!lStat) return '0 TD · 0 YDS';
+          const tot = (lStat.pass_yds || 0) + (lStat.rush_yds || 0) + (lStat.rec_yds || 0);
+          return `${lStat.tds || 0} TD · ${tot} YDS`;
         })(),
         badges: ['gold_star'],
         avatar: {
@@ -1471,19 +1511,47 @@ export function getPlayerVisualAvatar(player: Competitor, match?: Match | null) 
 export function resolvePlayerInPool(
   playerId?: string | null,
   pool: Competitor[] = [],
-  _sport: SportId = 'nfl'
+  sport: SportId = 'nfl'
 ): Competitor | undefined {
   if (!playerId) return undefined;
   const cleanId = String(playerId).trim();
-  if (!cleanId) return undefined;
+  if (!cleanId || cleanId === 'null' || cleanId === 'undefined') return undefined;
 
-  // 1. Direct ID match in provided pool
-  const found = pool.find((p) => p && (String(p.id) === cleanId || p.athleteId === cleanId));
+  const rawNumericId = cleanId.replace(/^(nfl_|nba_)/i, '');
+
+  // 1. Direct ID or athleteId match in provided pool
+  const found = pool.find(
+    (p) =>
+      p &&
+      (String(p.id) === cleanId ||
+        p.athleteId === cleanId ||
+        p.athleteId === rawNumericId ||
+        `nfl_${p.athleteId}` === cleanId ||
+        `nba_${p.athleteId}` === cleanId)
+  );
   if (found) return found;
 
-  // 2. Check DEFAULT_NFL_COMPETITORS
-  const defaultFound = DEFAULT_NFL_COMPETITORS.find(
-    (p) => p && (String(p.id) === cleanId || p.athleteId === cleanId || `nfl_${p.athleteId}` === cleanId)
+  // 2. Check default sport competitors (support both NFL and NBA seamlessly)
+  const isNbaHint = sport === 'nba' || cleanId.toLowerCase().startsWith('nba_');
+  const primaryDefaults = isNbaHint ? DEFAULT_NBA_COMPETITORS : DEFAULT_NFL_COMPETITORS;
+  const secondaryDefaults = isNbaHint ? DEFAULT_NFL_COMPETITORS : DEFAULT_NBA_COMPETITORS;
+
+  const defaultFound = primaryDefaults.find(
+    (p) =>
+      p &&
+      (String(p.id) === cleanId ||
+        p.athleteId === cleanId ||
+        p.athleteId === rawNumericId ||
+        `nfl_${p.athleteId}` === cleanId ||
+        `nba_${p.athleteId}` === cleanId)
+  ) || secondaryDefaults.find(
+    (p) =>
+      p &&
+      (String(p.id) === cleanId ||
+        p.athleteId === cleanId ||
+        p.athleteId === rawNumericId ||
+        `nfl_${p.athleteId}` === cleanId ||
+        `nba_${p.athleteId}` === cleanId)
   );
   if (defaultFound) return defaultFound;
 
@@ -1494,7 +1562,32 @@ export function resolvePlayerInPool(
   );
   if (byName) return byName;
 
-  return undefined;
+  // 4. Guaranteed non-vanishing competitor fallback: never let an existing pick disappear from UI!
+  const effectiveSport: SportId = isNbaHint ? 'nba' : 'nfl';
+  return {
+    id: cleanId,
+    athleteId: rawNumericId,
+    athlete_id: rawNumericId,
+    sportId: effectiveSport,
+    displayName: `Star #${rawNumericId}`,
+    shortName: `S. #${rawNumericId}`,
+    uniformNumber: 99,
+    teamName: effectiveSport === 'nba' ? 'NBA Star' : 'NFL Star',
+    teamCode: effectiveSport === 'nba' ? 'NBA' : 'NFL',
+    positionGeneric: 'OFFENSE',
+    position: effectiveSport === 'nba' ? 'STAR' : 'STAR',
+    rating: 88,
+    score: 0,
+    badges: [],
+    stats: {},
+    avatar: {
+      helmetColor: '#1e293b',
+      jerseyColor: '#3b82f6',
+      stripeColor: '#ffffff',
+      skinTone: '#d97706',
+      number: 99,
+    },
+  } as Competitor;
 }
 
 /**

@@ -6,7 +6,7 @@ import { PixelHelmet } from './PixelHelmet';
 import { Users, Sparkles, ChevronLeft, ChevronRight, Trophy, ChevronDown, ChevronUp, Flame, CheckCircle2, ArrowRight } from 'lucide-react';
 import { splitPlayerFirstLastName, formatPlayerInitialLastName, formatTeamPosSubtitle } from '../utils/formatters';
 import { getDeviceId } from '../lib/deviceIdentity';
-import { isGhostUser, getSquadLockState } from '../lib/supabaseClient';
+import { isGhostUser, getSquadLockState, fetchRoomRosters } from '../lib/supabaseClient';
 import {
   getPlayerScoringDisplay,
   resolvePlayerInPool,
@@ -69,6 +69,59 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const safeRoomRosters = Array.isArray(roomRosters) ? roomRosters : [];
   const cleanRoom = (roomCode || 'COUCH').trim().toUpperCase();
   const activeNormalizedName = (userName || '').trim().toUpperCase();
+
+  // Internal reactive roster state to guarantee zero-lag and self-healing rosters
+  const [internalRosters, setInternalRosters] = useState<UserRoster[]>(safeRoomRosters);
+
+  useEffect(() => {
+    if (safeRoomRosters && safeRoomRosters.length > 0) {
+      setInternalRosters((prev) => {
+        const map = new Map<string, UserRoster>();
+        for (const r of safeRoomRosters) {
+          map.set(`${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`, r);
+        }
+        for (const r of prev) {
+          const k = `${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`;
+          if (!map.has(k)) map.set(k, r);
+        }
+        return Array.from(map.values());
+      });
+    }
+  }, [safeRoomRosters]);
+
+  const refreshRosters = useCallback(async () => {
+    try {
+      const fresh = await fetchRoomRosters(cleanRoom, sport);
+      if (fresh && Array.isArray(fresh) && fresh.length > 0) {
+        setInternalRosters((prev) => {
+          const map = new Map<string, UserRoster>();
+          for (const r of fresh) {
+            map.set(`${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`, r);
+          }
+          for (const r of prev) {
+            const k = `${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`;
+            if (!map.has(k)) map.set(k, r);
+          }
+          return Array.from(map.values());
+        });
+      }
+    } catch {}
+  }, [cleanRoom, sport]);
+
+  useEffect(() => {
+    refreshRosters();
+    const interval = setInterval(refreshRosters, 5000);
+    const handleUpdate = () => refreshRosters();
+    window.addEventListener('pixel_pros_roster_update', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('pixel_pros_roster_update', handleUpdate);
+    };
+  }, [refreshRosters]);
+
+  const effectiveRoomRosters = useMemo(() => {
+    return internalRosters.length > 0 ? internalRosters : safeRoomRosters;
+  }, [internalRosters, safeRoomRosters]);
 
   const sortedMatches = useMemo(() => {
     return sortMatchesByKickoffAndStatus(matches || []);
@@ -173,7 +226,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const familyListWithDynamicTotals = useMemo(() => {
     // 1. Gather all unique user names in this room across ALL slates
     const userNames = new Set<string>();
-    safeRoomRosters.forEach((r) => {
+    effectiveRoomRosters.forEach((r) => {
       const rCode = (r.room_code || '').toUpperCase();
       if (rCode === cleanRoom || rCode.startsWith(`${cleanRoom}__`)) {
         const u = (r.user_name || '').trim().toUpperCase();
@@ -190,17 +243,18 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         let totalScore = 0;
         let slatesCount = 0;
         let superstarsScore = 0;
-        const allUserRosters = safeRoomRosters.filter(
+        const allUserRosters = effectiveRoomRosters.filter(
           (r) =>
             (r.user_name || '').trim().toUpperCase() === entryName &&
             ((r.room_code || '').toUpperCase() === cleanRoom ||
               (r.room_code || '').toUpperCase().startsWith(`${cleanRoom}__`))
         );
 
-        // If current user, make sure their current live slate roster is represented
-        const superstarRoster =
-          allUserRosters.find((r) => (r.room_code || '').toUpperCase() === cleanRoom) ||
-          (isUser ? currentUserRoster : null);
+        // Prioritize persistent database roster with picks; fallback to active session if user
+        const dbSuperstarRoster = allUserRosters.find((r) => (r.room_code || '').toUpperCase() === cleanRoom);
+        const hasDbPicks = Boolean(dbSuperstarRoster && (dbSuperstarRoster.star_1_id || dbSuperstarRoster.star_2_id || dbSuperstarRoster.star_3_id));
+        const superstarRoster = hasDbPicks ? dbSuperstarRoster : (isUser ? currentUserRoster : dbSuperstarRoster);
+
         const star1 = superstarRoster ? resolvePlayerInPool(superstarRoster.star_1_id, safeNflPlayers, sport) : null;
         const star2 = superstarRoster ? resolvePlayerInPool(superstarRoster.star_2_id, safeNflPlayers, sport) : null;
         const star3 = superstarRoster ? resolvePlayerInPool(superstarRoster.star_3_id, safeNflPlayers, sport) : null;
@@ -300,18 +354,23 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           ? cleanRoom
           : `${cleanRoom}__${leagueSlateFilter.replace('@', '_')}`;
 
+      const dbRoster = effectiveRoomRosters.find(
+        (r) =>
+          (r.room_code || '').toUpperCase() === targetRoomCode &&
+          (r.user_name || '').trim().toUpperCase() === entryName
+      );
+      const hasDbRosterPicks = Boolean(dbRoster && (dbRoster.star_1_id || dbRoster.star_2_id || dbRoster.star_3_id));
+
       const rosterEntry =
-        safeRoomRosters.find(
-          (r) =>
-            (r.room_code || '').toUpperCase() === targetRoomCode &&
-            (r.user_name || '').trim().toUpperCase() === entryName
-        ) || (isUser && leagueSlateFilter === 'SUPERSTARS' ? currentUserRoster : null);
+        hasDbRosterPicks
+          ? dbRoster
+          : (dbRoster || (isUser && leagueSlateFilter === 'SUPERSTARS' ? currentUserRoster : null));
 
       let star1Id = rosterEntry?.star_1_id;
       let star2Id = rosterEntry?.star_2_id;
       let star3Id = rosterEntry?.star_3_id;
 
-      if (isUser && (!star1Id && !star2Id && !star3Id)) {
+      if (!star1Id && !star2Id && !star3Id) {
         try {
           const cached = localStorage.getItem(`pixel_pros_roster_${sport}_${targetRoomCode}_${entryName}`);
           if (cached) {
@@ -355,7 +414,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       }
       return b.totalScore - a.totalScore;
     });
-  }, [safeRoomRosters, cleanRoom, activeNormalizedName, leagueSlateFilter, safeNflPlayers, sport, currentUserRoster, sortBy, getPlayerLivePoints]);
+  }, [effectiveRoomRosters, cleanRoom, activeNormalizedName, leagueSlateFilter, safeNflPlayers, sport, currentUserRoster, sortBy, getPlayerLivePoints]);
 
   // Helper for rank medal styling
   const getRankBadge = (rankNumber: number) => {

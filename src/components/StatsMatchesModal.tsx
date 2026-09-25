@@ -124,9 +124,9 @@ export const StatsMatchesModal: React.FC<StatsMatchesModalProps> = ({
                     <td className="p-2 font-pixel text-[10px] text-[#5c3509]">
                       {player.shortName} (#{player.uniformNumber})
                     </td>
-                    <td className="p-2 text-[#784610]">{player.stats.passingYards.toLocaleString()}</td>
-                    <td className="p-2 text-[#784610]">{player.stats.rushingYards.toLocaleString()}</td>
-                    <td className="p-2 text-[#b45309] font-bold">{player.stats.touchdowns}</td>
+                    <td className="p-2 text-[#784610]">{(player.stats?.passingYards ?? player.stats?.pass_yds ?? 0).toLocaleString()}</td>
+                    <td className="p-2 text-[#784610]">{(player.stats?.rushingYards ?? player.stats?.rush_yds ?? 0).toLocaleString()}</td>
+                    <td className="p-2 text-[#b45309] font-bold">{player.stats?.touchdowns ?? player.stats?.tds ?? 0}</td>
                     <td className="p-2 text-right font-pixel text-[10px] text-[#12579b]">
                       {player.score.toLocaleString()}
                     </td>

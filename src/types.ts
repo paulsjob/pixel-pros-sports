@@ -18,6 +18,26 @@ export interface AvatarConfig {
   numberColor?: string;
 }
 
+export interface SeasonStats {
+  pass_yds?: number;
+  rush_yds?: number;
+  rec_yds?: number;
+  tds?: number;
+  touchdowns?: number;
+  total_yards?: number;
+  primaryMetricValue?: number;
+  primaryMetricLabel?: string;
+  pts?: number;
+  points?: number;
+  three_pm?: number;
+  threes?: number;
+  reb?: number;
+  ast?: number;
+  games_played?: number;
+  summary?: string;
+  [key: string]: any;
+}
+
 export interface Competitor {
   id: string;
   athleteId?: string;
@@ -49,6 +69,8 @@ export interface Competitor {
     primaryMetricValue?: number;
     [key: string]: any;
   };
+  seasonStats?: SeasonStats;
+  season_stats?: SeasonStats;
   badges: string[];
   score: number;
   current_score?: number;

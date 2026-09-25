@@ -275,15 +275,18 @@ app.get('/api/realtime', (req: Request, res: Response) => {
 
 // 3. Fetch rosters for a room
 app.get('/api/rosters', async (req: Request, res: Response) => {
-  const roomCode = req.query.roomCode ? String(req.query.roomCode).trim().toUpperCase() : 'COUCH';
-  const sport = req.query.sport ? String(req.query.sport).trim().toLowerCase() : 'nfl';
+  const isAll = req.query.all === 'true' || req.query.roomCode === '*';
+  const roomCode = req.query.roomCode ? String(req.query.roomCode).trim().toUpperCase() : (isAll ? '*' : 'COUCH');
+  const sport = req.query.sport ? String(req.query.sport).trim().toLowerCase() : '';
 
-  await syncWithSupabase(roomCode);
+  if (!isAll) {
+    await syncWithSupabase(roomCode);
+  }
 
   const results = dbState.rosters.filter((r) => {
     const rRoom = (r.room_code || '').trim().toUpperCase();
     const rSport = (r.sport || 'nfl').trim().toLowerCase();
-    const isRoomMatch = rRoom === roomCode || rRoom.startsWith(`${roomCode}__`);
+    const isRoomMatch = isAll || rRoom === roomCode || rRoom.startsWith(`${roomCode}__`);
     return isRoomMatch && (sport ? rSport === sport : true);
   });
 
@@ -301,6 +304,7 @@ app.post('/api/rosters', (req: Request, res: Response) => {
     star_3_id = '',
     is_locked = false,
     device_id = 'UNLOCKED',
+    force_clear = false,
   } = req.body;
 
   const cleanRoom = (room_code || 'COUCH').trim().toUpperCase();
@@ -312,31 +316,44 @@ app.post('/api/rosters', (req: Request, res: Response) => {
     return;
   }
 
-  const starIds = [star_1_id, star_2_id, star_3_id].filter(
-    (id) => id && typeof id === 'string' && id.trim() !== ''
-  );
-  const distinctIds = new Set(starIds);
-  const hasThreeDistinct = starIds.length === 3 && distinctIds.size === 3;
-  const guardedLocked = hasThreeDistinct && Boolean(is_locked);
-
-  const lockKey = `${cleanRoom}_${cleanUser}_${cleanSport}`;
-  dbState.locks[lockKey] = guardedLocked;
-
   const existingIdx = dbState.rosters.findIndex(
     (r) =>
       (r.room_code || '').trim().toUpperCase() === cleanRoom &&
       (r.user_name || '').trim().toUpperCase() === cleanUser &&
       (r.sport || 'nfl').trim().toLowerCase() === cleanSport
   );
+  const existingRoster = existingIdx >= 0 ? dbState.rosters[existingIdx] : null;
+
+  // Determine final star IDs: if caller passed empty stars but an existing squad has picks,
+  // preserve the existing picks unless force_clear is explicitly requested.
+  let finalS1 = star_1_id || '';
+  let finalS2 = star_2_id || '';
+  let finalS3 = star_3_id || '';
+
+  if (!finalS1 && !finalS2 && !finalS3 && !force_clear && existingRoster) {
+    finalS1 = existingRoster.star_1_id || '';
+    finalS2 = existingRoster.star_2_id || '';
+    finalS3 = existingRoster.star_3_id || '';
+  }
+
+  const starIds = [finalS1, finalS2, finalS3].filter(
+    (id) => id && typeof id === 'string' && id.trim() !== ''
+  );
+  const distinctIds = new Set(starIds);
+  const hasThreeDistinct = starIds.length === 3 && distinctIds.size === 3;
+  const guardedLocked = hasThreeDistinct && (Boolean(is_locked) || (existingRoster?.is_locked && !force_clear));
+
+  const lockKey = `${cleanRoom}_${cleanUser}_${cleanSport}`;
+  dbState.locks[lockKey] = guardedLocked;
 
   const updatedRecord: StoredRoster = {
-    id: existingIdx >= 0 ? dbState.rosters[existingIdx].id : `rost_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    id: existingRoster ? existingRoster.id : `rost_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     room_code: cleanRoom,
     user_name: cleanUser,
     sport: cleanSport,
-    star_1_id: star_1_id || '',
-    star_2_id: star_2_id || '',
-    star_3_id: star_3_id || '',
+    star_1_id: finalS1,
+    star_2_id: finalS2,
+    star_3_id: finalS3,
     is_locked: guardedLocked,
     device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
     updated_at: new Date().toISOString(),
@@ -670,7 +687,21 @@ app.post('/api/rooms/archive', (req: Request, res: Response) => {
   } else {
     delete dbState.rooms[key].archivedAt;
   }
+
+  // Also cascade archive status to all match slates in this room
+  Object.keys(dbState.rooms).forEach((rKey) => {
+    if (rKey.startsWith(`${cleanCode}__`) && rKey.endsWith(`_${cleanSport}`)) {
+      dbState.rooms[rKey].isArchived = Boolean(is_archived);
+      if (is_archived) {
+        dbState.rooms[rKey].archivedAt = new Date().toISOString();
+      } else {
+        delete dbState.rooms[rKey].archivedAt;
+      }
+    }
+  });
+
   saveDatabase(dbState);
+  broadcastRoomUpdate(cleanCode, cleanSport, { action: 'room_archive', is_archived: Boolean(is_archived) });
   res.json({ success: true, roomCode: cleanCode, sport: cleanSport, isArchived: Boolean(is_archived) });
 });
 
@@ -716,6 +747,90 @@ app.post('/api/rooms/auto-archive-completed', (req: Request, res: Response) => {
 
   saveDatabase(dbState);
   res.json({ success: true, archivedCount });
+});
+
+// Permanently delete a room and all its subslates and rosters
+app.post('/api/rooms/delete', (req: Request, res: Response) => {
+  const { room_code, sport = 'nfl' } = req.body;
+  const cleanCode = (room_code || '').trim().toUpperCase();
+  const cleanSport: 'nfl' | 'nba' = (sport || '').toString().toLowerCase() === 'nba' ? 'nba' : 'nfl';
+  if (!cleanCode) {
+    res.status(400).json({ error: 'room_code is required' });
+    return;
+  }
+
+  if (dbState.rooms) {
+    delete dbState.rooms[`${cleanCode}_${cleanSport}`];
+    delete dbState.rooms[`${cleanCode}_nfl`];
+    delete dbState.rooms[`${cleanCode}_nba`];
+    // Also remove any sub-slates under this room
+    Object.keys(dbState.rooms).forEach((k) => {
+      if (k.startsWith(`${cleanCode}__`)) {
+        delete dbState.rooms[k];
+      }
+    });
+  }
+
+  // Remove all rosters for this room and its match slates
+  dbState.rosters = dbState.rosters.filter((r) => {
+    const raw = (r.room_code || '').trim().toUpperCase();
+    return raw !== cleanCode && !raw.startsWith(`${cleanCode}__`);
+  });
+
+  // Remove locks
+  for (const k of Object.keys(dbState.locks)) {
+    if (k.startsWith(`${cleanCode}_`) || k.startsWith(`${cleanCode}__`)) {
+      delete dbState.locks[k];
+    }
+  }
+
+  saveDatabase(dbState);
+  broadcastRoomUpdate(cleanCode, cleanSport, { action: 'room_deleted' });
+  res.json({ success: true, roomCode: cleanCode });
+});
+
+// Permanently purge all archived old rooms and their rosters
+app.post('/api/rooms/purge-archived', (req: Request, res: Response) => {
+  let purgedCount = 0;
+  if (!dbState.rooms) dbState.rooms = {};
+
+  const archivedKeys: string[] = [];
+  const archivedRoomCodes = new Set<string>();
+
+  Object.entries(dbState.rooms).forEach(([key, meta]) => {
+    if (meta.isArchived) {
+      archivedKeys.push(key);
+      const code = key.split('_')[0];
+      if (code && code !== 'COUCH' && code !== 'HOOPS') {
+        archivedRoomCodes.add(code);
+      }
+    }
+  });
+
+  // Delete all archived room records
+  archivedKeys.forEach((key) => {
+    delete dbState.rooms[key];
+    purgedCount++;
+  });
+
+  // Delete all rosters belonging to those archived rooms
+  dbState.rosters = dbState.rosters.filter((r) => {
+    const raw = (r.room_code || '').trim().toUpperCase();
+    const baseCode = raw.includes('__') ? raw.split('__')[0] : raw;
+    return !archivedRoomCodes.has(baseCode);
+  });
+
+  // Clear locks for those archived rooms
+  for (const k of Object.keys(dbState.locks)) {
+    const parts = k.split('_');
+    const baseCode = parts[0];
+    if (archivedRoomCodes.has(baseCode)) {
+      delete dbState.locks[k];
+    }
+  }
+
+  saveDatabase(dbState);
+  res.json({ success: true, purgedCount });
 });
 
 // -------------------------------------------------------------

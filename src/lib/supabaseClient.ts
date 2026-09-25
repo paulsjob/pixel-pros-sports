@@ -362,6 +362,10 @@ function getLocalSyncedCompetitors(sport: SportId): Competitor[] | null {
               rating: p.rating ?? existing.rating,
               badges: p.badges ?? existing.badges,
               stats: { ...existing.stats, ...p.stats },
+              seasonStats: p.seasonStats || existing.seasonStats,
+              season_stats: p.seasonStats || existing.seasonStats,
+              lastGameScore: p.lastGameScore ?? existing.lastGameScore,
+              lastGameStats: p.lastGameStats ?? existing.lastGameStats,
             });
           }
         }
@@ -470,6 +474,10 @@ export async function fetchLiveCompetitors(sport: SportId = 'nfl'): Promise<Comp
             rating: s.rating ?? canonical.rating,
             badges: s.badges ?? canonical.badges,
             stats,
+            seasonStats: s.seasonStats || canonical.seasonStats,
+            season_stats: s.seasonStats || canonical.seasonStats,
+            lastGameScore: s.lastGameScore ?? canonical.lastGameScore,
+            lastGameStats: s.lastGameStats ?? canonical.lastGameStats,
             injuryStatus: s.injuryStatus ?? canonical.injuryStatus,
             injuryDetail: s.injuryDetail ?? canonical.injuryDetail,
           });
@@ -670,7 +678,11 @@ export async function fetchLiveNFLMatches(): Promise<Match[]> {
 
 async function apiFetch<T = any>(endpoint: string, options?: RequestInit): Promise<T | null> {
   try {
-    const res = await fetch(endpoint, {
+    let url = endpoint;
+    if (typeof window === 'undefined' && endpoint.startsWith('/')) {
+      url = `http://localhost:3000${endpoint}`;
+    }
+    const res = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -698,14 +710,33 @@ export async function upsertUserRoster(
   star2Id?: string | null,
   star3Id?: string | null,
   isLocked?: boolean,
-  sport: SportId = 'nfl'
+  sport: SportId = 'nfl',
+  forceClear: boolean = false
 ): Promise<{ success: boolean; data?: UserRoster; error?: string }> {
   const cleanRoom = (roomCode || (sport === 'nba' ? 'HOOPS' : 'COUCH')).trim().toUpperCase();
   const cleanName = (userName || 'DAD').trim().toUpperCase();
 
-  const sanitizedS1 = sanitizeCompetitorId(star1Id);
-  const sanitizedS2 = sanitizeCompetitorId(star2Id);
-  const sanitizedS3 = sanitizeCompetitorId(star3Id);
+  let sanitizedS1 = sanitizeCompetitorId(star1Id);
+  let sanitizedS2 = sanitizeCompetitorId(star2Id);
+  let sanitizedS3 = sanitizeCompetitorId(star3Id);
+
+  // If caller sent empty picks without explicit forceClear, attempt to preserve existing saved picks
+  if (!sanitizedS1 && !sanitizedS2 && !sanitizedS3 && !forceClear) {
+    try {
+      const localKey = sport === 'nba' ? `pixel_pros_rosters_${cleanRoom}_nba` : `pixel_pros_rosters_${cleanRoom}`;
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        const rosters: UserRoster[] = JSON.parse(raw);
+        const existing = rosters.find((r) => r.user_name.toUpperCase() === cleanName);
+        if (existing && (existing.star_1_id || existing.star_2_id || existing.star_3_id)) {
+          sanitizedS1 = existing.star_1_id || null;
+          sanitizedS2 = existing.star_2_id || null;
+          sanitizedS3 = existing.star_3_id || null;
+          if (isLocked === undefined) isLocked = existing.is_locked;
+        }
+      }
+    } catch {}
+  }
 
   const starIds = [sanitizedS1, sanitizedS2, sanitizedS3].filter(Boolean) as string[];
   const distinctIds = new Set(starIds);
@@ -762,6 +793,7 @@ export async function upsertUserRoster(
         star_3_id: sanitizedS3 || '',
         is_locked: guardedLocked,
         device_id: guardedLocked ? 'LOCKED' : 'UNLOCKED',
+        force_clear: forceClear,
       }),
     });
     if (apiRes && apiRes.success && apiRes.data) {
@@ -898,7 +930,9 @@ export async function fetchAllActiveRooms(
 
       if (!roomsError && roomsData && Array.isArray(roomsData)) {
         roomsData.forEach((r: any) => {
-          const code = (r.code || '').trim().toUpperCase();
+          const rawCode = (r.code || '').trim().toUpperCase();
+          const code = rawCode.split('__')[0];
+          if (!code) return;
           const sport = (r.sport || 'nfl').toLowerCase() as SportId;
           const key = `${code}_${sport}`;
           if (!roomMap.has(key)) {
@@ -1069,9 +1103,17 @@ export interface MasterRoomSquadDetail {
   roster: UserRoster;
 }
 
+export interface MasterRoomMatchSlate {
+  matchSlateId: string; // e.g. "ATL@GB"
+  effectiveRoomCode: string; // e.g. "BIGBANG__ATL_GB"
+  squads: MasterRoomSquadDetail[];
+}
+
 export interface MasterRoomData {
   roomCode: string;
   sport: SportId;
+  superstarsSquads: MasterRoomSquadDetail[];
+  matches: MasterRoomMatchSlate[];
   squads: MasterRoomSquadDetail[];
   isArchived?: boolean;
   archivedAt?: string;
@@ -1082,7 +1124,17 @@ export async function fetchAllRoomsWithDetails(
   currentSportHint?: SportId,
   currentRostersHint?: UserRoster[]
 ): Promise<MasterRoomData[]> {
-  const roomMap = new Map<string, { roomCode: string; sport: SportId; squadMap: Map<string, MasterRoomSquadDetail>; isArchived?: boolean; archivedAt?: string }>();
+  interface RoomBuilder {
+    roomCode: string;
+    sport: SportId;
+    superstarsSquadMap: Map<string, MasterRoomSquadDetail>;
+    matchMap: Map<string, { matchSlateId: string; effectiveRoomCode: string; squadMap: Map<string, MasterRoomSquadDetail> }>;
+    uniqueSquadsMap: Map<string, MasterRoomSquadDetail>;
+    isArchived?: boolean;
+    archivedAt?: string;
+  }
+
+  const roomMap = new Map<string, RoomBuilder>();
 
   // Fetch backend room metadata (including isArchived)
   const roomMetaMap = new Map<string, { isArchived?: boolean; archivedAt?: string }>();
@@ -1107,29 +1159,43 @@ export async function fetchAllRoomsWithDetails(
     totalScore?: number,
     rosterObj?: UserRoster
   ) {
-    const cleanRoom = (room || 'COUCH').trim().toUpperCase();
+    const rawRoom = (room || 'COUCH').trim().toUpperCase();
     const cleanSport: SportId = sport === 'nba' ? 'nba' : 'nfl';
-    const key = `${cleanRoom}_${cleanSport}`;
-    const meta = roomMetaMap.get(key);
+
+    let baseRoom = rawRoom;
+    let matchSlateId: string | null = null;
+    if (rawRoom.includes('__')) {
+      const parts = rawRoom.split('__');
+      baseRoom = parts[0];
+      matchSlateId = parts[1].replace('_', '@');
+    }
+
+    const key = `${baseRoom}_${cleanSport}`;
+    const meta = roomMetaMap.get(key) || roomMetaMap.get(`${rawRoom}_${cleanSport}`);
+
     if (!roomMap.has(key)) {
       roomMap.set(key, {
-        roomCode: cleanRoom,
+        roomCode: baseRoom,
         sport: cleanSport,
-        squadMap: new Map(),
+        superstarsSquadMap: new Map(),
+        matchMap: new Map(),
+        uniqueSquadsMap: new Map(),
         isArchived: meta?.isArchived,
         archivedAt: meta?.archivedAt,
       });
     }
+
     const rm = roomMap.get(key)!;
     if (meta?.isArchived !== undefined) {
       rm.isArchived = meta.isArchived;
       rm.archivedAt = meta.archivedAt;
     }
+
     if (squadName) {
       const cleanUser = squadName.trim().toUpperCase();
-      const locked = isLocked !== undefined ? isLocked : getSquadLockState(cleanRoom, cleanUser, cleanSport);
+      const locked = isLocked !== undefined ? isLocked : getSquadLockState(rawRoom, cleanUser, cleanSport);
       const effectiveRoster: UserRoster = rosterObj || {
-        room_code: cleanRoom,
+        room_code: rawRoom,
         user_name: cleanUser,
         sport: cleanSport,
         star_1_id: stars[0] || '',
@@ -1137,13 +1203,34 @@ export async function fetchAllRoomsWithDetails(
         star_3_id: stars[2] || '',
         is_locked: locked,
       };
-      rm.squadMap.set(cleanUser, {
+
+      const squadDetail: MasterRoomSquadDetail = {
         userName: cleanUser,
         isLocked: locked,
         stars,
         totalScore,
         roster: effectiveRoster,
-      });
+      };
+
+      if (!matchSlateId) {
+        // Weekly Superstars roster
+        rm.superstarsSquadMap.set(cleanUser, squadDetail);
+      } else {
+        // Specific match slate roster
+        if (!rm.matchMap.has(matchSlateId)) {
+          rm.matchMap.set(matchSlateId, {
+            matchSlateId,
+            effectiveRoomCode: rawRoom,
+            squadMap: new Map(),
+          });
+        }
+        rm.matchMap.get(matchSlateId)!.squadMap.set(cleanUser, squadDetail);
+      }
+
+      // Maintain in room's unique squad list
+      if (!rm.uniqueSquadsMap.has(cleanUser) || (!matchSlateId && stars.filter(Boolean).length > 0)) {
+        rm.uniqueSquadsMap.set(cleanUser, squadDetail);
+      }
     }
   }
 
@@ -1182,6 +1269,31 @@ export async function fetchAllRoomsWithDetails(
     } catch (e) {
       console.warn('fetchAllRoomsWithDetails Supabase error:', e);
     }
+  }
+
+  // 1b. Fetch from persistent Server API (/api/rosters?all=true)
+  try {
+    const apiRes = await apiFetch<{ success: boolean; rosters?: any[] }>('/api/rosters?all=true');
+    if (apiRes && apiRes.success && Array.isArray(apiRes.rosters)) {
+      for (const row of apiRes.rosters) {
+        const rCode = String(row.room_code || 'COUCH').toUpperCase();
+        const rSport: SportId = String(row.sport || 'nfl').toLowerCase() === 'nba' ? 'nba' : 'nfl';
+        const rUser = String(row.user_name || '').toUpperCase();
+        if (rUser) {
+          registerSquadDetail(
+            rCode,
+            rUser,
+            rSport,
+            [row.star_1_id || '', row.star_2_id || '', row.star_3_id || ''],
+            row.is_locked,
+            undefined,
+            row
+          );
+        }
+      }
+    }
+  } catch (apiErr) {
+    console.warn('fetchAllRoomsWithDetails /api/rosters error:', apiErr);
   }
 
   // 2. LocalStorage rosters
@@ -1232,7 +1344,7 @@ export async function fetchAllRoomsWithDetails(
       currentRostersHint.forEach((r) => {
         if (r.user_name) {
           registerSquadDetail(
-            curCode,
+            r.room_code || curCode,
             r.user_name,
             curSport,
             [r.star_1_id || '', r.star_2_id || '', r.star_3_id || ''],
@@ -1252,13 +1364,25 @@ export async function fetchAllRoomsWithDetails(
   registerSquadDetail('HOOPS', '', 'nba');
 
   return Array.from(roomMap.values())
-    .map((val) => ({
-      roomCode: val.roomCode,
-      sport: val.sport,
-      squads: Array.from(val.squadMap.values()),
-      isArchived: Boolean(val.isArchived),
-      archivedAt: val.archivedAt,
-    }))
+    .map((val) => {
+      const superstarsSquads = Array.from(val.superstarsSquadMap.values());
+      const matches = Array.from(val.matchMap.values()).map((m) => ({
+        matchSlateId: m.matchSlateId,
+        effectiveRoomCode: m.effectiveRoomCode,
+        squads: Array.from(m.squadMap.values()),
+      }));
+      const squads = Array.from(val.uniqueSquadsMap.values());
+
+      return {
+        roomCode: val.roomCode,
+        sport: val.sport,
+        superstarsSquads,
+        matches,
+        squads,
+        isArchived: Boolean(val.isArchived),
+        archivedAt: val.archivedAt,
+      };
+    })
     .sort((a, b) => {
       if (currentRoomHint && a.roomCode === currentRoomHint.toUpperCase()) return -1;
       if (currentRoomHint && b.roomCode === currentRoomHint.toUpperCase()) return 1;
@@ -1326,7 +1450,15 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
       const entryTime = r.updated_at ? new Date(r.updated_at).getTime() : 0;
       const existingTime = existing?.updated_at ? new Date(existing.updated_at).getTime() : 0;
 
-      if (!existing || entryTime >= existingTime) {
+      const existingHasPicks = Boolean(existing?.star_1_id || existing?.star_2_id || existing?.star_3_id);
+      const incomingHasPicks = Boolean(r.star_1_id || r.star_2_id || r.star_3_id);
+
+      // Do not allow an incoming record with empty picks to overwrite an existing record that already has picks
+      if (existing && existingHasPicks && !incomingHasPicks) {
+        return;
+      }
+
+      if (!existing || entryTime >= existingTime || (incomingHasPicks && !existingHasPicks)) {
         setSquadLockState(rRoomCode, userName, isLocked, sport);
         rosterMap.set(mapKey, {
           id: r.id || existing?.id || `rost_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1334,10 +1466,10 @@ export async function fetchRoomRosters(roomCode: string, sport: SportId = 'nfl')
           user_name: userName,
           sport: r.sport || sport,
           device_id: isLocked ? 'LOCKED' : 'UNLOCKED',
-          star_1_id: r.star_1_id || '',
-          star_2_id: r.star_2_id || '',
-          star_3_id: r.star_3_id || '',
-          is_locked: isLocked,
+          star_1_id: r.star_1_id || existing?.star_1_id || '',
+          star_2_id: r.star_2_id || existing?.star_2_id || '',
+          star_3_id: r.star_3_id || existing?.star_3_id || '',
+          is_locked: isLocked || Boolean(existing?.is_locked),
           updated_at: r.updated_at || new Date().toISOString(),
         });
       }
@@ -2021,4 +2153,110 @@ export async function autoArchiveCompletedRooms(): Promise<{ success: boolean; a
     console.warn('Could not auto-archive completed rooms:', err);
   }
   return { success: false, archivedCount: 0 };
+}
+
+export async function deleteRoomPermanently(
+  roomCode: string,
+  sport: SportId = 'nfl'
+): Promise<{ success: boolean }> {
+  const cleanCode = (roomCode || '').trim().toUpperCase();
+  const cleanSport: SportId = sport === 'nba' ? 'nba' : 'nfl';
+  if (!cleanCode) return { success: false };
+
+  // 1. Clear local storage records
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(`pixel_pros_room_archived_${cleanCode}_${cleanSport}`);
+      localStorage.removeItem(`pixel_pros_room_archived_${cleanCode}_nfl`);
+      localStorage.removeItem(`pixel_pros_room_archived_${cleanCode}_nba`);
+      localStorage.removeItem(`pixel_pros_rosters_${cleanCode}`);
+      localStorage.removeItem(`pixel_pros_rosters_${cleanCode}_nba`);
+
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          (k.includes(`_${cleanCode}_`) ||
+            k.endsWith(`_${cleanCode}`) ||
+            k.includes(`_${cleanCode}__`))
+        ) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach((k) => localStorage.removeItem(k));
+    }
+  } catch {}
+
+  // 2. Call backend /api/rooms/delete
+  try {
+    await apiFetch('/api/rooms/delete', {
+      method: 'POST',
+      body: JSON.stringify({ room_code: cleanCode, sport: cleanSport }),
+    });
+  } catch {}
+
+  // 3. Supabase cleanup
+  if (checkSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      await client.from('rooms').delete().eq('code', cleanCode);
+      await client.from('user_rosters').delete().eq('room_code', cleanCode);
+      await client.from('user_rosters').delete().like('room_code', `${cleanCode}__%`);
+    } catch {}
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('pixel_pros_roster_update', {
+        detail: { room_code: cleanCode, reset: true, deleted: true, sport: cleanSport },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('pixel_pros_room_archive_update', {
+        detail: { roomCode: cleanCode, deleted: true },
+      })
+    );
+  }
+
+  return { success: true };
+}
+
+export async function purgeAllArchivedRooms(): Promise<{ success: boolean; purgedCount: number }> {
+  try {
+    const res = await apiFetch<{ success: boolean; purgedCount: number }>('/api/rooms/purge-archived', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    // Clean local storage archive keys
+    if (typeof localStorage !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('pixel_pros_room_archived_')) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('pixel_pros_room_archive_update', {
+          detail: { all: true, purged: true },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pixel_pros_roster_update', {
+          detail: { reset: true },
+        })
+      );
+    }
+
+    return { success: true, purgedCount: res?.purgedCount || 0 };
+  } catch (err) {
+    console.warn('Could not purge archived rooms:', err);
+    return { success: false, purgedCount: 0 };
+  }
 }

@@ -43,6 +43,7 @@ import { PixelHelmet } from './components/PixelHelmet';
 import { PixelShieldIcon } from './components/PixelBadges';
 import { SportSwitcher } from './components/SportSwitcher';
 import { CommissionerModal } from './components/CommissionerModal';
+import { copyToClipboard } from './utils/clipboard';
 import { getCurrentNFLWeek, syncESPNData } from './lib/espnSync';
 import { executeCompleteWeeklyRescan, isWeeklyRescanDue } from './lib/rescanEngine';
 import { DEFAULT_NFL_MATCHES, DEFAULT_NFL_COMPETITORS, sortMatchesByKickoffAndStatus, getPlayerScoringDisplay } from './utils/teamData';
@@ -376,21 +377,21 @@ export default function App() {
     const keyParam = activeKey ? `&k=${encodeURIComponent(activeKey)}` : '';
     const inviteUrl = `${window.location.origin}/?sport=${currentSport}&room=${cleanRoom}${keyParam}`;
 
-    if (navigator.share) {
+    const copied = await copyToClipboard(inviteUrl);
+    if (copied) {
+      showToast(`📋 COPIED ROOM ${cleanRoom} INVITE LINK!`);
+    } else if (navigator.share) {
       try {
         await navigator.share({
           title: `Pixel Pros ${currentSport.toUpperCase()}`,
           text: `Join room "${cleanRoom}" on Pixel Pros and draft your 3 ${currentSport.toUpperCase()} stars!`,
           url: inviteUrl,
         });
-        return;
-      } catch {}
-    }
-
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      showToast(`COPIED ROOM ${cleanRoom} INVITE LINK!`);
-    } catch {
+      } catch {
+        showToast(`Link: ${inviteUrl}`);
+      }
+    } else {
+      prompt(`Copy Room ${cleanRoom} link:`, inviteUrl);
       showToast(`Link: ${inviteUrl}`);
     }
   };
@@ -459,25 +460,17 @@ export default function App() {
       });
 
       const updated = await fetchRoomRosters(baseRoom, activeSport);
-      if (effectiveRoom !== baseRoom) {
-        try {
-          const gameRosters = await fetchRoomRosters(effectiveRoom, activeSport);
-          setRoomRosters((prev) => {
-            const map = new Map<string, UserRoster>();
-            for (const r of updated) map.set(`${r.room_code}__${r.user_name}`, r);
-            for (const r of gameRosters) map.set(`${r.room_code}__${r.user_name}`, r);
-            for (const r of prev) {
-              const k = `${r.room_code}__${r.user_name}`;
-              if (!map.has(k)) map.set(k, r);
-            }
-            return Array.from(map.values());
-          });
-        } catch {
-          setRoomRosters(updated);
+      setRoomRosters((prev) => {
+        const map = new Map<string, UserRoster>();
+        for (const r of updated) {
+          map.set(`${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`, r);
         }
-      } else {
-        setRoomRosters(updated);
-      }
+        for (const r of prev) {
+          const k = `${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`;
+          if (!map.has(k)) map.set(k, r);
+        }
+        return Array.from(map.values());
+      });
     },
     [isLocked, currentSport, activeSlateId]
   );
@@ -541,8 +534,13 @@ export default function App() {
       if (fresh && fresh.length > 0) {
         setRoomRosters((prev) => {
           const map = new Map<string, UserRoster>();
-          for (const r of prev) map.set(`${r.room_code}__${r.user_name}`, r);
-          for (const r of fresh) map.set(`${r.room_code}__${r.user_name}`, r);
+          for (const r of fresh) {
+            map.set(`${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`, r);
+          }
+          for (const r of prev) {
+            const k = `${(r.room_code || '').toUpperCase()}___${(r.user_name || '').toUpperCase()}`;
+            if (!map.has(k)) map.set(k, r);
+          }
           return Array.from(map.values());
         });
       }
@@ -1841,7 +1839,7 @@ export default function App() {
                 <div className="mb-3.5">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-pixel text-[10px] text-[#5c3509] font-bold flex items-center gap-1">
-                      ⭐ ALL ROOMS ON DATABASE:
+                      ⭐ ACTIVE ROOMS ({activeCouches.length}):
                     </span>
                     <button
                       type="button"

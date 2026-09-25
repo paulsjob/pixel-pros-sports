@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Competitor, SportId, Match } from '../types';
 import { PixelPlayerSprite } from './PixelPlayerSprite';
 import { PixelHelmet } from './PixelHelmet';
-import { X, Activity } from 'lucide-react';
+import { X, Activity, Trophy, Calendar } from 'lucide-react';
 import { getPlayerScoringDisplay } from '../utils/teamData';
+import { lookupNFLAthleteLeagueStats } from '../data/nflLeagueStats';
 
 interface PlayerCardModalProps {
   player: Competitor | null;
@@ -32,123 +33,61 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
 
   const scoringInfo = getPlayerScoringDisplay(selectedPlayer, match, sport);
 
-  // Deterministic realistic last-game stats generator for pre-game display
-  const preGameDefaultStats = useMemo(() => {
-    if (scoringInfo.gameState !== 'pre') return null;
-    const seed = (selectedPlayer.id || selectedPlayer.displayName || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    if (sport === 'nba') {
-      const pts = 16 + (seed % 16);
-      const reb = 3 + (seed % 9);
-      const ast = 2 + ((seed >> 2) % 8);
-      const threePm = 1 + ((seed >> 3) % 5);
-      return { pts, reb, ast, three_pm: threePm, big_stops: (seed % 3 === 0 ? 1 : 0) };
-    }
-    const pos = (selectedPlayer.position || '').toUpperCase();
-    if (pos === 'QB') {
-      return { pass_yds: 228 + (seed % 88), rush_yds: 8 + (seed % 24), rec_yds: 0, tds: 1 + (seed % 3), fgs: 0, stops: 0 };
-    }
-    if (pos === 'RB') {
-      return { pass_yds: 0, rush_yds: 64 + (seed % 54), rec_yds: 16 + (seed % 26), tds: (seed % 2 === 0 ? 1 : (seed % 4 === 0 ? 2 : 0)), fgs: 0, stops: 0 };
-    }
-    if (pos === 'WR') {
-      return { pass_yds: 0, rush_yds: 0, rec_yds: 58 + (seed % 62), tds: (seed % 2 === 0 ? 1 : (seed % 5 === 0 ? 2 : 0)), fgs: 0, stops: 0 };
-    }
-    if (pos === 'TE') {
-      return { pass_yds: 0, rush_yds: 0, rec_yds: 42 + (seed % 42), tds: (seed % 3 === 0 ? 1 : 0), fgs: 0, stops: 0 };
-    }
-    if (pos === 'K') {
-      return { pass_yds: 0, rush_yds: 0, rec_yds: 0, tds: 0, fgs: 2 + (seed % 3), stops: 0 };
-    }
-    return { pass_yds: 0, rush_yds: 45 + (seed % 40), rec_yds: 12, tds: 1, fgs: 0, stops: 0 };
-  }, [scoringInfo.gameState, selectedPlayer, sport]);
+  // 1. LIVE IN-GAME STATS (Strictly for this specific game; 0 if game is pre-kickoff)
+  const isPreGame = scoringInfo.gameState === 'pre';
+  const liveStatsObj = (isPreGame ? {} : selectedPlayer.stats) || {};
 
-  const rawStats = scoringInfo.gameState === 'pre'
-    ? (selectedPlayer.last_game_stats || selectedPlayer.stats || {})
-    : (selectedPlayer.current_stats || selectedPlayer.stats || {});
-  const baseStats: Record<string, any> = typeof rawStats === 'object' && rawStats !== null ? (rawStats as Record<string, any>) : {};
+  const passYds = isPreGame ? 0 : Number(liveStatsObj.pass_yds ?? liveStatsObj.passing_yards ?? liveStatsObj.passingYards ?? 0);
+  const rushYds = isPreGame ? 0 : Number(liveStatsObj.rush_yds ?? liveStatsObj.rushing_yards ?? liveStatsObj.rushingYards ?? 0);
+  const recYds = isPreGame ? 0 : Number(liveStatsObj.rec_yds ?? liveStatsObj.receiving_yards ?? liveStatsObj.receivingYards ?? 0);
+  const tds = isPreGame ? 0 : Number(liveStatsObj.tds ?? liveStatsObj.touchdowns ?? 0);
+  const fgs = isPreGame ? 0 : Number(liveStatsObj.fgs ?? 0);
+  const stops = isPreGame ? 0 : Number(liveStatsObj.stops ?? liveStatsObj.big_stops ?? 0);
 
-  // Check if player has non-zero stats; if pre-game and zeroed, use preGameDefaultStats
-  const hasNonZeroStats = (
-    Number(baseStats.pass_yds ?? baseStats.passing_yards ?? 0) > 0 ||
-    Number(baseStats.rush_yds ?? baseStats.rushing_yards ?? 0) > 0 ||
-    Number(baseStats.rec_yds ?? baseStats.receiving_yards ?? 0) > 0 ||
-    Number(baseStats.tds ?? baseStats.touchdowns ?? 0) > 0 ||
-    Number(baseStats.pts ?? baseStats.points ?? 0) > 0 ||
-    Number(baseStats.reb ?? baseStats.rebounds ?? 0) > 0 ||
-    Number(baseStats.ast ?? baseStats.assists ?? 0) > 0
-  );
-
-  const statsToUse: Record<string, any> = (!hasNonZeroStats && preGameDefaultStats) ? preGameDefaultStats : (baseStats as Record<string, any>);
-
-  // NFL Stats
-  const passYds = Number(
-    statsToUse.pass_yds ??
-    statsToUse.passing_yards ??
-    statsToUse.passingYards ??
-    0
-  );
-  const rushYds = Number(
-    statsToUse.rush_yds ??
-    statsToUse.rushing_yards ??
-    statsToUse.rushingYards ??
-    0
-  );
-  const recYds = Number(
-    statsToUse.rec_yds ??
-    statsToUse.receiving_yards ??
-    statsToUse.receivingYards ??
-    0
-  );
-  const tds = Number(
-    statsToUse.tds ??
-    statsToUse.touchdowns ??
-    0
-  );
-  const fgs = Number(statsToUse.fgs ?? 0);
-  const stops = Number(statsToUse.stops ?? statsToUse.big_stops ?? 0);
-
-  // Separate passing vs rushing vs receiving points
+  // Points from this live game
   const tdPoints = tds * 6;
   const passPoints = Math.floor(passYds / 25);
   const rushPoints = Math.floor(rushYds / 10);
   const recPoints = Math.floor(recYds / 10);
   const fgPoints = fgs * 3;
   const stopPoints = stops * 2;
-  const calculatedNflTotal = tdPoints + passPoints + rushPoints + recPoints + fgPoints + stopPoints;
 
-  // NBA Stats
-  const threePm = Number(statsToUse.three_pm ?? statsToUse.threes ?? 0);
-  const reb = Number(statsToUse.reb ?? statsToUse.rebounds ?? 0);
-  const ast = Number(statsToUse.ast ?? statsToUse.assists ?? 0);
-  const pts = Number(statsToUse.pts ?? statsToUse.points ?? 0);
-  const bigStops = Number(statsToUse.big_stops ?? 0);
+  // NBA Live Stats
+  const threePm = isPreGame ? 0 : Number(liveStatsObj.three_pm ?? liveStatsObj.threes ?? 0);
+  const reb = isPreGame ? 0 : Number(liveStatsObj.reb ?? liveStatsObj.rebounds ?? 0);
+  const ast = isPreGame ? 0 : Number(liveStatsObj.ast ?? liveStatsObj.assists ?? 0);
+  const pts = isPreGame ? 0 : Number(liveStatsObj.pts ?? liveStatsObj.points ?? 0);
+  const bigStops = isPreGame ? 0 : Number(liveStatsObj.big_stops ?? 0);
   const nbaThreePts = threePm * 2;
   const nbaAstPts = ast * 1;
   const nbaRebPts = reb * 1;
   const nbaStopPts = bigStops * 3;
   const nbaGamePts = Math.floor(pts / 3);
-  const calculatedNbaTotal = nbaThreePts + nbaAstPts + nbaRebPts + nbaStopPts + nbaGamePts;
 
-  // Live score or pre-game target score
-  const heroScore = scoringInfo.gameState === 'pre'
-    ? (sport === 'nba' ? calculatedNbaTotal : calculatedNflTotal)
-    : scoringInfo.activeScore;
-
+  // Live score: 0 if pre-game; actual live score if in-progress or final
+  const heroScore = isPreGame ? 0 : scoringInfo.activeScore;
   const breakdownTargetScore = heroScore;
-
-  // NFL Adjustment so breakdown line items sum exactly to breakdownTargetScore
-  const nflRawSum = tdPoints + passPoints + rushPoints + recPoints;
+  const nflRawSum = tdPoints + passPoints + rushPoints + recPoints + fgPoints + stopPoints;
   const nflAdjustment = breakdownTargetScore - nflRawSum;
-
-  // NBA Adjustment so breakdown line items sum exactly to breakdownTargetScore
-  const nbaRawSum = calculatedNbaTotal;
-  const nbaAdjustment = breakdownTargetScore - nbaRawSum;
 
   const isOnFire = sport === 'nba' && heroScore >= 40;
 
+  // 2. 2026 SEASON TOTAL STATS (from ESPN / Season Database)
+  const leagueStat = sport === 'nfl' ? lookupNFLAthleteLeagueStats(selectedPlayer.displayName, selectedPlayer.athleteId) : undefined;
+  const seasonStats = selectedPlayer.seasonStats || selectedPlayer.season_stats;
+  const seasonPass = Number(seasonStats?.pass_yds ?? leagueStat?.pass_yds ?? 0);
+  const seasonRush = Number(seasonStats?.rush_yds ?? leagueStat?.rush_yds ?? 0);
+  const seasonRec = Number(seasonStats?.rec_yds ?? leagueStat?.rec_yds ?? 0);
+  const seasonTds = Number(seasonStats?.tds ?? seasonStats?.touchdowns ?? leagueStat?.tds ?? 0);
+  const seasonTotalYds = Number(seasonStats?.total_yards ?? (seasonPass + seasonRush + seasonRec));
+
+  // 3. LAST GAME PERFORMANCE (Prior Week)
+  const lastGameScore = selectedPlayer.lastGameScore ?? selectedPlayer.last_game_score;
+  const lastGameStats = selectedPlayer.lastGameStats ?? selectedPlayer.last_game_stats;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-      <div className="inspector-modal w-[94vw] max-w-[420px] mx-auto box-border relative p-3 sm:p-4 bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_6px_0_0_#0a0f1d] rounded-xs my-auto max-h-[92vh] flex flex-col justify-between overflow-y-auto no-scrollbar">
+      <div className="inspector-modal w-[94vw] max-w-[440px] mx-auto box-border relative p-3 sm:p-4 bg-[#fae5b8] border-4 border-[#1a2238] shadow-[0_6px_0_0_#0a0f1d] rounded-xs my-auto max-h-[92vh] flex flex-col justify-between overflow-y-auto no-scrollbar">
         
         {/* Header: Compact, single line title & meta, no wrapping */}
         <div className="modal-header flex justify-between items-center w-full pb-2 border-b-2 border-[#e2ba7d] shrink-0 gap-2">
@@ -237,7 +176,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           </div>
         )}
 
-        {/* Presentation: Sprite + Live / Season / Final Score */}
+        {/* Presentation: Sprite + Live Game Score Banner */}
         <div className="grid grid-cols-2 gap-2 mt-2 shrink-0">
           <div className="bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs flex flex-col items-center justify-center p-1.5 sm:p-2 min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
             <PixelPlayerSprite
@@ -259,22 +198,22 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
             <div className="bg-[#ebd2a4] border-2 border-[#64748b] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
               <div className="flex items-center gap-1 text-[#475569] font-pixel text-[9px] uppercase tracking-wider font-bold">
                 <Activity size={11} className="text-[#64748b]" />
-                <span>SEASON STATS</span>
+                <span>THIS GAME SCORE</span>
               </div>
               
-              <div className="font-pixel text-xl sm:text-2xl text-[#b45309] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
-                {breakdownTargetScore} PTS
+              <div className="font-pixel text-xl sm:text-2xl text-[#475569] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
+                0 PTS
               </div>
 
               <div className="text-[8px] sm:text-[9px] font-retro text-[#475569] px-1.5 py-0.5 bg-[#e2e8f0] border border-[#cbd5e1] rounded-xs whitespace-nowrap font-bold">
-                WAIT FOR KICKOFF
+                READY FOR KICKOFF
               </div>
             </div>
           ) : scoringInfo.gameState === 'in' ? (
             <div className="bg-[#ebd2a4] border-2 border-[#ef4444] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
               <div className="flex items-center gap-1 text-[#b91c1c] font-pixel text-[9px] uppercase tracking-wider font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444] animate-pulse shrink-0" />
-                <span>LIVE SCORE</span>
+                <span>LIVE GAME SCORE</span>
               </div>
               
               <div className="font-pixel text-xl sm:text-2xl text-[#b91c1c] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
@@ -289,7 +228,7 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
             <div className="bg-[#ebd2a4] border-2 border-[#12579b] p-1.5 sm:p-2 rounded-xs text-center flex flex-col items-center justify-center min-h-[90px] sm:min-h-[110px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
               <div className="flex items-center gap-1 text-[#12579b] font-pixel text-[9px] uppercase tracking-wider font-bold">
                 <Activity size={11} className="text-[#12579b]" />
-                <span>FINAL SCORE</span>
+                <span>FINAL GAME SCORE</span>
               </div>
               
               <div className="font-pixel text-xl sm:text-2xl text-[#12579b] tracking-wider font-bold my-0.5 drop-shadow-[0_1px_0_#fae5b8]">
@@ -303,11 +242,14 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           )}
         </div>
 
-        {/* Stats Row */}
+        {/* Live Game Stats Row */}
         <div className="mt-2 w-full box-border">
-          <div className="mb-1">
+          <div className="mb-1 flex items-center justify-between">
             <span className="font-pixel text-[9px] sm:text-[10px] text-[#784610] uppercase font-bold">
-              {scoringInfo.gameState === 'pre' ? 'SEASON STATS' : scoringInfo.gameState === 'post' ? 'FINAL STATS' : 'ACTIVE GAME STATS'}
+              {scoringInfo.gameState === 'pre' ? 'IN-GAME STATS (NOT STARTED)' : scoringInfo.gameState === 'post' ? 'FINAL GAME STATS' : 'LIVE IN-GAME STATS'}
+            </span>
+            <span className="font-retro text-[10px] text-[#784610]/80">
+              {scoringInfo.gameState === 'pre' ? '0 PTS BEFORE KICKOFF' : 'OFFICIAL BOXSCORE'}
             </span>
           </div>
           {sport === 'nba' ? (
@@ -351,87 +293,148 @@ export const PlayerCardModal: React.FC<PlayerCardModalProps> = ({
           )}
         </div>
 
-        {/* Points Breakdown */}
+        {/* Live Points Breakdown */}
         <div className="mt-2 p-2 bg-[#ebd2a4] border-2 border-[#c99a57] rounded-xs shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]">
           <div className="pb-1 mb-1 border-b border-[#c99a57] flex items-center justify-between">
             <span className="font-pixel text-[9px] sm:text-[10px] text-[#5c3509] tracking-wider uppercase flex items-center gap-1 font-bold">
               <span>🧮</span>
-              <span>{scoringInfo.gameState === 'pre' ? 'SEASON BREAKDOWN' : 'POINTS BREAKDOWN'}</span>
+              <span>LIVE GAME POINTS BREAKDOWN</span>
+            </span>
+            <span className="font-pixel text-[8px] text-[#784610]">
+              {scoringInfo.gameState === 'pre' ? 'KICKOFF PENDING' : scoringInfo.gameState === 'in' ? 'LIVE' : 'FINAL'}
             </span>
           </div>
 
-          <div className="space-y-1 text-xs font-retro text-[#5c3509]">
-            {sport === 'nba' ? (
-              <>
-                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                  <span className="font-bold text-[#5c3509]">🎯 {threePm} 3-POINTERS</span>
-                  <span className="text-[#b45309] font-bold">+{nbaThreePts} PTS</span>
-                </div>
-
-                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                  <span className="font-bold text-[#5c3509]">🤝 {ast} ASSISTS</span>
-                  <span className="text-[#12579b] font-bold">+{nbaAstPts} PTS</span>
-                </div>
-
-                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                  <span className="font-bold text-[#5c3509]">🏀 {reb} REBOUNDS</span>
-                  <span className="text-[#12579b] font-bold">+{nbaRebPts} PTS</span>
-                </div>
-
-                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                  <span className="font-bold text-[#5c3509]">⚡ {pts} PTS (1/3)</span>
-                  <span className="text-[#12579b] font-bold">+{nbaGamePts} PTS</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                  <span className="font-bold text-[#5c3509]">🏈 {tds} TOUCHDOWNS</span>
-                  <span className="text-[#b45309] font-bold">+{tdPoints} PTS</span>
-                </div>
-
-                {passYds > 0 && (
+          {scoringInfo.gameState === 'pre' ? (
+            <div className="py-1.5 px-2 bg-[#fae5b8] border border-[#d4a86a] rounded-xs text-center font-retro text-xs text-[#784610]">
+              Game has not kicked off yet. In-game points will accumulate as plays occur in real-time!
+            </div>
+          ) : (
+            <div className="space-y-1 text-xs font-retro text-[#5c3509]">
+              {sport === 'nba' ? (
+                <>
                   <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                    <span className="font-bold text-[#5c3509]">⚡ {passYds} PASS YDS</span>
-                    <span className="text-[#12579b] font-bold">+{passPoints} PTS</span>
+                    <span className="font-bold text-[#5c3509]">🎯 {threePm} 3-POINTERS</span>
+                    <span className="text-[#b45309] font-bold">+{nbaThreePts} PTS</span>
                   </div>
-                )}
 
-                {rushYds > 0 && (
                   <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                    <span className="font-bold text-[#5c3509]">🏃 {rushYds} RUSH YDS</span>
-                    <span className="text-[#12579b] font-bold">+{rushPoints} PTS</span>
+                    <span className="font-bold text-[#5c3509]">🤝 {ast} ASSISTS</span>
+                    <span className="text-[#12579b] font-bold">+{nbaAstPts} PTS</span>
                   </div>
-                )}
 
-                {recYds > 0 && (
                   <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                    <span className="font-bold text-[#5c3509]">🙌 {recYds} REC YDS</span>
-                    <span className="text-[#12579b] font-bold">+{recPoints} PTS</span>
+                    <span className="font-bold text-[#5c3509]">🏀 {reb} REBOUNDS</span>
+                    <span className="text-[#12579b] font-bold">+{nbaRebPts} PTS</span>
                   </div>
-                )}
 
-                {nflAdjustment !== 0 && (
                   <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
-                    <span className="font-bold text-[#5c3509]">{nflAdjustment > 0 ? '🌟 BONUS' : '⚠️ ADJUSTMENT'}</span>
-                    <span className={`font-bold ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
-                      {nflAdjustment > 0 ? `+${nflAdjustment}` : `${nflAdjustment}`} PTS
-                    </span>
+                    <span className="font-bold text-[#5c3509]">⚡ {pts} PTS (1/3)</span>
+                    <span className="text-[#12579b] font-bold">+{nbaGamePts} PTS</span>
                   </div>
-                )}
-              </>
-            )}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                    <span className="font-bold text-[#5c3509]">🏈 {tds} TOUCHDOWNS</span>
+                    <span className="text-[#b45309] font-bold">+{tdPoints} PTS</span>
+                  </div>
 
-            <div className="flex items-center justify-between py-1.5 px-2 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs font-bold shadow-xs mt-1.5">
-              <span className="tracking-wider">
-                {scoringInfo.gameState === 'pre' ? 'SEASON TOTAL:' : 'TOTAL SCORE:'}
+                  {passYds > 0 && (
+                    <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                      <span className="font-bold text-[#5c3509]">⚡ {passYds} PASS YDS</span>
+                      <span className="text-[#12579b] font-bold">+{passPoints} PTS</span>
+                    </div>
+                  )}
+
+                  {rushYds > 0 && (
+                    <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                      <span className="font-bold text-[#5c3509]">🏃 {rushYds} RUSH YDS</span>
+                      <span className="text-[#12579b] font-bold">+{rushPoints} PTS</span>
+                    </div>
+                  )}
+
+                  {recYds > 0 && (
+                    <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                      <span className="font-bold text-[#5c3509]">🙌 {recYds} REC YDS</span>
+                      <span className="text-[#12579b] font-bold">+{recPoints} PTS</span>
+                    </div>
+                  )}
+
+                  {nflAdjustment !== 0 && (
+                    <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#fae5b8] border border-[#d4a86a] rounded-xs font-pixel text-[10px]">
+                      <span className="font-bold text-[#5c3509]">{nflAdjustment > 0 ? '🌟 BONUS' : '⚠️ ADJUSTMENT'}</span>
+                      <span className={`font-bold ${nflAdjustment > 0 ? 'text-[#15803d]' : 'text-[#b91c1c]'}`}>
+                        {nflAdjustment > 0 ? `+${nflAdjustment}` : `${nflAdjustment}`} PTS
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="flex items-center justify-between py-1 px-2 bg-[#12579b] text-[#fae5b8] border-2 border-[#0a2d52] rounded-xs font-pixel text-xs font-bold shadow-xs mt-1">
+                <span className="tracking-wider">THIS GAME TOTAL:</span>
+                <span className="text-[#fde047] text-xs sm:text-sm font-bold">
+                  {breakdownTargetScore} PTS
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Dedicated 2026 Season Totals Card */}
+        {sport === 'nfl' && (
+          <div className="mt-2 p-2 bg-[#faebd7] border-2 border-[#b45309] rounded-xs shadow-2xs">
+            <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-[#e2ba7d]">
+              <span className="font-pixel text-[9px] sm:text-[10px] text-[#b45309] tracking-wider uppercase flex items-center gap-1 font-bold">
+                <Trophy size={11} className="text-[#b45309]" />
+                <span>2026 SEASON TOTALS</span>
               </span>
-              <span className="text-[#fde047] text-xs sm:text-sm font-bold">
-                {breakdownTargetScore} PTS
+              <span className="font-pixel text-[8px] text-[#784610] bg-[#fae5b8] px-1.5 py-0.5 rounded-2xs border border-[#d4a86a] font-bold">
+                OFFICIAL ESPN
               </span>
             </div>
+            <div className="grid grid-cols-4 gap-1 text-center font-retro">
+              <div className="p-1 bg-[#fff8eb] border border-[#e2ba7d] rounded-xs">
+                <span className="block font-pixel text-[8px] text-[#784610]">PASS YDS</span>
+                <span className="font-pixel text-xs text-[#5c3509] font-bold">{seasonPass.toLocaleString()}</span>
+              </div>
+              <div className="p-1 bg-[#fff8eb] border border-[#e2ba7d] rounded-xs">
+                <span className="block font-pixel text-[8px] text-[#784610]">RUSH YDS</span>
+                <span className="font-pixel text-xs text-[#5c3509] font-bold">{seasonRush.toLocaleString()}</span>
+              </div>
+              <div className="p-1 bg-[#fff8eb] border border-[#e2ba7d] rounded-xs">
+                <span className="block font-pixel text-[8px] text-[#784610]">REC YDS</span>
+                <span className="font-pixel text-xs text-[#5c3509] font-bold">{seasonRec.toLocaleString()}</span>
+              </div>
+              <div className="p-1 bg-[#fff8eb] border border-[#e2ba7d] rounded-xs">
+                <span className="block font-pixel text-[8px] text-[#784610]">TDS</span>
+                <span className="font-pixel text-xs text-[#b45309] font-bold">{seasonTds}</span>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Dedicated Prior Game Performance Card */}
+        {lastGameStats && lastGameStats !== '0 TD · 0 YDS' && (
+          <div className="mt-2 p-2 bg-[#f1f5f9] border-2 border-[#94a3b8] rounded-xs shadow-2xs">
+            <div className="flex items-center justify-between pb-1 mb-1 border-b border-[#cbd5e1]">
+              <span className="font-pixel text-[9px] sm:text-[10px] text-[#475569] tracking-wider uppercase flex items-center gap-1 font-bold">
+                <Calendar size={11} className="text-[#64748b]" />
+                <span>LAST GAME PERFORMANCE</span>
+              </span>
+              {typeof lastGameScore === 'number' && lastGameScore > 0 && (
+                <span className="font-pixel text-[9px] text-[#0f172a] bg-[#e2e8f0] px-1.5 py-0.5 rounded-2xs border border-[#cbd5e1] font-bold">
+                  {lastGameScore} PTS
+                </span>
+              )}
+            </div>
+            <div className="font-retro text-xs text-[#334155] flex items-center justify-between px-1">
+              <span>Prior Week Stats:</span>
+              <span className="font-pixel text-[10px] text-[#0f172a] font-bold">{lastGameStats}</span>
+            </div>
+          </div>
+        )}
 
         {/* Actions: Always visible at bottom without scrolling */}
         <div className="mt-2.5 shrink-0 space-y-1">

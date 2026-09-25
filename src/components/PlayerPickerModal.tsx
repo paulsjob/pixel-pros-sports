@@ -29,19 +29,23 @@ export function getPlayerPrimaryYardage(p: Competitor, sport: SportId = 'nfl'): 
   }
   const pos = (p.position || '').toUpperCase();
   const st = p.stats as any;
+  const season = p.seasonStats || p.season_stats;
   const leagueStat = lookupNFLAthleteLeagueStats(p.displayName, p.athleteId);
 
   if (pos === 'QB') {
-    const val = st?.pass_yds ?? st?.passing_yards ?? st?.passingYards ?? (p as any).pass_yds ?? leagueStat?.pass_yds ?? 0;
-    return Number(val || 0);
+    const seasonVal = season?.pass_yds ?? leagueStat?.pass_yds ?? 0;
+    const liveVal = st?.pass_yds ?? st?.passing_yards ?? 0;
+    return Number(seasonVal || liveVal || 0);
   }
   if (pos === 'RB') {
-    const val = st?.rush_yds ?? st?.rushing_yards ?? st?.rushingYards ?? (p as any).rush_yds ?? leagueStat?.rush_yds ?? 0;
-    return Number(val || 0);
+    const seasonVal = season?.rush_yds ?? leagueStat?.rush_yds ?? 0;
+    const liveVal = st?.rush_yds ?? st?.rushing_yards ?? 0;
+    return Number(seasonVal || liveVal || 0);
   }
   // WR, TE or other
-  const val = st?.rec_yds ?? st?.receiving_yards ?? st?.receivingYards ?? (p as any).rec_yds ?? leagueStat?.rec_yds ?? 0;
-  return Number(val || 0);
+  const seasonVal = season?.rec_yds ?? leagueStat?.rec_yds ?? 0;
+  const liveVal = st?.rec_yds ?? st?.receiving_yards ?? 0;
+  return Number(seasonVal || liveVal || 0);
 }
 
 export function getPlayerYardageLabel(p: Competitor, sport: SportId = 'nfl'): string {

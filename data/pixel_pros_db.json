@@ -8,8 +8,8 @@
       "star_1_id": "nfl_4360689",
       "star_2_id": "nfl_4567048",
       "star_3_id": "nfl_4430878",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T16:04:17.038+00:00"
     },
     {
@@ -32,8 +32,8 @@
       "star_1_id": "nfl_4426338",
       "star_2_id": "nfl_4567048",
       "star_3_id": "nfl_4430878",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-22T23:19:02.442+00:00"
     },
     {
@@ -44,8 +44,8 @@
       "star_1_id": "nfl_4361741",
       "star_2_id": "nfl_4870808",
       "star_3_id": "nfl_3040151",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T00:36:34.439+00:00"
     },
     {
@@ -68,8 +68,8 @@
       "star_1_id": "nfl_4685720",
       "star_2_id": "nfl_3128720",
       "star_3_id": "nfl_4430034",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T00:38:40.769+00:00"
     },
     {
@@ -92,8 +92,8 @@
       "star_1_id": "nfl_4431452",
       "star_2_id": "nfl_4569173",
       "star_3_id": "nfl_3915417",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T11:37:45.829+00:00"
     },
     {
@@ -104,8 +104,8 @@
       "star_1_id": "nfl_4688380",
       "star_2_id": "nfl_3916148",
       "star_3_id": "nfl_4871023",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T11:38:39.911+00:00"
     },
     {
@@ -140,8 +140,8 @@
       "star_1_id": "nfl_4685720",
       "star_2_id": "nfl_4430807",
       "star_3_id": "nfl_4685472",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T15:25:59.63+00:00"
     },
     {
@@ -152,8 +152,8 @@
       "star_1_id": "nfl_3917792",
       "star_2_id": "nfl_4242335",
       "star_3_id": "nfl_15847",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-21T10:31:05.855+00:00"
     },
     {
@@ -164,8 +164,8 @@
       "star_1_id": "nfl_4685720",
       "star_2_id": "nfl_4678008",
       "star_3_id": "nfl_4695883",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T16:28:32.55+00:00"
     },
     {
@@ -176,8 +176,8 @@
       "star_1_id": "nfl_4431611",
       "star_2_id": "nfl_4259545",
       "star_3_id": "nfl_4262921",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T15:26:51.46+00:00"
     },
     {
@@ -200,8 +200,8 @@
       "star_1_id": "nfl_4259553",
       "star_2_id": "nfl_4696981",
       "star_3_id": "nfl_4360797",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-21T23:54:27.16+00:00"
     },
     {
@@ -212,8 +212,8 @@
       "star_1_id": "nfl_4040715",
       "star_2_id": "nfl_3929630",
       "star_3_id": "nfl_4241478",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T15:27:29.596+00:00"
     },
     {
@@ -236,8 +236,8 @@
       "star_1_id": "nfl_4428331",
       "star_2_id": "nfl_3139477",
       "star_3_id": "nfl_15818",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T22:49:58.137+00:00"
     },
     {
@@ -248,8 +248,8 @@
       "star_1_id": "nfl_4431452",
       "star_2_id": "nfl_4569173",
       "star_3_id": "nfl_3046439",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T15:28:21.148+00:00"
     },
     {
@@ -260,8 +260,8 @@
       "star_1_id": "nfl_4689114",
       "star_2_id": "nfl_4696981",
       "star_3_id": "nfl_4361050",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-21T23:55:01.054+00:00"
     },
     {
@@ -272,8 +272,8 @@
       "star_1_id": "nfl_3139477",
       "star_2_id": "nfl_2577417",
       "star_3_id": "nfl_4361741",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-21T00:06:15.352+00:00"
     },
     {
@@ -284,8 +284,8 @@
       "star_1_id": "nfl_4241478",
       "star_2_id": "nfl_3916387",
       "star_3_id": "nfl_4569173",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T17:09:21.88+00:00"
     },
     {
@@ -296,8 +296,8 @@
       "star_1_id": "nfl_12483",
       "star_2_id": "nfl_4040761",
       "star_3_id": "nfl_16800",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-22T00:00:52.611+00:00"
     },
     {
@@ -308,8 +308,8 @@
       "star_1_id": "nfl_2577417",
       "star_2_id": "nfl_4431452",
       "star_3_id": "nfl_4361741",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-21T00:07:56.76+00:00"
     },
     {
@@ -320,8 +320,8 @@
       "star_1_id": "nfl_3915511",
       "star_2_id": "nfl_4569987",
       "star_3_id": "nfl_4362628",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T16:29:02.48+00:00"
     },
     {
@@ -332,8 +332,8 @@
       "star_1_id": "nfl_12483",
       "star_2_id": "nfl_4430737",
       "star_3_id": "nfl_16800",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-22T00:42:31.167+00:00"
     },
     {
@@ -344,8 +344,8 @@
       "star_1_id": "nfl_2577417",
       "star_2_id": "nfl_4241389",
       "star_3_id": "nfl_4426348",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-20T20:59:46.794+00:00"
     },
     {
@@ -368,8 +368,8 @@
       "star_1_id": "nfl_4361741",
       "star_2_id": "nfl_4870808",
       "star_3_id": "nfl_4432708",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T16:06:15.026+00:00"
     },
     {
@@ -380,8 +380,8 @@
       "star_1_id": "nfl_2573079",
       "star_2_id": "nfl_4430871",
       "star_3_id": "nfl_4262921",
-      "is_locked": false,
-      "device_id": "UNLOCKED",
+      "is_locked": true,
+      "device_id": "LOCKED",
       "updated_at": "2026-09-23T11:51:55.963+00:00"
     },
     {
@@ -404,46 +404,59 @@
       "star_1_id": "nfl_4036378",
       "star_2_id": "nfl_4430807",
       "star_3_id": "nfl_4426502",
+      "is_locked": true,
+      "device_id": "LOCKED",
+      "updated_at": "2026-09-23T16:06:34.61+00:00"
+    },
+    {
+      "id": "58a7c996-91ac-4954-96ac-b27ab0e1e35e",
+      "room_code": "BIGBANG",
+      "user_name": "ASH",
+      "sport": "nfl",
+      "star_1_id": "nfl_3918298",
+      "star_2_id": "nfl_3043078",
+      "star_3_id": "",
       "is_locked": false,
       "device_id": "UNLOCKED",
-      "updated_at": "2026-09-23T16:06:34.61+00:00"
+      "updated_at": "2026-09-25T00:11:59.526+00:00"
     }
   ],
   "locks": {
-    "NYG_LAR_PAUL_JR_nfl": false,
+    "NYG_LAR_PAUL_JR_nfl": true,
     "NE_JAX_PAUL_JR_nfl": false,
-    "THE_BOYS_PC_nfl": false,
-    "THE_BOYS__ARI_SF_PC_nfl": false,
+    "THE_BOYS_PC_nfl": true,
+    "THE_BOYS__ARI_SF_PC_nfl": true,
     "THE_BOYS__ATL_GB_PC_nfl": false,
-    "THE_BOYS__CAR_CLE_PC_nfl": false,
+    "THE_BOYS__CAR_CLE_PC_nfl": true,
     "THE_BOYS__BAL_DAL_PC_nfl": false,
-    "NYG_LAR__NE_JAX_PAUL_JR_nfl": false,
-    "NYG_LAR__TEN_NYG_PAUL_JR_nfl": false,
+    "NYG_LAR__NE_JAX_PAUL_JR_nfl": true,
+    "NYG_LAR__TEN_NYG_PAUL_JR_nfl": true,
     "BIGBANG_RAPTORS_nfl": true,
     "CAR_ATL_MOM_nfl": false,
-    "CAR_ATL_PAUL_JR_nfl": false,
-    "KC_IND_PAUL_JR_nfl": false,
-    "NYG_LAR__CAR_CLE_PAUL_JR_nfl": false,
-    "MIN_CHI_PAUL_JR_nfl": false,
+    "CAR_ATL_PAUL_JR_nfl": true,
+    "KC_IND_PAUL_JR_nfl": true,
+    "NYG_LAR__CAR_CLE_PAUL_JR_nfl": true,
+    "MIN_CHI_PAUL_JR_nfl": true,
     "BIGBANG_LEENSIE_nfl": true,
-    "NYG_LAR_DAD_nfl": false,
-    "PHI_TEN_PLAYER 1_nfl": false,
+    "NYG_LAR_DAD_nfl": true,
+    "PHI_TEN_PLAYER 1_nfl": true,
     "BIGBANG__ATL_GB_LEENSIE_nfl": true,
-    "KC_IND_MAMA_nfl": false,
-    "PIT_NE_PAUL_JR_nfl": false,
-    "NYG_LAR_LEENSIE_nfl": false,
-    "KC_IND_WOOLEY_nfl": false,
-    "PIT_NE_ASH_nfl": false,
-    "NYG_LAR_ASH DAWG_nfl": false,
-    "KC_IND_LEENSIE_nfl": false,
-    "NYG_LAR__CIN_PIT_PAUL_JR_nfl": false,
-    "NYG_LAR_GREG_nfl": false,
-    "WSH_DAL_PAUL_JR_nfl": false,
+    "KC_IND_MAMA_nfl": true,
+    "PIT_NE_PAUL_JR_nfl": true,
+    "NYG_LAR_LEENSIE_nfl": true,
+    "KC_IND_WOOLEY_nfl": true,
+    "PIT_NE_ASH_nfl": true,
+    "NYG_LAR_ASH DAWG_nfl": true,
+    "KC_IND_LEENSIE_nfl": true,
+    "NYG_LAR__CIN_PIT_PAUL_JR_nfl": true,
+    "NYG_LAR_GREG_nfl": true,
+    "WSH_DAL_PAUL_JR_nfl": true,
     "BIGBANG__ATL_GB_RAPTORS_nfl": true,
-    "NYG_LAR__ARI_SF_PAUL_JR_nfl": false,
-    "NYG_LAR__MIN_TB_PAUL_JR_nfl": false,
+    "NYG_LAR__ARI_SF_PAUL_JR_nfl": true,
+    "NYG_LAR__MIN_TB_PAUL_JR_nfl": true,
     "BIGBANG__BAL_DAL_RAPTORS_nfl": true,
-    "NYG_LAR__ATL_GB_PAUL_JR_nfl": false
+    "NYG_LAR__ATL_GB_PAUL_JR_nfl": true,
+    "BIGBANG_ASH_nfl": false
   },
   "rooms": {
     "NYG_LAR_nfl": {
@@ -456,7 +469,7 @@
       "sport": "nfl",
       "createdAt": "2026-09-22T20:10:30.524Z",
       "isArchived": true,
-      "archivedAt": "2026-09-22T21:37:45.752Z"
+      "archivedAt": "2026-09-25T00:08:33.205Z"
     },
     "NE_JAX_nfl": {
       "sport": "nfl",
@@ -473,8 +486,7 @@
     "COUCH_nfl": {
       "sport": "nfl",
       "createdAt": "2026-09-22T21:37:46.587Z",
-      "isArchived": true,
-      "archivedAt": "2026-09-22T21:37:46.587Z"
+      "isArchived": false
     },
     "KC_IND_nfl": {
       "sport": "nfl",
@@ -550,9 +562,7 @@
     },
     "BIGBANG_nfl": {
       "sport": "nfl",
-      "createdAt": "2026-09-24T23:40:40.234Z",
-      "isArchived": true,
-      "archivedAt": "2026-09-24T23:48:29.629Z"
+      "createdAt": "2026-09-25T00:24:47.157Z"
     }
   }
 }
